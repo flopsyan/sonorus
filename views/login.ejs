@@ -1,0 +1,32 @@
+<%- include('partials/head') %>
+<body class="auth">
+<main class="auth-main">
+  <section class="auth-card">
+    <div class="auth-brand">
+      <%- include('partials/brand') %>
+      <span class="brand-name"><%= siteName %></span>
+    </div>
+    <h1>Anmelden</h1>
+    <p class="page-sub">Deine Bibliothek wartet.</p>
+
+    <% if (error) { %><div class="flash err" role="alert"><%= error %></div><% } %>
+
+    <form method="post" action="/login" autocomplete="on">
+      <input type="hidden" name="next" value="<%= next %>" />
+      <div class="field">
+        <label for="login-user">Benutzername</label>
+        <input type="text" id="login-user" name="username" autocomplete="username" required autofocus />
+      </div>
+      <div class="field">
+        <label for="login-pass">Passwort</label>
+        <input type="password" id="login-pass" name="password" autocomplete="current-password" required />
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-block">Anmelden</button>
+      </div>
+    </form>
+  </section>
+</main>
+<footer class="auth-footer"><%= siteName %></footer>
+</body>
+</html>

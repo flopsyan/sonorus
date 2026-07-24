@@ -1,0 +1,25 @@
+{
+  "name": "Sonorus",
+  "short_name": "Sonorus",
+  "description": "Self-hosted music player for your own audio files.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#100e14",
+  "theme_color": "#100e14",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

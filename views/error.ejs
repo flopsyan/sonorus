@@ -1,0 +1,18 @@
+<%- include('partials/head') %>
+<body class="auth">
+<main class="auth-main">
+  <section class="auth-card">
+    <div class="auth-brand">
+      <%- include('partials/brand') %>
+      <span class="brand-name"><%= siteName %></span>
+    </div>
+    <h1><%= title %></h1>
+    <% if (locals.message) { %>
+      <p class="page-sub"><%= message %></p>
+    <% } %>
+    <a href="/" class="btn btn-primary btn-block">Zur Bibliothek</a>
+  </section>
+</main>
+<footer class="auth-footer"><%= siteName %></footer>
+</body>
+</html>

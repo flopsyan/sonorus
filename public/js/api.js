@@ -1,0 +1,89 @@
+// Thin wrapper around the JSON API. Every call returns the parsed body; a
+// failed request throws an Error carrying the German message the server sent,
+// so callers can show it straight in a toast.
+
+async function request(method, path, body) {
+  const options = { method, headers: {} };
+  if (body !== undefined) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(path, options);
+
+  // The session expired: reload so the server can send us to the login page.
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Nicht angemeldet.');
+  }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Unerwartete Antwort vom Server.');
+  }
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.message || 'Da ist etwas schiefgelaufen.');
+  }
+  return data;
+}
+
+const query = (params) => {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value !== undefined && value !== null && value !== '') search.set(key, value);
+  }
+  const s = search.toString();
+  return s ? `?${s}` : '';
+};
+
+export const api = {
+  bootstrap: () => request('GET', '/api/bootstrap'),
+
+  tracks: (params) => request('GET', `/api/tracks${query(params)}`),
+  tracksByIds: (ids) => request('POST', '/api/tracks/by-ids', { ids }),
+  artists: (params) => request('GET', `/api/artists${query(params)}`),
+  artist: (id) => request('GET', `/api/artists/${id}`),
+  albums: (params) => request('GET', `/api/albums${query(params)}`),
+  album: (id) => request('GET', `/api/albums/${id}`),
+  genres: () => request('GET', '/api/genres'),
+  genre: (id) => request('GET', `/api/genres/${id}`),
+  starred: (stars) => request('GET', `/api/stars/${stars}`),
+  home: () => request('GET', '/api/home'),
+  shuffle: (limit) => request('GET', `/api/shuffle${query({ limit })}`),
+  search: (q) => request('GET', `/api/search${query({ q })}`),
+
+  rate: (trackId, stars) => request('PUT', `/api/tracks/${trackId}/rating`, { stars }),
+  play: (trackId) => request('POST', '/api/plays', { trackId }),
+  clearHistory: () => request('DELETE', '/api/plays'),
+
+  playlists: () => request('GET', '/api/playlists'),
+  playlist: (id) => request('GET', `/api/playlists/${id}`),
+  createPlaylist: (name, folderId) => request('POST', '/api/playlists', { name, folderId }),
+  updatePlaylist: (id, patch) => request('PATCH', `/api/playlists/${id}`, patch),
+  deletePlaylist: (id) => request('DELETE', `/api/playlists/${id}`),
+  addToPlaylist: (id, trackIds) => request('POST', `/api/playlists/${id}/tracks`, { trackIds }),
+  removeFromPlaylist: (id, itemId) => request('DELETE', `/api/playlists/${id}/items/${itemId}`),
+  reorderPlaylist: (id, itemIds) => request('PUT', `/api/playlists/${id}/order`, { itemIds }),
+
+  createFolder: (name) => request('POST', '/api/folders', { name }),
+  renameFolder: (id, name) => request('PATCH', `/api/folders/${id}`, { name }),
+  deleteFolder: (id) => request('DELETE', `/api/folders/${id}`),
+
+  importCsv: (payload) => request('POST', '/api/import/csv', payload),
+  issues: () => request('GET', '/api/import/issues'),
+  recheckIssues: () => request('POST', '/api/import/issues/recheck'),
+  dismissIssue: (id) => request('DELETE', `/api/import/issues/${id}`),
+  clearIssues: () => request('DELETE', '/api/import/issues'),
+
+  scanStatus: () => request('GET', '/api/scan'),
+  startScan: () => request('POST', '/api/scan'),
+
+  savePref: (key, value) => request('PUT', '/api/prefs', { key, value }),
+
+  users: () => request('GET', '/api/users'),
+  createUser: (payload) => request('POST', '/api/users', payload),
+  deleteUser: (id) => request('DELETE', `/api/users/${id}`),
+  saveProfile: (payload) => request('PUT', '/api/profile', payload),
+};

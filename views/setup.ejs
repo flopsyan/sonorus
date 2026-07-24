@@ -1,0 +1,35 @@
+<%- include('partials/head') %>
+<body class="auth">
+<main class="auth-main">
+  <section class="auth-card">
+    <div class="auth-brand">
+      <%- include('partials/brand') %>
+      <span class="brand-name"><%= siteName %></span>
+    </div>
+    <h1>Erste Einrichtung</h1>
+    <p class="page-sub">Lege das erste Administrator-Konto an. Damit meldest du dich an und verwaltest weitere Konten.</p>
+
+    <% if (error) { %><div class="flash err" role="alert"><%= error %></div><% } %>
+
+    <form method="post" action="/setup" autocomplete="off">
+      <div class="field">
+        <label for="su-user">Benutzername</label>
+        <input type="text" id="su-user" name="username" required autofocus placeholder="z. B. admin" />
+      </div>
+      <div class="field">
+        <label for="su-display">Anzeigename (optional)</label>
+        <input type="text" id="su-display" name="display_name" placeholder="z. B. Alex" />
+      </div>
+      <div class="field">
+        <label for="su-pass">Passwort</label>
+        <input type="password" id="su-pass" name="password" autocomplete="new-password" required />
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-block">Konto anlegen</button>
+      </div>
+    </form>
+  </section>
+</main>
+<footer class="auth-footer"><%= siteName %></footer>
+</body>
+</html>
