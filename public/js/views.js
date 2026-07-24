@@ -534,9 +534,14 @@ export async function profile(_params, ctx) {
 
 // --- Settings ---------------------------------------------------------------
 
+// The running scan reports its progress here, right under the button that
+// started it - that is the whole feedback, there is no toast for it.
 function scanBlock(scan, lastScan) {
   const running = scan.running;
-  const percent = scan.total ? Math.round((scan.done / scan.total) * 100) : 0;
+  // While the folder is still being walked the file count is unknown, so there
+  // is no honest percentage yet and the bar runs indeterminate.
+  const measured = running && scan.total > 0;
+  const percent = measured ? Math.round((scan.done / scan.total) * 100) : 0;
   const phases = { walking: 'Ordner wird gelesen', reading: 'Dateien werden ausgelesen', pruning: 'Aufräumen' };
 
   return `<div id="scan-block">
@@ -557,9 +562,16 @@ function scanBlock(scan, lastScan) {
       </div>
       ${
         running
-          ? `<div>
-              <div class="setting-sub">${esc(phases[scan.phase] || 'Scan läuft')} · ${fmt.number(scan.done)} von ${fmt.number(scan.total)}</div>
-              <div class="progress"><div class="progress-fill" data-progress="${percent}"></div></div>
+          ? `<div class="scan-progress">
+              <div class="scan-progress-head">
+                <span class="setting-sub">${esc(phases[scan.phase] || 'Scan läuft')}${
+                  measured ? ` · ${fmt.number(scan.done)} von ${fmt.number(scan.total)}` : ''
+                }</span>
+                ${measured ? `<span class="setting-sub num">${percent} %</span>` : ''}
+              </div>
+              <div class="progress${measured ? '' : ' indeterminate'}">
+                <div class="progress-fill"${measured ? ` data-progress="${percent}"` : ''}></div>
+              </div>
             </div>`
           : ''
       }
@@ -683,8 +695,10 @@ export async function settings(_params, ctx) {
         }
       </div>`,
 
+    // The return value is the router's cleanup hook - without passing it on,
+    // the wiring would never be torn down.
     after(root, ctx2) {
-      wireSettings(root, ctx2);
+      return wireSettings(root, ctx2);
     },
   };
 }
@@ -726,17 +740,30 @@ function applyProgress(root) {
 // Settings is the one view with enough interaction to warrant its own wiring.
 function wireSettings(root, ctx) {
   let scanTimer = null;
+  // root is #content and outlives the view, so the delegated listener below has
+  // to go when the view does - otherwise a second visit to the settings page
+  // leaves two handlers behind and every click fires twice.
+  const wiring = new AbortController();
   applyProgress(root);
+
+  const stopPolling = () => {
+    clearInterval(scanTimer);
+    scanTimer = null;
+  };
+
+  const drawScan = (scan, lastScan) => {
+    const block = root.querySelector('#scan-block');
+    if (!block) return false;
+    block.outerHTML = scanBlock(scan, lastScan);
+    applyProgress(root);
+    return true;
+  };
 
   const refreshScan = async () => {
     const status = await api.scanStatus();
-    const block = root.querySelector('#scan-block');
-    if (!block) return clearInterval(scanTimer);
-    block.outerHTML = scanBlock(status.scan, status.lastScan);
-    applyProgress(root);
+    if (!drawScan(status.scan, status.lastScan)) return stopPolling();
     if (!status.scan.running) {
-      clearInterval(scanTimer);
-      scanTimer = null;
+      stopPolling();
       ctx.refreshShell();
     }
   };
@@ -744,12 +771,15 @@ function wireSettings(root, ctx) {
   root.addEventListener('click', async (e) => {
     const scanBtn = e.target.closest('[data-scan]');
     if (scanBtn) {
+      scanBtn.disabled = true;
       try {
-        await api.startScan();
-        toast('Scan gestartet.');
-        await refreshScan();
-        if (!scanTimer) scanTimer = setInterval(refreshScan, 1200);
+        // The POST already answers with the started scan, so the progress bar
+        // is on screen before the first poll comes back.
+        const res = await api.startScan();
+        drawScan(res.scan, res.lastScan);
+        if (!scanTimer) scanTimer = setInterval(refreshScan, 600);
       } catch (err) {
+        scanBtn.disabled = false;
         toast(err.message, 'err');
       }
       return;
@@ -825,7 +855,7 @@ function wireSettings(root, ctx) {
         toast(err.message, 'err');
       }
     }
-  });
+  }, { signal: wiring.signal });
 
   const userForm = root.querySelector('#user-form');
   if (userForm) {
@@ -879,11 +909,18 @@ function wireSettings(root, ctx) {
   );
   drop.addEventListener('drop', (e) => handleFile(e.dataTransfer.files[0]));
 
-  // The interval belongs to this view; leaving the page must stop it.
-  api.scanStatus().then(({ scan }) => {
-    if (scan.running && !scanTimer) scanTimer = setInterval(refreshScan, 1200);
+  // A scan started elsewhere (or on server start) should show its progress here
+  // too. The interval belongs to this view; leaving the page must stop it.
+  api.scanStatus().then(({ scan, lastScan }) => {
+    if (!scan.running || scanTimer) return;
+    drawScan(scan, lastScan);
+    scanTimer = setInterval(refreshScan, 600);
   });
-  return () => clearInterval(scanTimer);
+
+  return () => {
+    stopPolling();
+    wiring.abort();
+  };
 }
 
 // The import dialog: confirm the target, then show what matched and what did

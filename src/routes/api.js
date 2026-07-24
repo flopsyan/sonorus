@@ -358,11 +358,15 @@ router.get('/scan', (req, res) => {
   res.json({ ok: true, scan: scanState(), lastScan: getMeta('last_scan') });
 });
 
+// The response carries the same shape as GET, so the settings page can draw the
+// progress bar from it right away instead of waiting for the first poll.
 router.post('/scan', (req, res) => {
-  if (isScanning()) return res.json({ ok: true, scan: scanState(), alreadyRunning: true });
+  if (isScanning()) {
+    return res.json({ ok: true, scan: scanState(), lastScan: getMeta('last_scan'), alreadyRunning: true });
+  }
   // Runs in the background; the client polls GET /api/scan for progress.
   runScan().catch((err) => console.error('Sonorus: scan failed:', err));
-  res.json({ ok: true, scan: scanState() });
+  res.json({ ok: true, scan: scanState(), lastScan: getMeta('last_scan') });
 });
 
 // --- Preferences ------------------------------------------------------------

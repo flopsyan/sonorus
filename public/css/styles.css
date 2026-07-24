@@ -761,6 +761,17 @@ body.app { height: 100vh; overflow: hidden; }
 .progress { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
 .progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
 
+/* Until the walk has counted the files there is no percentage to show, so the
+   bar sweeps instead of sitting at 0 %. */
+.progress.indeterminate .progress-fill { width: 32%; transition: none; animation: progress-sweep 1.2s ease-in-out infinite; }
+@keyframes progress-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(320%); }
+}
+
+.scan-progress { padding: 12px 0 2px; }
+.scan-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
 /* Spacing utilities. The Content-Security-Policy forbids inline style
    attributes, so anything that would have been a one-off style="..." gets a
    class instead. */
@@ -859,4 +870,6 @@ body.app { height: 100vh; overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  /* A sweep with no duration would park the bar off-screen, so hold it still. */
+  .progress.indeterminate .progress-fill { animation: none !important; width: 100%; opacity: 0.5; }
 }
