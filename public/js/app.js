@@ -1185,7 +1185,7 @@ const SHORTCUTS = [
   ['Leertaste', 'Wiedergabe / Pause'],
   ['← / →', '5 Sekunden zurück / vor'],
   ['Umschalt + ← / →', 'Vorheriger / nächster Titel'],
-  ['1 – 5', 'Aktuellen Titel bewerten'],
+  ['1 - 5', 'Aktuellen Titel bewerten'],
   ['0', 'Bewertung entfernen'],
   ['S', 'Zufallswiedergabe umschalten'],
   ['R', 'Wiederholen umschalten'],

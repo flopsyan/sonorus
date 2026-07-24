@@ -8,7 +8,10 @@ playlists.
 The interface is a single page - navigating between artists, albums and
 playlists never interrupts playback. Design-wise it takes a loose cue from the
 classic media players (library tree on the left, transport bar across the
-bottom) but in a modern, dark first look.
+bottom) and treats the app as a piece of audio equipment: a deep ink chassis,
+one warm amber accent, hi-fi style section labels and monospace readouts for
+every number. Dark is the default; a light theme and an "Auto" mode that
+follows the operating system are one click away in the header.
 
 Everything lives behind a login; there is no public access. The library itself
 is shared by all accounts, while playlists, star ratings and listening history
@@ -30,22 +33,45 @@ belong to the account that created them.
 
 ### Playback
 
-- Play/pause, previous/next track, seek bar with elapsed and total time.
+- Play/pause, previous/next track, elapsed and total time.
+- The seek bar is the top edge of the transport: full width, grab it anywhere.
 - Shuffle and repeat (off / repeat all / repeat one).
 - Volume slider with mute.
 - **Aktuelle Wiedergabeliste** - the live queue in a side panel, showing the
   real upcoming order even while shuffle is on; drag to reorder, click to jump.
-- Keyboard shortcuts for the transport controls.
+- A live level meter in the transport and a fullscreen **Visualisierung**, both
+  driven by the actual audio through a Web Audio analyser.
 - Media Session support, so the lock screen and hardware media keys show the
   current track and work as expected.
+- The queue, volume and the shuffle/repeat modes survive a reload. Volume,
+  shuffle and repeat are stored on the account, so they follow you to another
+  device; the queue itself stays in the browser you built it in.
+
+### Keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| `Space` | Play / pause |
+| `←` / `→` | 5 seconds back / forward |
+| `Shift` + `←` / `→` | Previous / next track |
+| `1` - `5` | Rate the current track |
+| `0` | Clear the rating |
+| `S` | Toggle shuffle |
+| `R` | Cycle repeat |
+| `M` | Mute |
+| `Q` | Show / hide the queue |
+| `V` | Fullscreen visualizer |
+| `/` | Jump to the search field |
 
 ### Playlists
 
 - Create, rename and delete playlists; add tracks from any view.
 - **Playlist folders** to group playlists in the sidebar.
 - Drag and drop to reorder tracks inside a playlist.
-- **Sterne-Playlists** - rate any track from 1 to 5 stars; Sonorus keeps one
-  automatic playlist per rating that always reflects the current ratings.
+- **Sterne-Playlists** - rate any track from 1 to 5 stars from any track list or
+  from the transport; Sonorus keeps one automatic playlist per rating that
+  always reflects the current ratings. Clicking a track's current rating again
+  clears it.
 - Automatic views for recently added, recently played and most played tracks.
 
 ### CSV import
@@ -53,16 +79,26 @@ belong to the account that created them.
 Playlists exported from a streaming service can be imported as CSV. Expected
 columns (header row required, order does not matter):
 
-| Column | Meaning |
-| --- | --- |
-| `playlist` | Playlist name; one CSV may contain several playlists |
-| `title` | Track title |
-| `artists` | Artist, or several artists separated by commas |
-| `album` | Album title |
+| Column | Meaning | Also accepted |
+| --- | --- | --- |
+| `playlist` | Playlist name; one CSV may contain several playlists | `playlist name` |
+| `title` | Track title | `track name`, `track`, `song`, `name`, `titel` |
+| `artists` | Artist, or several artists separated by commas | `artist`, `artist name(s)`, `interpret` |
+| `album` | Album title | `album name` |
 
-Sonorus matches every row against the library (title plus artist, falling back
-to a normalised match that ignores case, punctuation and suffixes such as
-`- Remastered 2011` or `- Single Version`). Matched rows go into the playlist.
+Only `title` is required. Comma, semicolon and tab separated files are all
+recognised, as are quoted fields and a UTF-8 BOM. Without a `playlist` column
+the whole file becomes one playlist, named after the file.
+
+Sonorus matches every row against the library in four passes, strict first:
+
+1. exact title plus artist,
+2. title plus artist with case, accents, punctuation and version suffixes
+   (`- Remastered 2011`, `(Live)`, `- Single Version`) ignored,
+3. that same loose title plus the album,
+4. the loose title on its own, but only when it is unique in the library.
+
+Matched rows go into the playlist.
 
 Rows that cannot be matched are **not** silently dropped: they are recorded as
 import issues and stay visible under **Einstellungen -> Mitteilungen** with
