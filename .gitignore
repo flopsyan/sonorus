@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Runtime data / database / extracted cover art
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# Local music folder when running without Docker
+music/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Docker
+docker-compose.override.yml

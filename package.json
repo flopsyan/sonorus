@@ -1,0 +1,23 @@
+{
+  "name": "sonorus",
+  "version": "0.1.0",
+  "description": "Self-hosted music player - browse your own audio files by artist, album and genre, rate them and build playlists.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "NODE_ENV=development node --watch src/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "ejs": "^6.0.1",
+    "express": "^5.2.1",
+    "music-metadata": "^11.14.0"
+  },
+  "allowScripts": {
+    "better-sqlite3": true
+  }
+}
