@@ -45,6 +45,14 @@ belong to the account that created them.
   comments, MP4 atoms, APE): year, genre, duration, format and the embedded
   cover art. An album with no embedded artwork in any of its files picks up a
   `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
+- **Alben bearbeiten** - the album page has a "Bearbeiten" button for the three
+  things the folder names cannot say: year, genres (comma separated, applied to
+  every track of the album) and the cover art (JPG, PNG or WebP, uploaded in the
+  dialog). The edit is stored in Sonorus, **never written into your files** -
+  the music folder stays read-only - and each edited field is locked, so a later
+  scan does not put the file's version back. Title, artist and track number are
+  not editable: they come from the folder structure, which the next scan reads
+  again.
 - Rescan on demand from the settings; unchanged files are skipped, removed files
   disappear from the library - **except when you rated them, put them in a
   playlist or listened to them.** Those keep their row and are shown greyed out

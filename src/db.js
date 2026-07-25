@@ -62,6 +62,10 @@ db.exec(`
     artist_id INTEGER REFERENCES artists(id) ON DELETE SET NULL,
     year      INTEGER,
     cover     TEXT NOT NULL DEFAULT '',
+    -- Set once the user has edited the field by hand, so the scanner leaves it
+    -- alone from then on.
+    year_locked  INTEGER NOT NULL DEFAULT 0,
+    cover_locked INTEGER NOT NULL DEFAULT 0,
     UNIQUE (title, artist_id)
   );
 
@@ -87,6 +91,8 @@ db.exec(`
     -- Set when the file is gone but the row has to stay: a rating, a playlist
     -- entry or a play refers to it. Empty means the file is there.
     missing_at  TEXT NOT NULL DEFAULT '',
+    -- The genres were set by hand, so the scanner keeps the file's out.
+    genres_locked INTEGER NOT NULL DEFAULT 0,
     size        INTEGER NOT NULL DEFAULT 0,
     mtime       INTEGER NOT NULL DEFAULT 0,
     norm_title  TEXT NOT NULL DEFAULT '',
@@ -187,6 +193,13 @@ addColumn('tracks', 'cover', "TEXT NOT NULL DEFAULT ''");
 addColumn('tracks', 'missing_at', "TEXT NOT NULL DEFAULT ''");
 // Listening time per play, for the statistics.
 addColumn('plays', 'seconds', 'INTEGER NOT NULL DEFAULT 0');
+
+// What the user edited by hand. The music folder is read-only, so an edit is
+// stored here instead of in the file - and the scanner has to be told to keep
+// its hands off, or the next scan would put the file's version back.
+addColumn('albums', 'year_locked', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('albums', 'cover_locked', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('tracks', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
 
 export function getMeta(key) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);

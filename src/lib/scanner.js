@@ -93,7 +93,10 @@ const selectAlbum = db.prepare(
   'SELECT id, year, cover FROM albums WHERE title = ? AND artist_id IS ?'
 );
 const insertAlbum = db.prepare('INSERT INTO albums (title, artist_id, year) VALUES (?, ?, ?)');
-const touchAlbumYear = db.prepare('UPDATE albums SET year = ? WHERE id = ? AND year IS NULL');
+// Only fills a gap, and never against a year the user typed in by hand.
+const touchAlbumYear = db.prepare(
+  'UPDATE albums SET year = ? WHERE id = ? AND year IS NULL AND year_locked = 0'
+);
 
 function albumId(title, aId, year) {
   const clean = String(title || '').trim();
@@ -194,10 +197,11 @@ async function storeCoverFile(meta, filePath, baseName, fromFolder) {
   return '';
 }
 
-// The album keeps the first artwork any of its tracks turns up.
+// The album keeps the first artwork any of its tracks turns up - unless the
+// user picked one, in which case that one stays, even if it was removed.
 async function storeAlbumCover(albumId_, meta, filePath) {
-  const album = db.prepare('SELECT id, cover FROM albums WHERE id = ?').get(albumId_);
-  if (!album || album.cover) return;
+  const album = db.prepare('SELECT id, cover, cover_locked FROM albums WHERE id = ?').get(albumId_);
+  if (!album || album.cover || album.cover_locked) return;
   const name = await storeCoverFile(meta, filePath, `album-${album.id}`, true);
   if (name) setAlbumCover.run(name, album.id);
 }
@@ -252,22 +256,23 @@ async function collectFiles(root) {
 // --- Writing one track ------------------------------------------------------
 
 const selectTrackByPath = db.prepare(
-  'SELECT id, size, mtime, cover, missing_at FROM tracks WHERE path = ?'
+  'SELECT id, size, mtime, cover, missing_at, genres_locked FROM tracks WHERE path = ?'
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, duration,
-                      bitrate, codec, lossless, cover, missing_at, size, mtime,
+                      bitrate, codec, lossless, cover, missing_at, genres_locked, size, mtime,
                       norm_title, loose_title, norm_artist)
   VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @duration,
-          @bitrate, @codec, @lossless, @cover, @missing_at, @size, @mtime,
+          @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked, @size, @mtime,
           @norm_title, @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
                     track_no = @track_no, disc_no = @disc_no, year = @year, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
-                    missing_at = @missing_at, size = @size, mtime = @mtime,
+                    missing_at = @missing_at, genres_locked = @genres_locked,
+                    size = @size, mtime = @mtime,
                     norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist
    WHERE id = @id
 `);
@@ -276,13 +281,17 @@ const linkTrackGenre = db.prepare(
   'INSERT OR IGNORE INTO track_genres (track_id, genre_id) VALUES (?, ?)'
 );
 
-const writeTrack = db.transaction((row, genres, existingId) => {
+// `keepGenres` is set for a track whose genres the user edited by hand - the
+// file's genres would otherwise win back on the next scan.
+const writeTrack = db.transaction((row, genres, existingId, keepGenres) => {
   let id = existingId;
   if (id) {
     updateTrack.run({ ...row, id });
   } else {
     id = Number(insertTrack.run(row).lastInsertRowid);
   }
+  if (keepGenres) return id;
+
   clearTrackGenres.run(id);
   for (const name of genres) {
     const gid = genreId(name);
@@ -326,6 +335,7 @@ async function indexFile(filePath, stat, force) {
     // Only singles carry their own artwork; an album track shows its album's.
     cover: alId ? '' : (existing && existing.cover) || '',
     missing_at: '',
+    genres_locked: (existing && existing.genres_locked) || 0,
     size: stat.size,
     mtime: Math.floor(stat.mtimeMs),
     norm_title: normalize(place.title),
@@ -333,7 +343,12 @@ async function indexFile(filePath, stat, force) {
     norm_artist: primaryArtist(place.artist),
   };
 
-  const trackId = writeTrack(row, Array.isArray(common.genre) ? common.genre : [], existing && existing.id);
+  const trackId = writeTrack(
+    row,
+    Array.isArray(common.genre) ? common.genre : [],
+    existing && existing.id,
+    !!(existing && existing.genres_locked)
+  );
 
   if (existing) state.updated += 1;
   else state.added += 1;

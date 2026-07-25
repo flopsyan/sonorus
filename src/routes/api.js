@@ -45,6 +45,7 @@ import {
 } from '../models/playlists.js';
 import { setRating, recordPlay, updatePlaySeconds, clearHistory, historyCount } from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
+import { updateAlbum } from '../models/edits.js';
 import {
   listIssues,
   countIssues,
@@ -79,6 +80,9 @@ const ERRORS = {
   last_admin: 'Der letzte Admin kann nicht gelöscht werden.',
   invalid_name: 'Bitte einen Namen angeben.',
   invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
+  invalid_year: 'Bitte ein Jahr zwischen 1000 und 2999 angeben.',
+  bad_image: 'Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.',
+  image_too_big: 'Das Bild ist zu groß (maximal 6 MB).',
   not_found: 'Nicht gefunden.',
   empty: 'Die Datei enthält keine Zeilen.',
   no_title_column: 'Der CSV-Datei fehlt eine Spalte mit dem Songtitel.',
@@ -170,6 +174,21 @@ router.get('/albums/:id', (req, res) => {
   const album = getAlbum(id(req.params.id), req.user.id);
   if (!album) return fail(res, 'not_found', 404);
   res.json({ ok: true, album });
+});
+
+// Hand edits to what the file cannot be asked about: year, genres, cover. The
+// music folder is read-only, so this only changes what Sonorus shows. Like the
+// scan and the CSV import, this touches the shared library and needs a login,
+// not an admin - see the account model in the README.
+router.patch('/albums/:id', async (req, res) => {
+  const patch = {};
+  if ('year' in req.body) patch.year = req.body.year;
+  if ('genres' in req.body) patch.genres = req.body.genres;
+  if ('cover' in req.body) patch.cover = req.body.cover;
+
+  const result = await updateAlbum(id(req.params.id), patch);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, album: getAlbum(id(req.params.id), req.user.id) });
 });
 
 router.get('/genres', (req, res) => {

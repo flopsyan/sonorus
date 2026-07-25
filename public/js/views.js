@@ -331,7 +331,10 @@ export async function album(params) {
         fmt.plural(data.trackCount, 'Song', 'Songs'),
         fmt.durationLong(data.duration),
       ]),
-      actions: playActions('view'),
+      actions: `${playActions('view')}
+        <button type="button" class="btn btn-ghost" data-edit-album="${data.id}">
+          ${icon('edit', 16)} Bearbeiten
+        </button>`,
     })}
       ${trackList(data.tracks, { numbering: 'track' })}`,
   };

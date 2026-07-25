@@ -449,6 +449,97 @@ function promptFolderTarget(playlistId) {
   });
 }
 
+// "Album bearbeiten": year, genres and cover art. Everything the folder
+// structure does not decide and the file cannot be asked about reliably.
+// The music folder is read-only, so this changes the library, not the files -
+// which the dialog says out loud, because it is not obvious.
+async function editAlbumDialog(albumId) {
+  let album;
+  try {
+    album = (await api.album(albumId)).album;
+  } catch (err) {
+    return toast(err.message, 'err');
+  }
+
+  const genres = [...new Set(album.tracks.flatMap((t) => t.genres))].join(', ');
+  // undefined = leave the cover alone, null = remove it, object = a new one.
+  let cover;
+
+  modal({
+    title: 'Album bearbeiten',
+    body: `<form id="album-form">
+        <div class="cover-edit">
+          <div class="cover-edit-art" id="al-preview">${art(album.cover, album.title)}</div>
+          <div class="cover-edit-side">
+            <div class="setting-label">Albumcover</div>
+            <p class="panel-hint">JPG, PNG oder WebP, maximal 6 MB. Am besten quadratisch.</p>
+            <div class="form-actions">
+              <button type="button" class="btn btn-ghost btn-sm" data-pick-cover>Bild wählen</button>
+              <button type="button" class="btn btn-quiet btn-sm" data-drop-cover>Entfernen</button>
+            </div>
+            <input type="file" id="al-cover" accept="image/jpeg,image/png,image/webp" hidden />
+          </div>
+        </div>
+        <div class="field">
+          <label for="al-year">Jahr</label>
+          <input type="number" id="al-year" min="1000" max="2999" step="1"
+                 value="${album.year ? esc(album.year) : ''}" placeholder="z. B. 2013" />
+        </div>
+        <div class="field">
+          <label for="al-genres">Genres</label>
+          <input type="text" id="al-genres" value="${esc(genres)}" placeholder="Rock, Indie Pop" />
+          <p class="panel-hint">Mehrere durch Komma trennen. Gilt für alle Songs des Albums.</p>
+        </div>
+        <p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im Musikordner
+          werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>
+      </form>`,
+    footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+             <button type="submit" form="album-form" class="btn btn-primary">Speichern</button>`,
+    onOpen(root) {
+      const input = root.querySelector('#al-cover');
+      const preview = root.querySelector('#al-preview');
+
+      root.querySelector('[data-pick-cover]').addEventListener('click', () => input.click());
+      root.querySelector('[data-drop-cover]').addEventListener('click', () => {
+        cover = null;
+        preview.innerHTML = art(null, album.title);
+      });
+
+      input.addEventListener('change', () => {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          // The CSP allows data: for images, so the same string serves as
+          // preview and as upload payload - no blob URL needed.
+          const url = String(reader.result);
+          cover = { type: file.type, data: url.slice(url.indexOf(',') + 1) };
+          preview.innerHTML = `<img src="${esc(url)}" alt="" />`;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      root.querySelector('#album-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const patch = {
+          year: root.querySelector('#al-year').value.trim(),
+          genres: root.querySelector('#al-genres').value,
+        };
+        if (cover !== undefined) patch.cover = cover;
+        try {
+          await api.updateAlbum(albumId, patch);
+          closeModal();
+          toast('Album gespeichert.');
+          await refreshShell();
+          render();
+        } catch (err) {
+          toast(err.message, 'err');
+        }
+      });
+    },
+  });
+}
+
 // A small single-field dialog, used for every "give this a name" case.
 function promptText({ title, label, value = '', confirmLabel = 'Anlegen', onSubmit }) {
   modal({
@@ -632,6 +723,12 @@ content.addEventListener('click', async (e) => {
   if (menu) {
     const rect = menu.getBoundingClientRect();
     openTrackMenu(rect.right - 210, rect.bottom + 4, Number(menu.dataset.menuTrack));
+    return;
+  }
+
+  const editAlbum = e.target.closest('[data-edit-album]');
+  if (editAlbum) {
+    editAlbumDialog(Number(editAlbum.dataset.editAlbum));
     return;
   }
 

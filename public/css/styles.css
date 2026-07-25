@@ -586,6 +586,18 @@ body.app { height: 100vh; overflow: hidden; }
 .detail-facts .dot { color: var(--text-faint); }
 .detail-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
 
+/* Cover picker in the album editor: the artwork next to what it can be */
+.cover-edit { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; }
+.cover-edit-art {
+  width: 118px; height: 118px; flex: none;
+  border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2);
+}
+.cover-edit-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover-edit-art .art-fallback { font-size: 2rem; }
+.cover-edit-side { flex: 1; min-width: 190px; }
+.cover-edit-side .panel-hint { margin-bottom: 10px; }
+.cover-edit-side .form-actions { margin-top: 0; justify-content: flex-start; }
+
 /* A playlist without its own artwork shows a 2x2 mosaic of its first covers */
 .mosaic { display: grid; grid-template-columns: 1fr 1fr; width: 100%; height: 100%; }
 .mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
