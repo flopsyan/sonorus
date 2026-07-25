@@ -45,7 +45,7 @@ import {
 } from '../models/playlists.js';
 import { setRating, recordPlay, updatePlaySeconds, clearHistory, historyCount } from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
-import { updateAlbum } from '../models/edits.js';
+import { updateAlbum, updateTrackYear } from '../models/edits.js';
 import {
   listIssues,
   countIssues,
@@ -81,6 +81,8 @@ const ERRORS = {
   invalid_name: 'Bitte einen Namen angeben.',
   invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
   invalid_year: 'Bitte ein Jahr zwischen 1000 und 2999 angeben.',
+  not_a_single: 'Nur Singles haben ein eigenes Jahr. Songs eines Albums bekommen es vom Album.',
+  nothing_to_edit: 'Es gibt nichts zu ändern.',
   bad_image: 'Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.',
   image_too_big: 'Das Bild ist zu groß (maximal 6 MB).',
   not_found: 'Nicht gefunden.',
@@ -151,6 +153,16 @@ router.get('/tracks/:id', (req, res) => {
   const track = getTrack(id(req.params.id), req.user.id);
   if (!track) return fail(res, 'not_found', 404);
   res.json({ ok: true, track });
+});
+
+// The only thing a track can be edited for is the year of a single - everything
+// else about it comes from the folder structure or from its album.
+router.patch('/tracks/:id', (req, res) => {
+  if (!('year' in req.body)) return fail(res, 'nothing_to_edit');
+
+  const result = updateTrackYear(id(req.params.id), req.body.year);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, track: getTrack(id(req.params.id), req.user.id) });
 });
 
 router.get('/artists', (req, res) => {

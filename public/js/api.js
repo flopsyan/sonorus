@@ -48,6 +48,7 @@ export const api = {
   albums: (params) => request('GET', `/api/albums${query(params)}`),
   album: (id) => request('GET', `/api/albums/${id}`),
   updateAlbum: (id, patch) => request('PATCH', `/api/albums/${id}`, patch),
+  updateTrackYear: (id, year) => request('PATCH', `/api/tracks/${id}`, { year }),
   genres: () => request('GET', '/api/genres'),
   genre: (id) => request('GET', `/api/genres/${id}`),
   starred: (stars) => request('GET', `/api/stars/${stars}`),

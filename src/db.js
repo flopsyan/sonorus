@@ -93,6 +93,8 @@ db.exec(`
     missing_at  TEXT NOT NULL DEFAULT '',
     -- The genres were set by hand, so the scanner keeps the file's out.
     genres_locked INTEGER NOT NULL DEFAULT 0,
+    -- Same for the year of a single, which has no album to carry it.
+    year_locked   INTEGER NOT NULL DEFAULT 0,
     size        INTEGER NOT NULL DEFAULT 0,
     mtime       INTEGER NOT NULL DEFAULT 0,
     norm_title  TEXT NOT NULL DEFAULT '',
@@ -200,6 +202,8 @@ addColumn('plays', 'seconds', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('albums', 'year_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('albums', 'cover_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('tracks', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
+// A single carries its own year: no album row is there to hold it.
+addColumn('tracks', 'year_locked', 'INTEGER NOT NULL DEFAULT 0');
 
 export function getMeta(key) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);

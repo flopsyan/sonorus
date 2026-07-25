@@ -328,13 +328,23 @@ export function next(manual = false) {
   emit();
 }
 
-// Back goes back - always to the track that played before, never "restart this
-// one if it is more than three seconds in". That rule is what made going back
-// feel broken in shuffle: after a few seconds of the next track the button
-// silently restarted it instead. Starting the current track over is what the
-// seek bar is for.
+// Seconds after which "back" starts the running track over instead of leaving
+// it. The second press then falls inside this window and goes back for real.
+const RESTART_AFTER = 3;
+
+// Back either starts the track over or goes back to the one that played before
+// - and "before" comes from `history`, never from `pos - 1`. Stepping down the
+// play order is what made this feel broken in shuffle: the queue re-deals its
+// order when it wraps, so the track that played before is anywhere but one
+// position back, and the restart rule then silently swallowed the press.
 export function previous() {
   if (!state.order.length) return;
+
+  if (audio.currentTime > RESTART_AFTER) {
+    audio.currentTime = 0;
+    return;
+  }
+
   const target = popHistory();
   if (target === null) {
     // Nothing played before this one: start it over.

@@ -53,6 +53,11 @@ belong to the account that created them.
   scan does not put the file's version back. Title, artist and track number are
   not editable: they come from the folder structure, which the next scan reads
   again.
+- **Singles have a year of their own.** A single belongs to no album, so nothing
+  else can carry one: the list under "Singles" has a Jahr column, and the year
+  comes from the file tag or from "Jahr bearbeiten" in the track's context menu.
+  Locked and never written into the file, exactly like an album edit. The Singles
+  folder itself has no year - only the songs in it do.
 - Rescan on demand from the settings; unchanged files are skipped, removed files
   disappear from the library - **except when you rated them, put them in a
   playlist or listened to them.** Those keep their row and are shown greyed out
@@ -62,7 +67,9 @@ belong to the account that created them.
 
 ### Playback
 
-- Play/pause, previous/next track, elapsed and total time.
+- Play/pause, previous/next track, elapsed and total time. "Back" starts the
+  running track over once it is more than three seconds in; press it again and
+  it goes to the track that really played before, shuffle included.
 - The seek bar is the top edge of the transport: full width, grab it anywhere.
 - Shuffle and repeat (off / repeat all / repeat one).
 - Volume slider with mute.
@@ -112,10 +119,13 @@ same numbers.
 
 - Library at a glance: songs, artists, albums, singles, genres, total playtime.
 - Time listened in total, since the first play, with the number of days music
-  actually ran.
-- Averages per day, week, month and year, over the whole time since the first
-  play - quiet days included.
-- A column chart of the time listened, by day, week, month or year.
+  actually ran and the day the most of it ran.
+- Averages: per day (quiet days included), per day music actually ran, per play,
+  and plays per day. **Measured, never projected** - there is no "per year" after
+  two days of listening.
+- A column chart of the time listened, by day, week, month or year, with the
+  time above each bar and the number of plays below it. A period nothing was
+  played in is shown as the zero it is instead of being left out.
 - The most played tracks, artists and albums, with play count and time.
 
 A play is counted once a track has run for 30 seconds (or half its length, for

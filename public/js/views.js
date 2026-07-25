@@ -251,7 +251,7 @@ export async function artistSingles(params) {
     })}
       ${
         data.singles.length
-          ? trackList(data.singles)
+          ? trackList(data.singles, { year: true })
           : empty(
               'Keine Singles',
               'Einzelne Dateien, die direkt im Ordner des Interpreten liegen, erscheinen hier.'
@@ -587,6 +587,10 @@ export async function profile(_params, ctx) {
 // --- Statistics -------------------------------------------------------------
 
 // The four ways of slicing the history, in the order the switch shows them.
+// "2026-07-25" -> "25.07.2026". Cut from the string, not parsed into a Date, so
+// no timezone can move it to the day before.
+const dayLabel = (key) => `${key.slice(8)}.${key.slice(5, 7)}.${key.slice(0, 4)}`;
+
 const RANGES = [
   ['day', 'Tage', (key) => key.slice(8) + '.' + key.slice(5, 7) + '.'],
   ['week', 'Wochen', (key) => 'KW ' + isoWeek(key)],
@@ -606,18 +610,86 @@ function isoWeek(day) {
   return String(week);
 }
 
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// How to walk one range backwards, in the browser's own timezone - the same one
+// the server grouped the buckets by. `limit` mirrors the number of periods the
+// query returns, so the chart never shows more than was asked for.
+const STEPS = {
+  day: { limit: 14, start: (d) => d, key: isoDay, back: (d) => d.setDate(d.getDate() - 1) },
+  // A week is keyed by its Monday.
+  week: {
+    limit: 12,
+    start: (d) => {
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return d;
+    },
+    key: isoDay,
+    back: (d) => d.setDate(d.getDate() - 7),
+  },
+  // Stepping from the first of the month, so a 31st does not skip a short one.
+  month: {
+    limit: 12,
+    start: (d) => {
+      d.setDate(1);
+      return d;
+    },
+    key: (d) => isoDay(d).slice(0, 7),
+    back: (d) => d.setMonth(d.getMonth() - 1),
+  },
+  year: {
+    limit: 10,
+    start: (d) => {
+      d.setMonth(0, 1);
+      return d;
+    },
+    key: (d) => String(d.getFullYear()),
+    back: (d) => d.setFullYear(d.getFullYear() - 1),
+  },
+};
+
+// The query only returns the periods something was played in, so two bars a
+// month apart would stand side by side as if they were neighbours. A quiet day
+// is a real zero, not a missing value, so the gaps are filled in and the series
+// always ends with the current period.
+function fillGaps(rows, range) {
+  const step = STEPS[range];
+  if (!step || !rows.length) return rows;
+
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const oldest = rows[0].key;
+  const cursor = step.start(new Date());
+  const series = [];
+
+  for (let i = 0; i < step.limit; i += 1) {
+    const key = step.key(cursor);
+    series.unshift(byKey.get(key) || { key, plays: 0, seconds: 0 });
+    if (key <= oldest) break;
+    step.back(cursor);
+  }
+
+  // Nothing was played inside that window - then the real bars say more than a
+  // row of zeros does.
+  return series.some((r) => r.plays) ? series : rows;
+}
+
 // A column chart without a library: the bars are divs and their height is set
-// through the CSSOM afterwards, because the CSP forbids inline styles.
+// through the CSSOM afterwards, because the CSP forbids inline styles. Both
+// numbers stand at the bar, listening time above it and plays below - a value
+// you only see after hovering is a value you do not see.
 function chart(rows, label) {
   if (!rows.length) return '<div class="empty small"><p>Für diesen Zeitraum gibt es noch nichts.</p></div>';
   const peak = Math.max(...rows.map((r) => r.seconds), 1);
   return `<div class="chart">${rows
     .map(
-      (r) => `<div class="chart-col" title="${esc(label(r.key))}: ${esc(fmt.durationLong(r.seconds))} · ${fmt.plural(r.plays, 'Wiedergabe', 'Wiedergaben')}">
+      (r) => `<div class="chart-col${r.plays ? '' : ' quiet'}" title="${esc(label(r.key))}: ${esc(fmt.durationLong(r.seconds))} · ${fmt.plural(r.plays, 'Wiedergabe', 'Wiedergaben')}">
           <div class="chart-track">
+            <span class="chart-value num">${r.seconds ? esc(fmt.durationRack(r.seconds)) : ''}</span>
             <div class="chart-bar" data-bar="${Math.round((r.seconds / peak) * 100)}"></div>
           </div>
           <span class="chart-key">${esc(label(r.key))}</span>
+          <span class="chart-plays num">${r.plays ? `${fmt.number(r.plays)}×` : ''}</span>
         </div>`
     )
     .join('')}</div>`;
@@ -664,7 +736,7 @@ export async function stats() {
   const charts = RANGES.map(
     ([key, , label], i) =>
       `<div class="chart-panel" data-range-panel="${key}"${i === 0 ? '' : ' hidden'}>
-        ${chart(listening.buckets[key], label)}
+        ${chart(fillGaps(listening.buckets[key], key), label)}
       </div>`
   ).join('');
 
@@ -692,7 +764,9 @@ export async function stats() {
         <h2>Gehört</h2>
         <p class="panel-hint">${
           t.plays
-            ? `Seit dem ${esc(fmt.date(t.firstPlay))} - das sind ${fmt.plural(t.days, 'Tag', 'Tage')}, an ${fmt.plural(t.activeDays, 'Tag', 'Tagen')} davon lief Musik.`
+            ? `Seit dem ${esc(fmt.date(t.firstPlay))} - das sind ${fmt.plural(t.days, 'Tag', 'Tage')}, an ${fmt.plural(t.activeDays, 'Tag', 'Tagen')} davon lief Musik.${
+                t.bestDay ? ` Am meisten lief am ${esc(dayLabel(t.bestDay.day))}.` : ''
+              }`
             : 'Sobald du etwas hörst, füllt sich diese Seite von selbst. Ein Song zählt, wenn er 30 Sekunden gelaufen ist.'
         }</p>
         <div class="readout">
@@ -700,19 +774,26 @@ export async function stats() {
           ${cell('Wiedergaben', fmt.number(t.plays))}
           ${cell('Songs', fmt.number(t.tracks))}
           ${cell('Interpreten', fmt.number(t.artists))}
+          ${t.bestDay ? cell('Bester Tag', fmt.durationRack(t.bestDay.seconds)) : ''}
         </div>
       </div>
 
-      <div class="panel">
+      ${
+        t.plays
+          ? `<div class="panel">
         <h2>Durchschnitt</h2>
-        <p class="panel-hint">Gerechnet über die gesamte Zeit seit dem ersten Anhören, stille Tage eingeschlossen.</p>
+        <p class="panel-hint">Alles gemessen, nichts hochgerechnet: Grundlage sind die
+          ${fmt.plural(t.days, 'Tag', 'Tage')} seit dem ersten Anhören. Ein Hörtag ist ein Tag,
+          an dem wirklich Musik lief (${fmt.plural(t.activeDays, 'Tag', 'Tage')}).</p>
         <div class="readout">
           ${cell('Pro Tag', fmt.durationRack(listening.average.day))}
-          ${cell('Pro Woche', fmt.durationRack(listening.average.week))}
-          ${cell('Pro Monat', fmt.durationRack(listening.average.month))}
-          ${cell('Pro Jahr', fmt.durationRack(listening.average.year))}
+          ${cell('Pro Hörtag', fmt.durationRack(listening.average.activeDay))}
+          ${cell('Pro Wiedergabe', `${fmt.duration(listening.average.play)} Min.`)}
+          ${cell('Wiedergaben pro Tag', fmt.number(Math.round(listening.average.playsPerDay * 10) / 10))}
         </div>
-      </div>
+      </div>`
+          : ''
+      }
 
       <div class="panel">
         <div class="panel-head-row">

@@ -131,15 +131,29 @@ export function listeningStats(userId, offsetMinutes = 0, top = 10) {
       )
     : 1;
 
-  const perDay = totals.seconds / days;
+  // The day the most was listened to. Measured like everything else here.
+  const bestDay = db
+    .prepare(
+      `SELECT date(p.played_at, @tz) AS day, COUNT(*) AS plays,
+              ROUND(SUM(${SECONDS})) AS seconds ${FROM}
+        WHERE p.user_id = @userId
+        GROUP BY day
+        ORDER BY seconds DESC
+        LIMIT 1`
+    )
+    .get({ userId, tz }) || null;
 
   return {
-    totals: { ...totals, days },
+    totals: { ...totals, days, bestDay },
+    // Every one of these divides time that was really listened to by a span
+    // that has really passed. Nothing is projected onto a week, month or year
+    // that has not happened yet - a "pro Jahr" after two days of listening
+    // would be a guess, and this page does not guess.
     average: {
-      day: perDay,
-      week: perDay * 7,
-      month: perDay * 30.44,
-      year: perDay * 365.25,
+      day: totals.seconds / days,
+      activeDay: totals.activeDays ? totals.seconds / totals.activeDays : 0,
+      play: totals.plays ? totals.seconds / totals.plays : 0,
+      playsPerDay: totals.plays / days,
     },
     buckets: {
       day: bucket(userId, tz, 'day'),

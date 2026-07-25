@@ -392,9 +392,20 @@ body.app { height: 100vh; overflow: hidden; }
 .panel-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .panel-head-row h2 { margin: 0; }
 
-.chart { display: flex; align-items: flex-end; gap: 6px; height: 190px; overflow-x: auto; padding-bottom: 2px; }
-.chart-col { flex: 1 1 0; min-width: 28px; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
-.chart-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.chart { display: flex; align-items: flex-end; gap: 8px; height: 210px; overflow-x: auto; padding-bottom: 2px; }
+/* A width cap, or a single day of history would draw one bar across the whole
+   panel. The labels above and below each bar need the min-width. */
+.chart-col {
+  flex: 1 1 0; min-width: 54px; max-width: 96px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%;
+}
+/* The value rides on top of its own bar, so a short bar does not leave its
+   number floating at the ceiling. The tallest bar shrinks by the height of that
+   line instead of overflowing - flex does that by itself. */
+.chart-track {
+  flex: 1; width: 100%;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px;
+}
 .chart-bar {
   display: block;
   width: 100%; min-height: 2px; border-radius: 3px 3px 0 0;
@@ -402,6 +413,14 @@ body.app { height: 100vh; overflow: hidden; }
   transition: height 0.25s ease;
 }
 .chart-col:hover .chart-bar { background: var(--accent-hi); }
+/* The value lines keep their height when they are empty, so every bar in the
+   row still stands on the same baseline. */
+.chart-value, .chart-plays { flex: none; line-height: 1.2; min-height: 1.2em; white-space: nowrap; }
+.chart-value { font-size: 0.64rem; color: var(--text-dim); }
+.chart-plays { font-size: 0.6rem; color: var(--text-faint); }
+.chart-col:hover .chart-value { color: var(--accent); }
+/* Nothing was played: a neutral tick instead of a glowing sliver of amber. */
+.chart-col.quiet .chart-bar { background: var(--surface-2); }
 .chart-key {
   font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
   color: var(--text-faint); white-space: nowrap;
@@ -436,7 +455,10 @@ body.app { height: 100vh; overflow: hidden; }
   display: flex; gap: 16px; overflow-x: auto; padding-bottom: 6px;
   scrollbar-width: thin;
 }
-.grid.row > * { flex: 0 0 164px; }
+/* min-width has to be said out loud: a flex item is at least as wide as its
+   content, and a long title on one line (nowrap, for the ellipsis) is content.
+   Without this one card in a shelf grows past the 164px and stands out. */
+.grid.row > * { flex: 0 0 164px; min-width: 0; }
 
 .card { cursor: pointer; border: none; background: none; padding: 0; text-align: left; display: block; width: 100%; }
 /* The card is built from spans, and an inline box ignores width, aspect-ratio
@@ -529,6 +551,7 @@ body.app { height: 100vh; overflow: hidden; }
 .track-artist a:hover { color: var(--text); text-decoration: underline; }
 
 .track-cell { font-size: 0.84rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-cell.col-year { font-size: 0.82rem; }
 .track-cell a:hover { color: var(--text); text-decoration: underline; }
 .track-time { font-family: var(--font-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--text-dim); text-align: right; }
 
@@ -927,7 +950,7 @@ body.app { height: 100vh; overflow: hidden; }
 @media (max-width: 760px) {
   :root { --player-h: 76px; }
   .track-row { grid-template-columns: 30px minmax(0, 1fr) 58px 32px; }
-  .track-row .col-album, .track-row .col-stars { display: none; }
+  .track-row .col-album, .track-row .col-year, .track-row .col-stars { display: none; }
   .player { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 0 12px; }
   .player-right { display: none; }
   .transport .counter { display: none; }

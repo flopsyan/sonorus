@@ -129,3 +129,19 @@ export async function updateAlbum(albumId, patch) {
 
   return { ok: true };
 }
+
+// The year of a single. An album track takes its year from its album, so this
+// is only for the files that belong to none - they have nowhere else to carry
+// one. Same deal as an album edit: it lives in the database, and the lock keeps
+// the next scan from putting the file's year back (an emptied year too).
+export function updateTrackYear(trackId, value) {
+  const track = db.prepare('SELECT id, album_id FROM tracks WHERE id = ?').get(trackId);
+  if (!track) return { error: 'not_found' };
+  if (track.album_id) return { error: 'not_a_single' };
+
+  const year = parseYear(value);
+  if (!year.ok) return { error: 'invalid_year' };
+
+  db.prepare('UPDATE tracks SET year = ?, year_locked = 1 WHERE id = ?').run(year.year, track.id);
+  return { ok: true };
+}

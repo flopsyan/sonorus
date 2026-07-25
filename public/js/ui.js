@@ -60,6 +60,10 @@ const COLUMNS = [
   { key: 'duration', label: 'Zeit', cls: 'col-time' },
 ];
 
+// Singles belong to no album, so that column would stay empty for them - it
+// carries their year instead, which is the one thing they have of their own.
+const YEAR_COLUMN = { key: 'year', label: 'Jahr', cls: 'col-year' };
+
 function sortHead(col, sort) {
   if (!sort) return `<span class="${col.cls || ''}">${col.label}</span>`;
   const active = sort.key === col.key;
@@ -72,13 +76,15 @@ function sortHead(col, sort) {
 //   sort      { key, dir }  - renders sortable headers, or omit for a plain one
 //   numbering 'index' | 'track' - running number, or the track number from tags
 //   draggable true          - playlist rows that can be reordered
+//   year      true          - the album column shows the year instead (singles)
 export function trackList(tracks, options = {}) {
   if (!tracks.length) return '';
-  const { sort = null, numbering = 'index', draggable = false } = options;
+  const { sort = null, numbering = 'index', draggable = false, year = false } = options;
 
+  const columns = year ? COLUMNS.map((c) => (c.key === 'album' ? YEAR_COLUMN : c)) : COLUMNS;
   const head = `<div class="track-row track-head">
       <span></span>
-      ${COLUMNS.map((c) => sortHead(c, sort)).join('')}
+      ${columns.map((c) => sortHead(c, sort)).join('')}
       <span></span>
     </div>`;
 
@@ -115,9 +121,13 @@ export function trackList(tracks, options = {}) {
             }</span>
           </span>
         </span>
-        <span class="track-cell col-album">${
-          track.albumId ? `<a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a>` : ''
-        }</span>
+        ${
+          year
+            ? `<span class="track-cell col-year num">${track.year || ''}</span>`
+            : `<span class="track-cell col-album">${
+                track.albumId ? `<a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a>` : ''
+              }</span>`
+        }
         <span class="track-cell col-genre">${esc(track.genres.join(', '))}</span>
         <span class="col-stars">${stars(track.stars, track.id)}</span>
         <span class="track-time col-time">${duration(track.duration)}</span>

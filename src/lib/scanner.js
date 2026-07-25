@@ -256,23 +256,23 @@ async function collectFiles(root) {
 // --- Writing one track ------------------------------------------------------
 
 const selectTrackByPath = db.prepare(
-  'SELECT id, size, mtime, cover, missing_at, genres_locked FROM tracks WHERE path = ?'
+  'SELECT id, size, mtime, year, cover, missing_at, genres_locked, year_locked FROM tracks WHERE path = ?'
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, duration,
-                      bitrate, codec, lossless, cover, missing_at, genres_locked, size, mtime,
-                      norm_title, loose_title, norm_artist)
+                      bitrate, codec, lossless, cover, missing_at, genres_locked, year_locked,
+                      size, mtime, norm_title, loose_title, norm_artist)
   VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @duration,
-          @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked, @size, @mtime,
-          @norm_title, @loose_title, @norm_artist)
+          @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked, @year_locked,
+          @size, @mtime, @norm_title, @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
                     track_no = @track_no, disc_no = @disc_no, year = @year, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
                     missing_at = @missing_at, genres_locked = @genres_locked,
-                    size = @size, mtime = @mtime,
+                    year_locked = @year_locked, size = @size, mtime = @mtime,
                     norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist
    WHERE id = @id
 `);
@@ -320,6 +320,10 @@ async function indexFile(filePath, stat, force) {
   const aId = artistId(place.artist);
   const alId = place.album ? albumId(place.album, aId, common.year) : null;
 
+  // A year the user typed in by hand on a single stays - the file's would
+  // otherwise win it back on the next scan.
+  const yearLocked = !!(existing && existing.year_locked);
+
   const row = {
     path: filePath,
     title: place.title,
@@ -327,7 +331,7 @@ async function indexFile(filePath, stat, force) {
     album_id: alId,
     track_no: place.trackNo,
     disc_no: place.discNo,
-    year: common.year || null,
+    year: yearLocked ? existing.year : common.year || null,
     duration: format.duration || 0,
     bitrate: format.bitrate ? Math.round(format.bitrate) : null,
     codec: String(format.codec || format.container || ''),
@@ -336,6 +340,7 @@ async function indexFile(filePath, stat, force) {
     cover: alId ? '' : (existing && existing.cover) || '',
     missing_at: '',
     genres_locked: (existing && existing.genres_locked) || 0,
+    year_locked: yearLocked ? 1 : 0,
     size: stat.size,
     mtime: Math.floor(stat.mtimeMs),
     norm_title: normalize(place.title),

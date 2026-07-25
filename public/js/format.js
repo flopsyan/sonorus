@@ -22,11 +22,14 @@ export function durationLong(seconds) {
 }
 
 // Compact playtime for the front-panel readout, where the value has to stay on
-// one line however big the library gets: "1:45 Std.", "312:04 Std.".
+// one line however big the library gets: "1:45 Std.", "312:04 Std.". Under a
+// minute it counts seconds - an average that rounds down to "0 Min." says less
+// than the truth does.
 export function durationRack(seconds) {
   const total = Math.max(0, Math.round(Number(seconds) || 0));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
+  if (!h && !m) return `${total} Sek.`;
   if (!h) return `${m} Min.`;
   return `${h}:${String(m).padStart(2, '0')} Std.`;
 }

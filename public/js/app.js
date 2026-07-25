@@ -540,6 +540,41 @@ async function editAlbumDialog(albumId) {
   });
 }
 
+// "Jahr bearbeiten" for a single. A song inside an album takes its year from
+// the album, so this is only offered for the files that belong to none - they
+// have nothing else to carry one. Same promise as the album dialog: the music
+// folder is not touched, only what Sonorus shows.
+function editSingleYearDialog(track) {
+  modal({
+    title: 'Jahr bearbeiten',
+    body: `<form id="year-form">
+        <div class="field">
+          <label for="tr-year">Jahr von „${esc(track.title)}“</label>
+          <input type="number" id="tr-year" min="1000" max="2999" step="1"
+                 value="${track.year ? esc(track.year) : ''}" placeholder="z. B. 2013" />
+          <p class="panel-hint">Leer lassen, um das Jahr zu entfernen.</p>
+        </div>
+        <p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im Musikordner
+          werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>
+      </form>`,
+    footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+             <button type="submit" form="year-form" class="btn btn-primary">Speichern</button>`,
+    onOpen(root) {
+      root.querySelector('#year-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await api.updateTrackYear(track.id, root.querySelector('#tr-year').value.trim());
+          closeModal();
+          toast('Jahr gespeichert.');
+          render();
+        } catch (err) {
+          toast(err.message, 'err');
+        }
+      });
+    },
+  });
+}
+
 // A small single-field dialog, used for every "give this a name" case.
 function promptText({ title, label, value = '', confirmLabel = 'Anlegen', onSubmit }) {
   modal({
@@ -792,6 +827,9 @@ function openTrackMenu(x, y, trackId, itemId) {
 
   if (track.albumId) {
     items.push({ label: 'Zum Album', icon: 'disc', onSelect: () => navigate(`/albums/${track.albumId}`) });
+  } else {
+    // A single has no album page and no album year - it gets its own.
+    items.push({ label: 'Jahr bearbeiten …', icon: 'edit', onSelect: () => editSingleYearDialog(track) });
   }
   if (track.artistId) {
     items.push({ label: 'Zum Interpreten', icon: 'user', onSelect: () => navigate(`/artists/${track.artistId}`) });
