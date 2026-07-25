@@ -13,6 +13,7 @@ import { normalize, loosen, primaryArtist } from '../lib/normalize.js';
 // the same columns plus its own playlist_items.id.
 export const TRACK_FIELDS = `
   t.id, t.title, t.track_no AS trackNo, t.disc_no AS discNo, t.year,
+  t.release_date AS releaseDate,
   t.duration, t.bitrate, t.codec, t.lossless, t.added_at AS addedAt,
   t.artist_id AS artistId, ar.name AS artist,
   t.album_id AS albumId, al.title AS album,
@@ -56,6 +57,9 @@ export function shapeTrack(row) {
     trackNo: row.trackNo,
     discNo: row.discNo,
     year: row.year,
+    // Falls back to the year, so a library that has not been rescanned since
+    // the column was added still says what it knows.
+    releaseDate: row.releaseDate || (row.year ? String(row.year) : ''),
     duration: row.duration || 0,
     bitrate: row.bitrate,
     codec: row.codec || '',
@@ -174,7 +178,7 @@ export function getArtist(id, userId) {
 
   const albums = db
     .prepare(
-      `SELECT al.id, al.title, al.year, al.cover,
+      `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
          LEFT JOIN tracks t ON t.album_id = al.id AND ${PRESENT}
@@ -219,6 +223,9 @@ function shapeAlbum(row) {
     artist: row.artist || 'Unbekannter Interpret',
     artistId: row.artistId,
     year: row.year,
+    // Falls back to the year, so a library that has not been rescanned since
+    // the column was added still says what it knows.
+    releaseDate: row.releaseDate || (row.year ? String(row.year) : ''),
     cover: row.cover ? `/covers/${row.cover}` : null,
     trackCount: row.trackCount || 0,
     duration: row.duration || 0,
@@ -239,7 +246,7 @@ export function listAlbums({ q = '', sort = 'title', dir = 'asc' } = {}) {
 
   return db
     .prepare(
-      `SELECT al.id, al.title, al.year, al.cover,
+      `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               al.artist_id AS artistId, ar.name AS artist,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
@@ -257,7 +264,7 @@ export function listAlbums({ q = '', sort = 'title', dir = 'asc' } = {}) {
 export function getAlbum(id, userId) {
   const album = db
     .prepare(
-      `SELECT al.id, al.title, al.year, al.cover,
+      `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               al.artist_id AS artistId, ar.name AS artist,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
@@ -421,7 +428,7 @@ export function mostPlayed(userId, limit = 18) {
 export function newestAlbums(limit = 12) {
   return db
     .prepare(
-      `SELECT al.id, al.title, al.year, al.cover,
+      `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               al.artist_id AS artistId, ar.name AS artist,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration,
               MAX(t.added_at) AS addedAt

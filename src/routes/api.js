@@ -80,8 +80,8 @@ const ERRORS = {
   last_admin: 'Der letzte Admin kann nicht gelöscht werden.',
   invalid_name: 'Bitte einen Namen angeben.',
   invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
-  invalid_year: 'Bitte ein Jahr zwischen 1000 und 2999 angeben.',
-  not_a_single: 'Nur Singles lassen sich einzeln bearbeiten. Songs eines Albums bekommen Jahr und Cover vom Album.',
+  invalid_date: 'Bitte ein Datum wie 17.05.2013, 05.2013 oder 2013 angeben.',
+  not_a_single: 'Nur Singles lassen sich einzeln bearbeiten. Songs eines Albums bekommen Datum und Cover vom Album.',
   nothing_to_edit: 'Es gibt nichts zu ändern.',
   bad_image: 'Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.',
   image_too_big: 'Das Bild ist zu groß (maximal 6 MB).',
@@ -155,12 +155,12 @@ router.get('/tracks/:id', (req, res) => {
   res.json({ ok: true, track });
 });
 
-// A track can be edited where it has nobody to take the value from: year and
-// cover art of a single. Everything else comes from the folder structure or
-// from the album.
+// A track can be edited where it has nobody to take the value from: release
+// date and cover art of a single. Everything else comes from the folder
+// structure or from the album.
 router.patch('/tracks/:id', async (req, res) => {
   const patch = {};
-  if ('year' in req.body) patch.year = req.body.year;
+  if ('date' in req.body) patch.date = req.body.date;
   if ('cover' in req.body) patch.cover = req.body.cover;
   if (!Object.keys(patch).length) return fail(res, 'nothing_to_edit');
 
@@ -202,13 +202,13 @@ router.get('/albums/:id', (req, res) => {
   res.json({ ok: true, album });
 });
 
-// Hand edits to what the file cannot be asked about: year, genres, cover. The
-// music folder is read-only, so this only changes what Sonorus shows. Like the
-// scan and the CSV import, this touches the shared library and needs a login,
-// not an admin - see the account model in the README.
+// Hand edits to what the file cannot be asked about: release date, genres,
+// cover. The music folder is read-only, so this only changes what Sonorus
+// shows. Like the scan and the CSV import, this touches the shared library and
+// needs a login, not an admin - see the account model in the README.
 router.patch('/albums/:id', async (req, res) => {
   const patch = {};
-  if ('year' in req.body) patch.year = req.body.year;
+  if ('date' in req.body) patch.date = req.body.date;
   if ('genres' in req.body) patch.genres = req.body.genres;
   if ('cover' in req.body) patch.cover = req.body.cover;
 

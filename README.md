@@ -49,22 +49,27 @@ belong to the account that created them.
   artist folder are singles: they belong to no album and are not counted as one.
   A `CD1` / `Disc 2` folder inside an album only supplies the disc number.
 - What a folder name cannot say is still read from the file (ID3v1/ID3v2, Vorbis
-  comments, MP4 atoms, APE): year, genre, duration, format and the embedded
-  cover art. An album with no embedded artwork in any of its files picks up a
-  `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
+  comments, MP4 atoms, APE): release date, genre, duration, format and the
+  embedded cover art. An album with no embedded artwork in any of its files picks
+  up a `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
+- **The release date is kept as exactly as the file knows it** - a full day, a
+  month or a bare year. The **album page** is the one place that spells it out
+  ("17. Mai 2013"); every list, grid and card shows the year, which is all they
+  have room for. A file that only carries a year therefore only ever shows one.
 - **Alben bearbeiten** - the album page has a "Bearbeiten" button for the three
-  things the folder names cannot say: year, genres (comma separated, applied to
-  every track of the album) and the cover art (JPG, PNG or WebP, uploaded in the
-  dialog). The edit is stored in Sonorus, **never written into your files** -
-  the music folder stays read-only - and each edited field is locked, so a later
-  scan does not put the file's version back. Title, artist and track number are
-  not editable: they come from the folder structure, which the next scan reads
-  again.
+  things the folder names cannot say: the release date, genres (comma separated,
+  applied to every track of the album) and the cover art (JPG, PNG or WebP,
+  uploaded in the dialog). The date is typed in as exactly as it is known -
+  `17.05.2013`, `05.2013` or `2013`. The edit is stored in Sonorus, **never
+  written into your files** - the music folder stays read-only - and each edited
+  field is locked, so a later scan does not put the file's version back. Title,
+  artist and track number are not editable: they come from the folder structure,
+  which the next scan reads again.
 - **Singles bearbeiten** - a single belongs to no album, so nothing else can
-  carry its year or its cover art: the list under "Singles" has a Jahr column,
-  and "Single bearbeiten" in the track's context menu sets both. Locked and never
-  written into the file, exactly like an album edit. The Singles folder itself
-  has no year - only the songs in it do.
+  carry its release date or its cover art: the list under "Singles" has a Jahr
+  column, and "Single bearbeiten" in the track's context menu sets both. Locked
+  and never written into the file, exactly like an album edit. The Singles folder
+  itself has no year - only the songs in it do.
 - **Interpret bearbeiten** - the artist page has a "Bearbeiten" button for the
   profile picture. Without one the artist keeps borrowing the cover of one of the
   albums, which is what it did before. The name is not editable: it is the name

@@ -70,6 +70,33 @@ export function date(value) {
   return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+// A release date is stored as exactly as it is known: '2015', '2015-05' or
+// '2015-05-17'. Printed in full only on the album page - "17. Mai 2015", "Mai
+// 2015", "2015"; everywhere else the plain year is what a list has room for.
+// Built from the parts instead of a Date, which would shift the day by one in
+// any timezone west of UTC.
+const MONTHS = [
+  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+];
+
+export function releaseDate(value) {
+  const [year, month, day] = String(value || '').split('-');
+  if (!year) return '';
+  const name = month ? MONTHS[Number(month) - 1] : '';
+  if (!name) return year;
+  return day ? `${Number(day)}. ${name} ${year}` : `${name} ${year}`;
+}
+
+// The same date the way it is typed into the edit dialog: 17.05.2015, 05.2015,
+// 2015. The server reads that form back.
+export function releaseDateInput(value) {
+  const [year, month, day] = String(value || '').split('-');
+  if (!year) return '';
+  if (!month) return year;
+  return day ? `${day}.${month}.${year}` : `${month}.${year}`;
+}
+
 export function dateTime(value) {
   if (!value) return '';
   // SQLite writes "YYYY-MM-DD HH:MM:SS" in UTC.

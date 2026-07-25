@@ -8,8 +8,8 @@
 //   music/<Interpret>/<Album>/01 - Titel.flac   album track
 //   music/<Interpret>/Titel.flac                single, belongs to no album
 //
-// Only what the folders cannot say is still read from the file: year, genre,
-// duration, format and the embedded cover art.
+// Only what the folders cannot say is still read from the file: release date,
+// genre, duration, format and the embedded cover art.
 //
 // The music folder is read-only. Everything the scanner produces (rows, cover
 // art) lives in the data directory, so a rescan can always rebuild the library
@@ -25,6 +25,7 @@ import { parseFile } from 'music-metadata';
 
 import db, { coversDir, musicDir, getMeta, setMeta } from '../db.js';
 import { normalize, loosen, primaryArtist } from './normalize.js';
+import { parseReleaseDate, yearOf } from './dates.js';
 import { resolveIssuesForUser } from '../models/issues.js';
 
 // Extensions music-metadata can read tags from. Whether a browser can play a
@@ -41,7 +42,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'folders-1';
+const SCANNER_VERSION = 'dates-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -90,23 +91,29 @@ function artistId(name) {
 }
 
 const selectAlbum = db.prepare(
-  'SELECT id, year, cover FROM albums WHERE title = ? AND artist_id IS ?'
+  'SELECT id, release_date, cover FROM albums WHERE title = ? AND artist_id IS ?'
 );
-const insertAlbum = db.prepare('INSERT INTO albums (title, artist_id, year) VALUES (?, ?, ?)');
-// Only fills a gap, and never against a year the user typed in by hand.
-const touchAlbumYear = db.prepare(
-  'UPDATE albums SET year = ? WHERE id = ? AND year IS NULL AND year_locked = 0'
+const insertAlbum = db.prepare(
+  'INSERT INTO albums (title, artist_id, year, release_date) VALUES (?, ?, ?, ?)'
+);
+// The album takes the most precise date any of its tracks carries: an empty
+// column is filled, and a bare year gives way to the same year with a day on it
+// ('2015' -> '2015-05-17'). A date the user typed in by hand is never touched.
+const touchAlbumDate = db.prepare(
+  `UPDATE albums SET year = @year, release_date = @date
+    WHERE id = @id AND year_locked = 0
+      AND length(release_date) < length(@date) AND instr(@date, release_date) = 1`
 );
 
-function albumId(title, aId, year) {
+function albumId(title, aId, date) {
   const clean = String(title || '').trim();
   if (!clean) return null;
   const found = selectAlbum.get(clean, aId);
   if (found) {
-    if (year && !found.year) touchAlbumYear.run(year, found.id);
+    if (date) touchAlbumDate.run({ id: found.id, date, year: yearOf(date) });
     return found.id;
   }
-  return Number(insertAlbum.run(clean, aId, year || null).lastInsertRowid);
+  return Number(insertAlbum.run(clean, aId, yearOf(date), date).lastInsertRowid);
 }
 
 const selectGenre = db.prepare('SELECT id FROM genres WHERE name = ?');
@@ -160,6 +167,24 @@ function describeFile(filePath) {
     trackNo: parsed.trackNo,
     discNo: discDir ? Number(discDir[1]) : parsed.discNo,
   };
+}
+
+// --- The release date -------------------------------------------------------
+
+// The most precise date the tags of one file agree on. `date` is the primary
+// tag, the other two only refine it: a source that says the same year with a
+// month or a day on it wins, one that says another year does not - it is a
+// different release then, and the primary tag decides which one this file is.
+// Without any usable date the bare year tag is still a date.
+function releaseDate(common) {
+  let best = '';
+  for (const raw of [common.date, common.releasedate, common.originaldate]) {
+    const date = parseReleaseDate(raw);
+    if (!date) continue;
+    if (!best) best = date;
+    else if (date.length > best.length && date.startsWith(best)) best = date;
+  }
+  return best || parseReleaseDate(common.year) || '';
 }
 
 // --- Cover art --------------------------------------------------------------
@@ -256,21 +281,23 @@ async function collectFiles(root) {
 // --- Writing one track ------------------------------------------------------
 
 const selectTrackByPath = db.prepare(
-  `SELECT id, size, mtime, year, cover, missing_at, genres_locked, year_locked, cover_locked
+  `SELECT id, size, mtime, year, release_date, cover, missing_at, genres_locked, year_locked,
+          cover_locked
      FROM tracks WHERE path = ?`
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
-  INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, duration,
-                      bitrate, codec, lossless, cover, missing_at, genres_locked, year_locked,
-                      cover_locked, size, mtime, norm_title, loose_title, norm_artist)
-  VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @duration,
-          @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked, @year_locked,
-          @cover_locked, @size, @mtime, @norm_title, @loose_title, @norm_artist)
+  INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, release_date,
+                      duration, bitrate, codec, lossless, cover, missing_at, genres_locked,
+                      year_locked, cover_locked, size, mtime, norm_title, loose_title, norm_artist)
+  VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @release_date,
+          @duration, @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked,
+          @year_locked, @cover_locked, @size, @mtime, @norm_title, @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
-                    track_no = @track_no, disc_no = @disc_no, year = @year, duration = @duration,
+                    track_no = @track_no, disc_no = @disc_no, year = @year,
+                    release_date = @release_date, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
                     missing_at = @missing_at, genres_locked = @genres_locked,
                     year_locked = @year_locked, cover_locked = @cover_locked,
@@ -319,10 +346,11 @@ async function indexFile(filePath, stat, force) {
   // The folders decide artist, album, title and track number; the file only
   // fills in what a folder name cannot say.
   const place = describeFile(filePath);
+  const date = releaseDate(common);
   const aId = artistId(place.artist);
-  const alId = place.album ? albumId(place.album, aId, common.year) : null;
+  const alId = place.album ? albumId(place.album, aId, date) : null;
 
-  // A year the user typed in by hand on a single stays - the file's would
+  // A date the user typed in by hand on a single stays - the file's would
   // otherwise win it back on the next scan.
   const yearLocked = !!(existing && existing.year_locked);
 
@@ -333,7 +361,8 @@ async function indexFile(filePath, stat, force) {
     album_id: alId,
     track_no: place.trackNo,
     disc_no: place.discNo,
-    year: yearLocked ? existing.year : common.year || null,
+    year: yearLocked ? existing.year : yearOf(date),
+    release_date: yearLocked ? existing.release_date : date,
     duration: format.duration || 0,
     bitrate: format.bitrate ? Math.round(format.bitrate) : null,
     codec: String(format.codec || format.container || ''),

@@ -64,9 +64,14 @@ db.exec(`
     title     TEXT NOT NULL,
     artist_id INTEGER REFERENCES artists(id) ON DELETE SET NULL,
     year      INTEGER,
+    -- The release date as exactly as the file knows it: 'YYYY-MM-DD', 'YYYY-MM'
+    -- or just 'YYYY'. Only the album page shows it in full; everywhere else the
+    -- year above is what is printed, so it stays the sortable column.
+    release_date TEXT NOT NULL DEFAULT '',
     cover     TEXT NOT NULL DEFAULT '',
     -- Set once the user has edited the field by hand, so the scanner leaves it
-    -- alone from then on.
+    -- alone from then on. Year and release date are one field to the user, so
+    -- year_locked covers both.
     year_locked  INTEGER NOT NULL DEFAULT 0,
     cover_locked INTEGER NOT NULL DEFAULT 0,
     UNIQUE (title, artist_id)
@@ -86,6 +91,8 @@ db.exec(`
     track_no    INTEGER,
     disc_no     INTEGER,
     year        INTEGER,
+    -- The exact release date behind that year, see albums.release_date.
+    release_date TEXT NOT NULL DEFAULT '',
     duration    REAL NOT NULL DEFAULT 0,
     bitrate     INTEGER,
     codec       TEXT NOT NULL DEFAULT '',
@@ -217,6 +224,10 @@ addColumn('tracks', 'year_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('tracks', 'cover_locked', 'INTEGER NOT NULL DEFAULT 0');
 // The profile picture of an artist, which comes from nowhere but a hand edit.
 addColumn('artists', 'cover', "TEXT NOT NULL DEFAULT ''");
+// The full release date next to the year. Filled by the next scan, which
+// re-reads every file after the scanner version bump.
+addColumn('albums', 'release_date', "TEXT NOT NULL DEFAULT ''");
+addColumn('tracks', 'release_date', "TEXT NOT NULL DEFAULT ''");
 
 // Where a playlist sits in the sidebar: pinned to the top, and the order the
 // user dragged it into.

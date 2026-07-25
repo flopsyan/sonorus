@@ -5,7 +5,8 @@
 // cover, in the data directory), and each edited field sets a lock so the next
 // scan puts the file's version back only where nobody has decided otherwise.
 //
-// What can be edited is what the file has to answer: year, genres and cover.
+// What can be edited is what the file has to answer: release date, genres and
+// cover.
 // Title, artist and track number come from the folder structure - editing those
 // here would only last until the next scan reads the folder names again. The
 // profile picture of an artist is the one thing that comes from nowhere else at
@@ -15,6 +16,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import db, { coversDir } from '../db.js';
+import { parseReleaseDate, yearOf } from '../lib/dates.js';
 
 // Image types a browser can be trusted to render, with the first bytes every
 // one of them has to start with. An uploaded cover is served back to browsers,
@@ -27,11 +29,13 @@ const IMAGE_TYPES = {
 
 const MAX_COVER_BYTES = 6 * 1024 * 1024;
 
-function parseYear(value) {
-  if (value === null || value === undefined || value === '') return { ok: true, year: null };
-  const year = Number.parseInt(value, 10);
-  if (!Number.isInteger(year) || year < 1000 || year > 2999) return { ok: false };
-  return { ok: true, year };
+// The date is typed in as exactly as it is known: a full day, a month or just a
+// year. Empty clears it. The year column is derived from it, so the two can
+// never say different things.
+function parseDate(value) {
+  const date = parseReleaseDate(value);
+  if (date === null) return { ok: false };
+  return { ok: true, date, year: yearOf(date) };
 }
 
 // "Rock, Indie Pop" -> ['Rock', 'Indie Pop']. Duplicates and empty entries go.
@@ -117,10 +121,12 @@ export async function updateAlbum(albumId, patch) {
   const album = db.prepare('SELECT id, cover FROM albums WHERE id = ?').get(albumId);
   if (!album) return { error: 'not_found' };
 
-  if ('year' in patch) {
-    const year = parseYear(patch.year);
-    if (!year.ok) return { error: 'invalid_year' };
-    db.prepare('UPDATE albums SET year = ?, year_locked = 1 WHERE id = ?').run(year.year, album.id);
+  if ('date' in patch) {
+    const parsed = parseDate(patch.date);
+    if (!parsed.ok) return { error: 'invalid_date' };
+    db.prepare(
+      'UPDATE albums SET year = ?, release_date = ?, year_locked = 1 WHERE id = ?'
+    ).run(parsed.year, parsed.date, album.id);
   }
 
   if ('genres' in patch) {
@@ -142,20 +148,22 @@ export async function updateAlbum(albumId, patch) {
   return { ok: true };
 }
 
-// Year and cover art of a single. An album track takes both from its album, so
-// this is only for the files that belong to none - they have nowhere else to
-// carry them. Same deal as an album edit: it lives in the database, and the
-// locks keep the next scan from putting the file's version back (an emptied
-// year and a removed cover too).
+// Release date and cover art of a single. An album track takes both from its
+// album, so this is only for the files that belong to none - they have nowhere
+// else to carry them. Same deal as an album edit: it lives in the database, and
+// the locks keep the next scan from putting the file's version back (an emptied
+// date and a removed cover too).
 export async function updateSingle(trackId, patch) {
   const track = db.prepare('SELECT id, album_id, cover FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
   if (track.album_id) return { error: 'not_a_single' };
 
-  if ('year' in patch) {
-    const year = parseYear(patch.year);
-    if (!year.ok) return { error: 'invalid_year' };
-    db.prepare('UPDATE tracks SET year = ?, year_locked = 1 WHERE id = ?').run(year.year, track.id);
+  if ('date' in patch) {
+    const parsed = parseDate(patch.date);
+    if (!parsed.ok) return { error: 'invalid_date' };
+    db.prepare(
+      'UPDATE tracks SET year = ?, release_date = ?, year_locked = 1 WHERE id = ?'
+    ).run(parsed.year, parsed.date, track.id);
   }
 
   if ('cover' in patch) {

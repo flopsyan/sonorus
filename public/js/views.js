@@ -360,7 +360,9 @@ export async function album(params) {
         data.artistId
           ? `<a href="/artists/${data.artistId}" data-link>${esc(data.artist)}</a>`
           : esc(data.artist),
-        data.year ? String(data.year) : '',
+        // The one place the full release date is spelled out. A grid or a list
+        // has room for the year, and that is all they show.
+        fmt.releaseDate(data.releaseDate),
         fmt.plural(data.trackCount, 'Song', 'Songs'),
         fmt.durationLong(data.duration),
       ]),
@@ -1004,7 +1006,7 @@ export async function settings(_params, ctx) {
         <p class="panel-hint">Sonorus liest den eingehängten Ordner nur - deine Dateien werden nie verändert.
           Die Zuordnung kommt aus der Ordnerstruktur: <code>Interpret / Album / 01 - Titel.flac</code>.
           Dateien, die direkt im Ordner eines Interpreten liegen, zählen als Single.
-          Jahr, Genre und Cover kommen weiterhin aus der Datei selbst.</p>
+          Datum, Genre und Cover kommen weiterhin aus der Datei selbst.</p>
         ${scanBlock(status.scan, status.lastScan)}
       </div>
 

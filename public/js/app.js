@@ -609,6 +609,10 @@ sidebarNav.addEventListener('drop', async (e) => {
 // the files - which the dialogs say out loud, because it is not obvious.
 
 const COVER_HINT = 'JPG, PNG oder WebP. Große Bilder werden automatisch verkleinert. Am besten quadratisch.';
+// As exact as it is known: a day, a month or a bare year are all valid, because
+// that is all some files say. Everywhere but the album page it is the year that
+// is printed anyway.
+const DATE_HINT = 'Tag, Monat oder nur Jahr: 17.05.2013, 05.2013 oder 2013.';
 const EDIT_NOTE = `<p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im
   Musikordner werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>`;
 
@@ -685,7 +689,7 @@ function wireCoverField(root, name, title, onPick) {
   });
 }
 
-// "Album bearbeiten": year, genres and cover art. Everything the folder
+// "Album bearbeiten": release date, genres and cover art. Everything the folder
 // structure does not decide and the file cannot be asked about reliably.
 async function editAlbumDialog(albumId) {
   let album;
@@ -704,9 +708,10 @@ async function editAlbumDialog(albumId) {
     body: `<form id="album-form">
         ${coverField('al-cover', { label: 'Albumcover', cover: album.cover, title: album.title })}
         <div class="field">
-          <label for="al-year">Jahr</label>
-          <input type="number" id="al-year" min="1000" max="2999" step="1"
-                 value="${album.year ? esc(album.year) : ''}" placeholder="z. B. 2013" />
+          <label for="al-date">Datum</label>
+          <input type="text" id="al-date" inputmode="numeric"
+                 value="${esc(fmt.releaseDateInput(album.releaseDate))}" placeholder="z. B. 17.05.2013" />
+          <p class="panel-hint">${DATE_HINT}</p>
         </div>
         <div class="field">
           <label for="al-genres">Genres</label>
@@ -725,7 +730,7 @@ async function editAlbumDialog(albumId) {
       root.querySelector('#album-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const patch = {
-          year: root.querySelector('#al-year').value.trim(),
+          date: root.querySelector('#al-date').value.trim(),
           genres: root.querySelector('#al-genres').value,
         };
         if (cover !== undefined) patch.cover = cover;
@@ -791,9 +796,9 @@ async function editArtistDialog(artistId) {
   });
 }
 
-// "Single bearbeiten": cover art and year. A song inside an album takes both
-// from its album, so this is only offered for the files that belong to none -
-// they have nothing else to carry them.
+// "Single bearbeiten": cover art and release date. A song inside an album takes
+// both from its album, so this is only offered for the files that belong to
+// none - they have nothing else to carry them.
 function editSingleDialog(track) {
   let cover;
 
@@ -802,10 +807,10 @@ function editSingleDialog(track) {
     body: `<form id="single-form">
         ${coverField('tr-cover', { label: 'Cover', cover: track.cover, title: track.title })}
         <div class="field">
-          <label for="tr-year">Jahr von „${esc(track.title)}“</label>
-          <input type="number" id="tr-year" min="1000" max="2999" step="1"
-                 value="${track.year ? esc(track.year) : ''}" placeholder="z. B. 2013" />
-          <p class="panel-hint">Leer lassen, um das Jahr zu entfernen.</p>
+          <label for="tr-date">Datum von „${esc(track.title)}“</label>
+          <input type="text" id="tr-date" inputmode="numeric"
+                 value="${esc(fmt.releaseDateInput(track.releaseDate))}" placeholder="z. B. 17.05.2013" />
+          <p class="panel-hint">${DATE_HINT} Leer lassen, um das Datum zu entfernen.</p>
         </div>
         ${EDIT_NOTE}
       </form>`,
@@ -818,7 +823,7 @@ function editSingleDialog(track) {
 
       root.querySelector('#single-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const patch = { year: root.querySelector('#tr-year').value.trim() };
+        const patch = { date: root.querySelector('#tr-date').value.trim() };
         if (cover !== undefined) patch.cover = cover;
         try {
           await api.updateTrack(track.id, patch);
@@ -1120,7 +1125,7 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (track.albumId) {
     items.push({ label: 'Zum Album', icon: 'disc', onSelect: () => navigate(`/albums/${track.albumId}`) });
   } else {
-    // A single has no album page to take its cover and its year from - it
+    // A single has no album page to take its cover and its date from - it
     // carries both itself, so it gets its own editor.
     items.push({ label: 'Single bearbeiten …', icon: 'edit', onSelect: () => editSingleDialog(track) });
   }
