@@ -26,6 +26,31 @@ export const state = {
   source: '',
 };
 
+// What was actually played, most recent last, as positions in `queue`. "Back"
+// walks this list instead of stepping down `order`: with shuffle on, `order`
+// gets re-dealt when the queue wraps around, and the track that came before is
+// then anywhere but at pos - 1. Positions in `queue` stay valid because the
+// queue is only ever appended to, never spliced.
+let history = [];
+const HISTORY_MAX = 100;
+
+function pushHistory() {
+  const current = state.order[state.pos];
+  if (current === undefined) return;
+  history.push(current);
+  if (history.length > HISTORY_MAX) history.shift();
+}
+
+// The last played track that is still in the play order, as an index into
+// `order`, or null when there is nothing to go back to.
+function popHistory() {
+  while (history.length) {
+    const at = state.order.indexOf(history.pop());
+    if (at >= 0) return at;
+  }
+  return null;
+}
+
 const listeners = new Set();
 
 export function onChange(fn) {
@@ -212,6 +237,7 @@ export function playTracks(tracks, startIndex = 0, source = '') {
   if (!list.length) return;
   state.queue = list;
   state.source = source;
+  history = [];
   buildOrder(wanted ? Math.max(0, list.indexOf(wanted)) : 0);
   load(currentTrack(), true);
   save();
@@ -255,6 +281,7 @@ export function next(manual = false) {
     start();
     return;
   }
+  pushHistory();
   if (state.pos + 1 < state.order.length) {
     state.pos += 1;
   } else if (state.repeat === 'all' || manual) {
@@ -274,20 +301,20 @@ export function next(manual = false) {
   emit();
 }
 
+// Back goes back - always to the track that played before, never "restart this
+// one if it is more than three seconds in". That rule is what made going back
+// feel broken in shuffle: after a few seconds of the next track the button
+// silently restarted it instead. Starting the current track over is what the
+// seek bar is for.
 export function previous() {
   if (!state.order.length) return;
-  // The first press restarts the track, as on any other player; only a second
-  // press within three seconds goes back.
-  if (audio.currentTime > 3) {
+  const target = popHistory();
+  if (target === null) {
+    // Nothing played before this one: start it over.
     audio.currentTime = 0;
     return;
   }
-  if (state.pos > 0) state.pos -= 1;
-  else if (state.repeat === 'all') state.pos = state.order.length - 1;
-  else {
-    audio.currentTime = 0;
-    return;
-  }
+  state.pos = target;
   load(currentTrack(), true);
   save();
   emit();
@@ -295,6 +322,7 @@ export function previous() {
 
 export function jumpTo(orderIndex) {
   if (orderIndex < 0 || orderIndex >= state.order.length) return;
+  pushHistory();
   state.pos = orderIndex;
   load(currentTrack(), true);
   save();
@@ -382,6 +410,7 @@ export function clearQueue() {
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
+  history = [];
   state.queue = [];
   state.order = [];
   state.pos = -1;
