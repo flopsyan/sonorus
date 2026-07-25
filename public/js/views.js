@@ -383,7 +383,7 @@ export async function genre(params) {
 export async function starred(params) {
   const value = Number(params.stars);
   const { tracks: list } = await api.starred(value);
-  const label = `${value} ${value === 1 ? 'Stern' : 'Sterne'}`;
+  const label = value === 0 ? 'Nicht bewertet' : `${value} ${value === 1 ? 'Stern' : 'Sterne'}`;
   const total = list.reduce((sum, t) => sum + t.duration, 0);
 
   return {
@@ -399,8 +399,10 @@ export async function starred(params) {
         list.length
           ? trackList(list)
           : empty(
-              `Noch nichts mit ${label} bewertet`,
-              'Bewerte einen Song über die Sterne in der Titelliste oder unten im Player. Diese Playlist füllt sich dann von selbst.'
+              value === 0 ? 'Alles bewertet' : `Noch nichts mit ${label} bewertet`,
+              value === 0
+                ? 'Jeder Song in deiner Bibliothek hat eine Bewertung. Neue Songs tauchen hier automatisch auf.'
+                : 'Bewerte einen Song über die Sterne in der Titelliste oder unten im Player. Diese Playlist füllt sich dann von selbst.'
             )
       }`,
   };

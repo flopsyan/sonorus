@@ -19,6 +19,7 @@ import {
   listGenres,
   getGenre,
   tracksByStars,
+  unratedTracks,
   starCounts,
   recentlyAdded,
   recentlyPlayed,
@@ -180,10 +181,12 @@ router.get('/genres/:id', (req, res) => {
   res.json({ ok: true, genre });
 });
 
+// 0 is the list of everything that has no rating yet.
 router.get('/stars/:stars', (req, res) => {
   const stars = id(req.params.stars);
-  if (!(stars >= 1 && stars <= 5)) return fail(res, 'invalid_stars');
-  res.json({ ok: true, stars, tracks: tracksByStars(stars, req.user.id) });
+  if (!(stars >= 0 && stars <= 5)) return fail(res, 'invalid_stars');
+  const tracks = stars === 0 ? unratedTracks(req.user.id) : tracksByStars(stars, req.user.id);
+  res.json({ ok: true, stars, tracks });
 });
 
 // The home page: what is new, what was played, what gets played most.

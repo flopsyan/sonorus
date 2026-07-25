@@ -326,12 +326,33 @@ export function tracksByStars(stars, userId) {
     .map(shapeTrack);
 }
 
+// The counterpart to the star playlists: everything still waiting for a
+// rating. Only playable tracks - a file that is gone cannot be rated by ear.
+const UNRATED = `${PRESENT} AND NOT EXISTS
+  (SELECT 1 FROM ratings r WHERE r.track_id = t.id AND r.user_id = @userId)`;
+
+export function unratedTracks(userId) {
+  return db
+    .prepare(
+      `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
+        WHERE ${UNRATED}
+        ORDER BY ar.name COLLATE NOCASE, al.title COLLATE NOCASE,
+                 t.disc_no, t.track_no, t.title COLLATE NOCASE`
+    )
+    .all({ userId })
+    .map(shapeTrack);
+}
+
+// Key 0 is the "Nicht bewertet" list, 1 to 5 are the star playlists.
 export function starCounts(userId) {
   const rows = db
     .prepare('SELECT stars, COUNT(*) AS c FROM ratings WHERE user_id = ? GROUP BY stars')
     .all(userId);
-  const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const counts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   for (const r of rows) counts[r.stars] = r.c;
+  counts[0] = db
+    .prepare(`SELECT COUNT(*) AS c FROM tracks t WHERE ${UNRATED}`)
+    .get({ userId }).c;
   return counts;
 }
 

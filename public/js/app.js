@@ -46,7 +46,7 @@ const ROUTES = [
   [/^\/genres$/, views.genres],
   [/^\/genres\/(\d+)$/, views.genre, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
-  [/^\/stars\/([1-5])$/, views.starred, ['stars']],
+  [/^\/stars\/([0-5])$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
   [/^\/settings$/, views.settings],
   [/^\/profile$/, views.profile],
@@ -194,6 +194,17 @@ function renderSidebar() {
         <span class="nav-label sr-only">${n} ${n === 1 ? 'Stern' : 'Sterne'}</span>
         <span class="nav-count push-right">${fmt.number(shell.starCounts[n] || 0)}</span>
       </a>`
+    )
+    // Everything still waiting for a rating. Written out instead of drawn as
+    // five empty stars, which would read like "one star" at a glance.
+    .concat(
+      navItem({
+        href: '/stars/0',
+        label: 'Nicht bewertet',
+        iconName: 'star-outline',
+        count: shell.starCounts[0] || 0,
+        active: path === '/stars/0',
+      })
     )
     .join('');
 
