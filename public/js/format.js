@@ -11,14 +11,18 @@ export function duration(seconds) {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-// Long form for headers: "3 Std. 14 Min.".
+// Long form for headers: "3 Std. 14 Min.". Always rounded down, like the
+// compact readout below, so the same total never reads differently in two
+// places - and so 1:59:45 cannot come out as "1 Std. 60 Min.". Under a minute
+// it counts seconds instead of claiming zero.
 export function durationLong(seconds) {
   const total = Math.max(0, Math.round(Number(seconds) || 0));
   const h = Math.floor(total / 3600);
-  const m = Math.round((total % 3600) / 60);
+  const m = Math.floor((total % 3600) / 60);
   if (h && m) return `${h} Std. ${m} Min.`;
   if (h) return `${h} Std.`;
-  return `${m} Min.`;
+  if (m) return `${m} Min.`;
+  return `${total} Sek.`;
 }
 
 // Compact playtime for the front-panel readout, where the value has to stay on

@@ -204,6 +204,15 @@ let reported = 0;
 
 const REPORT_EVERY = 20; // seconds of listening between two reports
 
+// A track counts as played after this much real playback. Below it, it was a
+// skip and does not belong in the statistics at all. A track shorter than that
+// can never reach it, so for those a third of the length is the mark.
+const COUNT_AFTER = 30;
+
+function countThreshold(duration) {
+  return duration < COUNT_AFTER ? duration / 3 : COUNT_AFTER;
+}
+
 // Sends the current total for this play. Called on a timer while playing, when
 // the track changes and when the page goes away.
 function reportListening(keepalive = false) {
@@ -304,6 +313,10 @@ export function next(manual = false) {
   if (!state.order.length) return;
 
   if (state.repeat === 'one' && !manual) {
+    // Playing it again is a second listen. Without closing the running play
+    // here, a track on loop would report ever more seconds into the one row it
+    // opened and count as a single play forever.
+    resetListening();
     audio.currentTime = 0;
     start();
     return;
@@ -341,6 +354,7 @@ export function previous() {
   if (!state.order.length) return;
 
   if (audio.currentTime > RESTART_AFTER) {
+    resetListening();
     audio.currentTime = 0;
     return;
   }
@@ -348,6 +362,7 @@ export function previous() {
   const target = popHistory();
   if (target === null) {
     // Nothing played before this one: start it over.
+    resetListening();
     audio.currentTime = 0;
     return;
   }
@@ -585,8 +600,7 @@ audio.addEventListener('timeupdate', () => {
 
   // Count a play once the track has run long enough to mean something.
   if (!playCounted && state.duration) {
-    const threshold = Math.min(30, state.duration * 0.5);
-    if (listened >= threshold) {
+    if (listened >= countThreshold(state.duration)) {
       playCounted = true;
       reported = Math.round(listened);
       const track = currentTrack();
