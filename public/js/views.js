@@ -70,6 +70,7 @@ export async function home() {
       <div class="readout-cell"><span class="rack-label">Songs</span><span class="readout-value">${fmt.number(s.tracks)}</span></div>
       <div class="readout-cell"><span class="rack-label">Interpreten</span><span class="readout-value">${fmt.number(s.artists)}</span></div>
       <div class="readout-cell"><span class="rack-label">Alben</span><span class="readout-value">${fmt.number(s.albums)}</span></div>
+      <div class="readout-cell"><span class="rack-label">Singles</span><span class="readout-value">${fmt.number(s.singles)}</span></div>
       <div class="readout-cell"><span class="rack-label">Genres</span><span class="readout-value">${fmt.number(s.genres)}</span></div>
       <div class="readout-cell accent"><span class="rack-label">Spielzeit</span><span class="readout-value">${esc(fmt.durationRack(s.duration))}</span></div>
     </div>`;
@@ -166,7 +167,7 @@ export async function artists() {
                 })
               )
               .join('')}</div>`
-          : empty('Keine Interpreten', 'Sobald Dateien mit Tags gescannt sind, tauchen sie hier auf.')
+          : empty('Keine Interpreten', 'Jeder Ordner direkt im Musikordner ist ein Interpret. Starte einen Scan, sobald dort etwas liegt.')
       }`,
   };
 }
@@ -174,6 +175,18 @@ export async function artists() {
 export async function artist(params) {
   const { artist: data } = await api.artist(params.id);
   const total = data.tracks.reduce((sum, t) => sum + t.duration, 0);
+
+  // Songs lying directly in the artist folder are no album, so they get a
+  // folder of their own next to the albums instead of inventing one.
+  const singlesCard = data.singles.length
+    ? card({
+        href: `/artists/${data.id}/singles`,
+        cover: (data.singles.find((t) => t.cover) || {}).cover,
+        title: 'Singles',
+        sub: fmt.plural(data.singles.length, 'Song', 'Songs'),
+        playAction: `data-play-singles="${data.id}"`,
+      })
+    : '';
 
   return {
     title: data.name,
@@ -185,13 +198,14 @@ export async function artist(params) {
       artHtml: art(data.albums.find((a) => a.cover)?.cover, data.name),
       meta: facts([
         fmt.plural(data.albums.length, 'Album', 'Alben'),
+        data.singles.length ? fmt.plural(data.singles.length, 'Single', 'Singles') : '',
         fmt.plural(data.tracks.length, 'Song', 'Songs'),
         fmt.durationLong(total),
       ]),
       actions: playActions('view'),
     })}
       ${
-        data.albums.length
+        data.albums.length || singlesCard
           ? `<section class="section">
               <div class="section-head"><h2>Alben</h2></div>
               <div class="grid">${data.albums
@@ -204,7 +218,7 @@ export async function artist(params) {
                     playAction: `data-play-album="${a.id}"`,
                   })
                 )
-                .join('')}</div>
+                .join('')}${singlesCard}</div>
             </section>`
           : ''
       }
@@ -212,6 +226,37 @@ export async function artist(params) {
         <div class="section-head"><h2>Alle Songs</h2></div>
         ${trackList(data.tracks)}
       </section>`,
+  };
+}
+
+// The singles of one artist: everything that sits directly in the artist
+// folder, shown as a collection of its own without pretending to be an album.
+export async function artistSingles(params) {
+  const { artist: data } = await api.artist(params.id);
+  const total = data.singles.reduce((sum, t) => sum + t.duration, 0);
+
+  return {
+    title: `${data.name} · Singles`,
+    tracks: data.singles,
+    html: `${detailHead({
+      label: 'Singles',
+      title: 'Singles',
+      artHtml: mosaic(data.singles, 'Singles'),
+      meta: facts([
+        `<a href="/artists/${data.id}" data-link>${esc(data.name)}</a>`,
+        fmt.plural(data.singles.length, 'Song', 'Songs'),
+        fmt.durationLong(total),
+      ]),
+      actions: data.singles.length ? playActions('view') : '',
+    })}
+      ${
+        data.singles.length
+          ? trackList(data.singles)
+          : empty(
+              'Keine Singles',
+              'Einzelne Dateien, die direkt im Ordner des Interpreten liegen, erscheinen hier.'
+            )
+      }`,
   };
 }
 
@@ -253,7 +298,7 @@ export async function albums(params) {
                 })
               )
               .join('')}</div>`
-          : empty('Keine Alben', 'Dateien ohne Album-Tag erscheinen nur unter "Alle Songs".')
+          : empty('Keine Alben', 'Ein Album ist ein Unterordner im Ordner eines Interpreten. Dateien, die direkt beim Interpreten liegen, sind Singles.')
       }`,
     after(root) {
       const select = root.querySelector('[data-album-sort]');
@@ -617,7 +662,10 @@ export async function settings(_params, ctx) {
 
       <div class="panel">
         <h2>Bibliothek</h2>
-        <p class="panel-hint">Sonorus liest den eingehängten Ordner nur - deine Dateien werden nie verändert.</p>
+        <p class="panel-hint">Sonorus liest den eingehängten Ordner nur - deine Dateien werden nie verändert.
+          Die Zuordnung kommt aus der Ordnerstruktur: <code>Interpret / Album / 01 - Titel.flac</code>.
+          Dateien, die direkt im Ordner eines Interpreten liegen, zählen als Single.
+          Jahr, Genre und Cover kommen weiterhin aus der Datei selbst.</p>
         ${scanBlock(status.scan, status.lastScan)}
       </div>
 

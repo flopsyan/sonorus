@@ -40,6 +40,7 @@ const ROUTES = [
   [/^\/tracks$/, views.tracks],
   [/^\/artists$/, views.artists],
   [/^\/artists\/(\d+)$/, views.artist, ['id']],
+  [/^\/artists\/(\d+)\/singles$/, views.artistSingles, ['id']],
   [/^\/albums$/, views.albums],
   [/^\/albums\/(\d+)$/, views.album, ['id']],
   [/^\/genres$/, views.genres],
@@ -501,6 +502,7 @@ function addToPlaylistDialog(trackIds) {
 async function tracksFor(el) {
   if (el.dataset.playAlbum) return (await api.album(el.dataset.playAlbum)).album.tracks;
   if (el.dataset.playArtist) return (await api.artist(el.dataset.playArtist)).artist.tracks;
+  if (el.dataset.playSingles) return (await api.artist(el.dataset.playSingles)).artist.singles;
   if (el.dataset.playGenre) return (await api.genre(el.dataset.playGenre)).genre.tracks;
   if (el.dataset.playTrack) {
     const found = view.tracks.find((t) => String(t.id) === el.dataset.playTrack);
@@ -532,7 +534,7 @@ content.addEventListener('click', async (e) => {
   }
 
   // Collection play / shuffle buttons on cards and page heads
-  const play = e.target.closest('[data-play-all], [data-play-album], [data-play-artist], [data-play-genre], [data-play-track]');
+  const play = e.target.closest('[data-play-all], [data-play-album], [data-play-artist], [data-play-singles], [data-play-genre], [data-play-track]');
   if (play) {
     e.preventDefault();
     e.stopPropagation();

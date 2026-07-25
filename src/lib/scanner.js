@@ -1,5 +1,15 @@
-// Library scanner: walks the mounted music folder, reads the tags out of every
-// audio file and writes the result into the library tables.
+// Library scanner: walks the mounted music folder and writes what it finds into
+// the library tables.
+//
+// Who made a track and where it belongs comes from the folder structure, not
+// from the file tags - tags are inconsistent across a collection and put songs
+// under artists and albums nobody asked for. The layout is the contract:
+//
+//   music/<Interpret>/<Album>/01 - Titel.flac   album track
+//   music/<Interpret>/Titel.flac                single, belongs to no album
+//
+// Only what the folders cannot say is still read from the file: year, genre,
+// duration, format and the embedded cover art.
 //
 // The music folder is read-only. Everything the scanner produces (rows, cover
 // art) lives in the data directory, so a rescan can always rebuild the library
@@ -13,7 +23,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 
-import db, { coversDir, musicDir, setMeta } from '../db.js';
+import db, { coversDir, musicDir, getMeta, setMeta } from '../db.js';
 import { normalize, loosen, primaryArtist } from './normalize.js';
 import { resolveIssuesForUser } from '../models/issues.js';
 
@@ -27,6 +37,11 @@ const AUDIO_EXT = new Set([
 // Cover files next to the audio, used when a file carries no embedded artwork.
 const COVER_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
 const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+
+// Bumped whenever the scanner reads a file differently than it used to. A
+// changed version makes the next scan re-read every file instead of skipping
+// the unchanged ones, so an existing library picks up the new interpretation.
+const SCANNER_VERSION = 'folders-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -101,41 +116,89 @@ function genreId(name) {
   return Number(insertGenre.run(clean).lastInsertRowid);
 }
 
+// --- Where a file sits in the folder structure -------------------------------
+
+const UNKNOWN_ARTIST = 'Unbekannter Interpret';
+
+// A folder inside an album that only groups one disc of it ("CD1", "Disc 2").
+const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
+
+// "01 - Titel", "01 Titel", "1-01 Titel". Only used inside an album folder, so
+// a single called "1979.flac" keeps its name.
+function splitTrackNumber(base) {
+  const withDisc = base.match(/^(\d{1,2})\s*[-_.]\s*(\d{1,3})\s*[-._)]?\s+(.+)$/);
+  if (withDisc) {
+    return { discNo: Number(withDisc[1]), trackNo: Number(withDisc[2]), title: withDisc[3].trim() };
+  }
+  const m = base.match(/^(\d{1,3})\s*[-._)]\s*(.+)$/) || base.match(/^(\d{1,3})\s+(.+)$/);
+  if (!m) return { discNo: null, trackNo: null, title: base };
+  return { discNo: null, trackNo: Number(m[1]), title: m[2].trim() || base };
+}
+
+// Reads artist, album, track number and title off the path. Everything below
+// the artist folder that is not an album folder is a single.
+function describeFile(filePath) {
+  const parts = path.relative(musicDir, filePath).split(path.sep);
+  const base = path.basename(filePath, path.extname(filePath)).trim();
+
+  const artist = parts.length > 1 ? parts[0].trim() : UNKNOWN_ARTIST;
+  const album = parts.length > 2 ? parts[1].trim() : '';
+  if (!album) return { artist, album: '', title: base, trackNo: null, discNo: null };
+
+  const parsed = splitTrackNumber(base);
+  // A disc folder carries the disc number the file name usually leaves out.
+  const dirName = parts[parts.length - 2];
+  const discDir = dirName === album ? null : DISC_DIR.exec(dirName);
+  return {
+    artist,
+    album,
+    title: parsed.title,
+    trackNo: parsed.trackNo,
+    discNo: discDir ? Number(discDir[1]) : parsed.discNo,
+  };
+}
+
 // --- Cover art --------------------------------------------------------------
 
 const setAlbumCover = db.prepare('UPDATE albums SET cover = ? WHERE id = ?');
+const setTrackCover = db.prepare('UPDATE tracks SET cover = ? WHERE id = ?');
 
-// Stores the album artwork once per album: the embedded picture if the file has
-// one, otherwise a cover image sitting next to the audio file.
-async function storeCover(album, meta, filePath) {
-  if (!album || album.cover) return;
-
+// Writes one artwork file into the covers directory and returns its name, or
+// an empty string when the file carries none. `fromFolder` allows a cover image
+// lying next to the audio: right for an album folder, wrong for a single, where
+// the image next to it belongs to the artist and not to that one song.
+async function storeCoverFile(meta, filePath, baseName, fromFolder) {
   const picture = meta.common.picture && meta.common.picture[0];
   if (picture && picture.data && picture.data.length) {
     const ext = COVER_MIME_EXT[String(picture.format || '').toLowerCase()] || '.jpg';
-    const name = `album-${album.id}${ext}`;
+    const name = `${baseName}${ext}`;
     await fsp.writeFile(path.join(coversDir, name), Buffer.from(picture.data));
-    setAlbumCover.run(name, album.id);
-    album.cover = name;
-    return;
+    return name;
   }
+  if (!fromFolder) return '';
 
   const dir = path.dirname(filePath);
   for (const base of COVER_NAMES) {
     for (const ext of COVER_EXT) {
-      const candidate = path.join(dir, base + ext);
       try {
-        const buf = await fsp.readFile(candidate);
-        const name = `album-${album.id}${ext === '.jpeg' ? '.jpg' : ext}`;
+        const buf = await fsp.readFile(path.join(dir, base + ext));
+        const name = `${baseName}${ext === '.jpeg' ? '.jpg' : ext}`;
         await fsp.writeFile(path.join(coversDir, name), buf);
-        setAlbumCover.run(name, album.id);
-        album.cover = name;
-        return;
+        return name;
       } catch {
         // no such file - try the next candidate
       }
     }
   }
+  return '';
+}
+
+// The album keeps the first artwork any of its tracks turns up.
+async function storeAlbumCover(albumId_, meta, filePath) {
+  const album = db.prepare('SELECT id, cover FROM albums WHERE id = ?').get(albumId_);
+  if (!album || album.cover) return;
+  const name = await storeCoverFile(meta, filePath, `album-${album.id}`, true);
+  if (name) setAlbumCover.run(name, album.id);
 }
 
 // --- Walking the folder -----------------------------------------------------
@@ -187,32 +250,25 @@ async function collectFiles(root) {
 
 // --- Writing one track ------------------------------------------------------
 
-const selectTrackByPath = db.prepare('SELECT id, size, mtime FROM tracks WHERE path = ?');
+const selectTrackByPath = db.prepare('SELECT id, size, mtime, cover FROM tracks WHERE path = ?');
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, duration,
-                      bitrate, codec, lossless, size, mtime, norm_title, loose_title, norm_artist)
+                      bitrate, codec, lossless, cover, size, mtime, norm_title, loose_title, norm_artist)
   VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @duration,
-          @bitrate, @codec, @lossless, @size, @mtime, @norm_title, @loose_title, @norm_artist)
+          @bitrate, @codec, @lossless, @cover, @size, @mtime, @norm_title, @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
                     track_no = @track_no, disc_no = @disc_no, year = @year, duration = @duration,
-                    bitrate = @bitrate, codec = @codec, lossless = @lossless, size = @size,
-                    mtime = @mtime, norm_title = @norm_title, loose_title = @loose_title,
-                    norm_artist = @norm_artist
+                    bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
+                    size = @size, mtime = @mtime, norm_title = @norm_title,
+                    loose_title = @loose_title, norm_artist = @norm_artist
    WHERE id = @id
 `);
 const clearTrackGenres = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
 const linkTrackGenre = db.prepare(
   'INSERT OR IGNORE INTO track_genres (track_id, genre_id) VALUES (?, ?)'
 );
-
-// A file with no title tag still deserves a name: use the file name.
-function titleFrom(meta, filePath) {
-  const tagged = String(meta.common.title || '').trim();
-  if (tagged) return tagged;
-  return path.basename(filePath, path.extname(filePath));
-}
 
 const writeTrack = db.transaction((row, genres, existingId) => {
   let id = existingId;
@@ -229,9 +285,9 @@ const writeTrack = db.transaction((row, genres, existingId) => {
   return id;
 });
 
-async function indexFile(filePath, stat) {
+async function indexFile(filePath, stat, force) {
   const existing = selectTrackByPath.get(filePath);
-  if (existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
+  if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
     state.skipped += 1;
     return;
   }
@@ -240,40 +296,43 @@ async function indexFile(filePath, stat) {
   const common = meta.common || {};
   const format = meta.format || {};
 
-  const trackArtist = String(common.artist || '').trim() || 'Unbekannter Interpret';
-  const albumArtist = String(common.albumartist || '').trim() || trackArtist;
-  const aId = artistId(trackArtist);
-  const albumArtistId = artistId(albumArtist);
-  const alId = albumId(common.album, albumArtistId, common.year);
+  // The folders decide artist, album, title and track number; the file only
+  // fills in what a folder name cannot say.
+  const place = describeFile(filePath);
+  const aId = artistId(place.artist);
+  const alId = place.album ? albumId(place.album, aId, common.year) : null;
 
-  const title = titleFrom(meta, filePath);
   const row = {
     path: filePath,
-    title,
+    title: place.title,
     artist_id: aId,
     album_id: alId,
-    track_no: (common.track && common.track.no) || null,
-    disc_no: (common.disk && common.disk.no) || null,
+    track_no: place.trackNo,
+    disc_no: place.discNo,
     year: common.year || null,
     duration: format.duration || 0,
     bitrate: format.bitrate ? Math.round(format.bitrate) : null,
     codec: String(format.codec || format.container || ''),
     lossless: format.lossless ? 1 : 0,
+    // Only singles carry their own artwork; an album track shows its album's.
+    cover: alId ? '' : (existing && existing.cover) || '',
     size: stat.size,
     mtime: Math.floor(stat.mtimeMs),
-    norm_title: normalize(title),
-    loose_title: loosen(title),
-    norm_artist: primaryArtist(trackArtist),
+    norm_title: normalize(place.title),
+    loose_title: loosen(place.title),
+    norm_artist: primaryArtist(place.artist),
   };
 
-  writeTrack(row, Array.isArray(common.genre) ? common.genre : [], existing && existing.id);
+  const trackId = writeTrack(row, Array.isArray(common.genre) ? common.genre : [], existing && existing.id);
 
   if (existing) state.updated += 1;
   else state.added += 1;
 
   if (alId) {
-    const album = db.prepare('SELECT id, cover FROM albums WHERE id = ?').get(alId);
-    await storeCover(album, meta, filePath);
+    await storeAlbumCover(alId, meta, filePath);
+  } else if (!row.cover) {
+    const name = await storeCoverFile(meta, filePath, `track-${trackId}`, false);
+    if (name) setTrackCover.run(name, trackId);
   }
 }
 
@@ -325,12 +384,16 @@ export async function runScan() {
     state.total = files.length;
     state.phase = 'reading';
 
+    // After a change to how a file is read, the size/mtime shortcut would keep
+    // the old interpretation alive forever - so read everything once.
+    const force = getMeta('scanner_version') !== SCANNER_VERSION;
+
     const seen = new Set();
     for (const file of files) {
       seen.add(file);
       try {
         const stat = await fsp.stat(file);
-        await indexFile(file, stat);
+        await indexFile(file, stat, force);
       } catch (err) {
         state.failed += 1;
         console.warn(`Sonorus: could not read ${file}:`, err && err.message ? err.message : err);
@@ -351,6 +414,7 @@ export async function runScan() {
     // Songs that were missing at import time may exist now.
     resolveIssuesForUser(null);
 
+    setMeta('scanner_version', SCANNER_VERSION);
     setMeta('last_scan', new Date().toISOString());
     state.phase = 'done';
   } catch (err) {

@@ -87,6 +87,7 @@ const APP_ROUTES = [
   '/tracks',
   '/artists',
   '/artists/:id',
+  '/artists/:id/singles',
   '/albums',
   '/albums/:id',
   '/genres',

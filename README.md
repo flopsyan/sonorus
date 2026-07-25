@@ -1,9 +1,8 @@
 # Sonorus
 
 Self-hosted music player for your own audio files. Sonorus scans a music folder
-you mount into the container, reads the tags out of every file and turns them
-into a browsable library: artists, albums, genres, all tracks, and your own
-playlists.
+you mount into the container and turns your folder structure into a browsable
+library: artists, albums, singles, genres, all tracks, and your own playlists.
 
 The interface is a single page - navigating between artists, albums and
 playlists never interrupts playback. Design-wise it takes a loose cue from the
@@ -22,12 +21,30 @@ belong to the account that created them.
 ### Library
 
 - **Alle Songs** - every track in the library, sortable and searchable.
-- **Interpreten** - all artists, with their albums and tracks.
+- **Interpreten** - all artists, with their albums, singles and tracks.
 - **Alben** - album grid with embedded cover art, track list per album.
 - **Genres** - everything grouped by genre (multi-genre tags supported).
-- Tags are read from the files themselves (ID3v1/ID3v2, Vorbis comments, MP4
-  atoms, APE) - title, artist, album artist, album, genre, year, track and disc
-  number, duration and embedded cover art.
+- **The folder structure is the library.** Artist, album, track number and title
+  come from the layout, not from the file tags:
+
+  ```
+  music/
+    Twenty One Pilots/
+      Vessel/
+        01 - Ode to Sleep.flac     album track, number 1 of "Vessel"
+        02 - Holding on to You.flac
+      Heathens.flac                single: no album, own "Singles" folder
+  ```
+
+  A folder directly under the music folder is an artist, a folder inside it is
+  an album, and a leading number in the file name is the track number
+  (`01 - Titel`, `01 Titel`, `1-01 Titel` for disc 1). Files lying loose in an
+  artist folder are singles: they belong to no album and are not counted as one.
+  A `CD1` / `Disc 2` folder inside an album only supplies the disc number.
+- What a folder name cannot say is still read from the file (ID3v1/ID3v2, Vorbis
+  comments, MP4 atoms, APE): year, genre, duration, format and the embedded
+  cover art. An album with no embedded artwork in any of its files picks up a
+  `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
 - Rescan on demand from the settings; unchanged files are skipped, removed files
   disappear from the library.
 

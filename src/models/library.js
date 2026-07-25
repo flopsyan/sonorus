@@ -15,7 +15,8 @@ export const TRACK_FIELDS = `
   t.id, t.title, t.track_no AS trackNo, t.disc_no AS discNo, t.year,
   t.duration, t.bitrate, t.codec, t.lossless, t.added_at AS addedAt,
   t.artist_id AS artistId, ar.name AS artist,
-  t.album_id AS albumId, al.title AS album, al.cover AS cover,
+  t.album_id AS albumId, al.title AS album,
+  COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
   (SELECT group_concat(g.name, ', ')
      FROM track_genres tg JOIN genres g ON g.id = tg.genre_id
     WHERE tg.track_id = t.id) AS genres,
@@ -136,9 +137,13 @@ export function listArtists({ q = '' } = {}) {
       `SELECT ar.id, ar.name,
               COUNT(DISTINCT t.id)       AS trackCount,
               COUNT(DISTINCT t.album_id) AS albumCount,
-              (SELECT al.cover FROM albums al
-                WHERE al.artist_id = ar.id AND al.cover <> ''
-                ORDER BY al.year DESC LIMIT 1) AS cover
+              COALESCE(
+                (SELECT al.cover FROM albums al
+                  WHERE al.artist_id = ar.id AND al.cover <> ''
+                  ORDER BY al.year DESC LIMIT 1),
+                (SELECT t2.cover FROM tracks t2
+                  WHERE t2.artist_id = ar.id AND t2.cover <> '' LIMIT 1)
+              ) AS cover
          FROM artists ar
          LEFT JOIN tracks t ON t.artist_id = ar.id
         ${search ? 'WHERE ar.name LIKE @like' : ''}
@@ -177,7 +182,11 @@ export function getArtist(id, userId) {
     .all({ id, userId })
     .map(shapeTrack);
 
-  return { ...artist, albums, tracks };
+  // Files lying directly in the artist folder belong to no album. They get
+  // their own section instead of being counted as one.
+  const singles = tracks.filter((t) => !t.albumId);
+
+  return { ...artist, albums, tracks, singles };
 }
 
 // --- Albums -----------------------------------------------------------------
@@ -381,6 +390,7 @@ export function libraryStats() {
     tracks: one('SELECT COUNT(*) AS c FROM tracks'),
     artists: one('SELECT COUNT(*) AS c FROM artists'),
     albums: one('SELECT COUNT(*) AS c FROM albums'),
+    singles: one('SELECT COUNT(*) AS c FROM tracks WHERE album_id IS NULL'),
     genres: one('SELECT COUNT(*) AS c FROM genres'),
     duration,
     size: db.prepare('SELECT COALESCE(SUM(size), 0) AS s FROM tracks').get().s,

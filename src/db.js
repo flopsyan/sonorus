@@ -83,6 +83,7 @@ db.exec(`
     bitrate     INTEGER,
     codec       TEXT NOT NULL DEFAULT '',
     lossless    INTEGER NOT NULL DEFAULT 0,
+    cover       TEXT NOT NULL DEFAULT '',
     size        INTEGER NOT NULL DEFAULT 0,
     mtime       INTEGER NOT NULL DEFAULT 0,
     norm_title  TEXT NOT NULL DEFAULT '',
@@ -103,6 +104,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_track_genres_genre ON track_genres(genre_id);
 `);
+
+// Columns added after the first release. CREATE TABLE only runs on a fresh
+// database, so an existing one gets them here.
+function addColumn(table, name, definition) {
+  const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === name);
+  if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+}
+
+// A single has no album, so it carries its own artwork.
+addColumn('tracks', 'cover', "TEXT NOT NULL DEFAULT ''");
 
 // --- Per-account data -------------------------------------------------------
 // The library is shared, everything below belongs to one account: playlists
