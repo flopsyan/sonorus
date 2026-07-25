@@ -64,9 +64,35 @@ const ctx = {
   refreshShell,
 };
 
+// The browser never says whether going back or forward would lead anywhere, so
+// the app counts its own position in the history stack: every push is one step
+// further and throws away whatever was ahead of it. That is what lets the two
+// arrows in the topbar grey out when they would do nothing.
+let historyIndex = 0;
+let historyDepth = 0;
+
+function initHistory() {
+  const saved = window.history.state;
+  historyIndex = saved && Number.isInteger(saved.idx) ? saved.idx : 0;
+  // A reload lands in the middle of the stack with no way to learn what is
+  // still ahead, so forward starts out greyed until something is pushed.
+  historyDepth = historyIndex;
+  window.history.replaceState({ idx: historyIndex }, '');
+}
+
+function renderNavArrows() {
+  document.getElementById('nav-back').disabled = historyIndex <= 0;
+  document.getElementById('nav-forward').disabled = historyIndex >= historyDepth;
+}
+
 function navigate(url, { replace = false } = {}) {
-  if (replace) window.history.replaceState({}, '', url);
-  else window.history.pushState({}, '', url);
+  if (replace) {
+    window.history.replaceState({ idx: historyIndex }, '', url);
+  } else {
+    historyIndex += 1;
+    historyDepth = historyIndex;
+    window.history.pushState({ idx: historyIndex }, '', url);
+  }
   render();
 }
 
@@ -76,6 +102,7 @@ async function render() {
     view.cleanup = null;
   }
   closeContextMenu();
+  renderNavArrows();
 
   const path = window.location.pathname;
   const search = new URLSearchParams(window.location.search);
@@ -112,7 +139,10 @@ async function render() {
   renderSidebar();
 }
 
-window.addEventListener('popstate', render);
+window.addEventListener('popstate', (e) => {
+  if (e.state && Number.isInteger(e.state.idx)) historyIndex = e.state.idx;
+  render();
+});
 
 // Any anchor marked data-link navigates without a page load.
 document.addEventListener('click', (e) => {
@@ -1293,6 +1323,7 @@ async function boot() {
   applyTheme(['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : 'dark');
 
   paintIcons(document);
+  initHistory();
   renderAccount();
   renderSidebar();
 

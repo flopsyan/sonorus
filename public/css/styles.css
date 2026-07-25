@@ -188,6 +188,8 @@ textarea { resize: vertical; min-height: 70px; }
   border: none; background: transparent; color: var(--text-dim); cursor: pointer;
 }
 .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.icon-btn:disabled { color: var(--text-faint); opacity: 0.5; cursor: default; }
+.icon-btn:disabled:hover { background: transparent; color: var(--text-faint); }
 .icon-btn.is-on { color: var(--accent); }
 .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
 .icon-btn-sm { width: 28px; height: 28px; }

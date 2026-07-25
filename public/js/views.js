@@ -300,12 +300,14 @@ export async function albums(params) {
               .join('')}</div>`
           : empty('Keine Alben', 'Ein Album ist ein Unterordner im Ordner eines Interpreten. Dateien, die direkt beim Interpreten liegen, sind Singles.')
       }`,
-    after(root) {
+    // Sorting is not a place in the history, it is the same page seen
+    // differently - and the router owns the history entries, so it has to do
+    // the navigating.
+    after(root, ctx) {
       const select = root.querySelector('[data-album-sort]');
       if (select) {
         select.addEventListener('change', () => {
-          window.history.pushState({}, '', `/albums?sort=${select.value}`);
-          window.dispatchEvent(new PopStateEvent('popstate'));
+          ctx.navigate(`/albums?sort=${select.value}`, { replace: true });
         });
       }
     },
