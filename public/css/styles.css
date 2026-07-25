@@ -181,6 +181,8 @@ textarea { resize: vertical; min-height: 70px; }
 .btn-block { width: 100%; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 6px 11px; font-size: 0.82rem; }
+/* A toggle that is on: the pin button of a playlist */
+.btn.is-pinned { color: var(--accent); border-color: var(--accent-line); }
 
 .icon-btn {
   display: inline-grid; place-items: center;
@@ -270,6 +272,19 @@ body.app { height: 100vh; overflow: hidden; }
 .folder.collapsed .folder-children { display: none; }
 .folder-children { padding-left: 16px; border-left: 1px solid var(--line); margin-left: 19px; }
 .nav-item.drop-target { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-line); }
+
+/* Dragging a playlist to another place in the sidebar: into another spot, into
+   a folder, or back out to the top level. */
+.playlist-item { cursor: grab; }
+.nav-item.dragging { opacity: 0.4; }
+.nav-item.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+.nav-item.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
+/* The top level is a drop target of its own, so a list can leave a folder even
+   when there is no loose playlist to drop it next to. */
+.playlist-root { min-height: 12px; border-radius: var(--radius-sm); }
+.playlist-root.drop-target { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
+/* A pinned playlist wears the pin instead of the list icon */
+.playlist-item .icon { color: currentColor; }
 
 .sidebar-empty { padding: 4px 10px 0; color: var(--text-faint); font-size: 0.82rem; }
 
@@ -583,6 +598,19 @@ body.app { height: 100vh; overflow: hidden; }
 .stars:not(.readonly) button:hover ~ button { color: var(--accent-hi); }
 .stars.readonly button { cursor: default; pointer-events: none; }
 
+/* Star playlists can be combined ("4 und 5 Sterne"), so the ratings the list is
+   made of are switches, not links: the amber ones are in, the others are out. */
+.star-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.star-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--text-dim); font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.star-chip .icon { width: 13px; height: 13px; }
+.star-chip:hover { color: var(--text); border-color: var(--accent-line); }
+.star-chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+
 /* Drag to reorder inside a playlist */
 .track-row.dragging { opacity: 0.4; }
 .track-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
@@ -601,6 +629,10 @@ body.app { height: 100vh; overflow: hidden; }
   background: var(--surface-2); box-shadow: var(--shadow-md);
 }
 .detail-art.round { border-radius: 50%; }
+/* The artwork opens at full size, so the tile is a button. It is a flex item
+   and therefore already a block, but a button says nothing about that itself. */
+button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
+button.detail-art:hover { box-shadow: var(--shadow-lg); }
 .detail-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .detail-art .art-fallback { font-size: 3.2rem; }
 .detail-text { flex: 1; min-width: 240px; }
@@ -770,6 +802,26 @@ body.app { height: 100vh; overflow: hidden; }
 .queue-item.dragging { opacity: 0.4; }
 .queue-item.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
 .queue-item.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ============================================================================
+   Lightbox - artwork at full size
+   ========================================================================== */
+
+/* No chrome and no title bar: the picture is the whole dialog, and anywhere you
+   click is the way out. */
+.lightbox {
+  position: fixed; inset: 0; z-index: 250;
+  background: rgba(8, 6, 11, 0.88);
+  display: grid; place-items: center;
+  padding: 6vh 5vw; cursor: zoom-out;
+  animation: lightbox-in 0.15s ease;
+}
+.lightbox img {
+  display: block; max-width: 100%; max-height: 88vh;
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.lightbox-close { position: fixed; top: 16px; right: 16px; color: var(--text); }
+@keyframes lightbox-in { from { opacity: 0; } }
 
 /* ============================================================================
    Visualizer (fullscreen)

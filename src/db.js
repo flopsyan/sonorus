@@ -53,7 +53,10 @@ db.exec(`
 db.exec(`
   CREATE TABLE IF NOT EXISTS artists (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- A profile picture the user picked. Empty means "show the artwork of one
+    -- of the albums"; the scanner never writes this column.
+    cover TEXT NOT NULL DEFAULT ''
   );
 
   CREATE TABLE IF NOT EXISTS albums (
@@ -95,6 +98,8 @@ db.exec(`
     genres_locked INTEGER NOT NULL DEFAULT 0,
     -- Same for the year of a single, which has no album to carry it.
     year_locked   INTEGER NOT NULL DEFAULT 0,
+    -- And for its artwork, which an album track takes from its album.
+    cover_locked  INTEGER NOT NULL DEFAULT 0,
     size        INTEGER NOT NULL DEFAULT 0,
     mtime       INTEGER NOT NULL DEFAULT 0,
     norm_title  TEXT NOT NULL DEFAULT '',
@@ -133,6 +138,10 @@ db.exec(`
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     folder_id  INTEGER REFERENCES playlist_folders(id) ON DELETE SET NULL,
     name       TEXT NOT NULL,
+    -- Where the list sits in the sidebar. Pinned lists come first, then the
+    -- order the user dragged them into; equal positions fall back to the name.
+    pinned     INTEGER NOT NULL DEFAULT 0,
+    position   INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -204,6 +213,15 @@ addColumn('albums', 'cover_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('tracks', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
 // A single carries its own year: no album row is there to hold it.
 addColumn('tracks', 'year_locked', 'INTEGER NOT NULL DEFAULT 0');
+// Same for its cover art.
+addColumn('tracks', 'cover_locked', 'INTEGER NOT NULL DEFAULT 0');
+// The profile picture of an artist, which comes from nowhere but a hand edit.
+addColumn('artists', 'cover', "TEXT NOT NULL DEFAULT ''");
+
+// Where a playlist sits in the sidebar: pinned to the top, and the order the
+// user dragged it into.
+addColumn('playlists', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('playlists', 'position', 'INTEGER NOT NULL DEFAULT 0');
 
 export function getMeta(key) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);

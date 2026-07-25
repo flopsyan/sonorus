@@ -168,6 +168,27 @@ export function toast(message, kind = '') {
   setTimeout(() => el.remove(), 3600);
 }
 
+// Artwork at full size. Deliberately not a modal: no chrome, no title bar - the
+// picture is the whole dialog. A click anywhere and Escape close it again.
+export function lightbox(src, label) {
+  const wrap = document.createElement('div');
+  wrap.className = 'lightbox';
+  wrap.innerHTML = `<img src="${esc(src)}" alt="${esc(label || '')}" />
+    <button type="button" class="icon-btn lightbox-close" aria-label="Schließen">${icon('x', 20)}</button>`;
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+  };
+  wrap.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  wrap.querySelector('.lightbox-close').focus();
+}
+
 let closeModalFn = null;
 
 // Opens a modal and returns its root element so the caller can wire up its

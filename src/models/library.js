@@ -150,6 +150,7 @@ export function listArtists({ q = '' } = {}) {
               COUNT(DISTINCT t.id)       AS trackCount,
               COUNT(DISTINCT t.album_id) AS albumCount,
               COALESCE(
+                NULLIF(ar.cover, ''),
                 (SELECT al.cover FROM albums al
                   WHERE al.artist_id = ar.id AND al.cover <> ''
                   ORDER BY al.year DESC LIMIT 1),
@@ -168,7 +169,7 @@ export function listArtists({ q = '' } = {}) {
 }
 
 export function getArtist(id, userId) {
-  const artist = db.prepare('SELECT id, name FROM artists WHERE id = ?').get(id);
+  const artist = db.prepare('SELECT id, name, cover FROM artists WHERE id = ?').get(id);
   if (!artist) return null;
 
   const albums = db
@@ -199,7 +200,13 @@ export function getArtist(id, userId) {
   // their own section instead of being counted as one.
   const singles = tracks.filter((t) => !t.albumId);
 
-  return { ...artist, albums, tracks, singles };
+  // The picture the user picked wins; without one the artist borrows the
+  // artwork of an album, and failing that of one of the singles.
+  const cover = artist.cover
+    ? `/covers/${artist.cover}`
+    : (albums.find((a) => a.cover) || singles.find((t) => t.cover) || {}).cover || null;
+
+  return { ...artist, cover, hasOwnCover: !!artist.cover, albums, tracks, singles };
 }
 
 // --- Albums -----------------------------------------------------------------
@@ -313,17 +320,32 @@ export function getGenre(id, userId) {
 // --- Star playlists ---------------------------------------------------------
 
 // The automatic playlist behind a star rating: always the current contents of
-// the ratings table, never a stored list.
+// the ratings table, never a stored list. Several ratings can be asked for at
+// once ("4 und 5 Sterne"), which is one list, not two - the best rated first.
 export function tracksByStars(stars, userId) {
+  // Validated integers, so inlining them keeps the statement to a single named
+  // parameter instead of mixing binding styles.
+  const wanted = [...new Set((Array.isArray(stars) ? stars : [stars]).map(Number))].filter(
+    (n) => Number.isInteger(n) && n >= 1 && n <= 5
+  );
+  if (!wanted.length) return [];
+
   return db
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
          JOIN ratings r ON r.track_id = t.id AND r.user_id = @userId
-        WHERE r.stars = @stars
-        ORDER BY t.missing_at <> '', r.updated_at DESC`
+        WHERE r.stars IN (${wanted.join(',')})
+        ORDER BY t.missing_at <> '', r.stars DESC, r.updated_at DESC`
     )
-    .all({ stars, userId })
+    .all({ userId })
     .map(shapeTrack);
+}
+
+// One list for a selection of ratings, 0 being "Nicht bewertet". Kept here so
+// the route stays a lookup: the rated ones come first, the unrated tail after.
+export function tracksByStarSelection(values, userId) {
+  const list = tracksByStars(values, userId);
+  return values.includes(0) ? list.concat(unratedTracks(userId)) : list;
 }
 
 // The counterpart to the star playlists: everything still waiting for a

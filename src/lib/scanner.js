@@ -256,23 +256,25 @@ async function collectFiles(root) {
 // --- Writing one track ------------------------------------------------------
 
 const selectTrackByPath = db.prepare(
-  'SELECT id, size, mtime, year, cover, missing_at, genres_locked, year_locked FROM tracks WHERE path = ?'
+  `SELECT id, size, mtime, year, cover, missing_at, genres_locked, year_locked, cover_locked
+     FROM tracks WHERE path = ?`
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, duration,
                       bitrate, codec, lossless, cover, missing_at, genres_locked, year_locked,
-                      size, mtime, norm_title, loose_title, norm_artist)
+                      cover_locked, size, mtime, norm_title, loose_title, norm_artist)
   VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @duration,
           @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked, @year_locked,
-          @size, @mtime, @norm_title, @loose_title, @norm_artist)
+          @cover_locked, @size, @mtime, @norm_title, @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
                     track_no = @track_no, disc_no = @disc_no, year = @year, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
                     missing_at = @missing_at, genres_locked = @genres_locked,
-                    year_locked = @year_locked, size = @size, mtime = @mtime,
+                    year_locked = @year_locked, cover_locked = @cover_locked,
+                    size = @size, mtime = @mtime,
                     norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist
    WHERE id = @id
 `);
@@ -336,11 +338,13 @@ async function indexFile(filePath, stat, force) {
     bitrate: format.bitrate ? Math.round(format.bitrate) : null,
     codec: String(format.codec || format.container || ''),
     lossless: format.lossless ? 1 : 0,
-    // Only singles carry their own artwork; an album track shows its album's.
+    // Only singles carry their own artwork; an album track shows its album's,
+    // which is also why a track moving into an album loses the lock with it.
     cover: alId ? '' : (existing && existing.cover) || '',
     missing_at: '',
     genres_locked: (existing && existing.genres_locked) || 0,
     year_locked: yearLocked ? 1 : 0,
+    cover_locked: alId ? 0 : (existing && existing.cover_locked) || 0,
     size: stat.size,
     mtime: Math.floor(stat.mtimeMs),
     norm_title: normalize(place.title),
@@ -360,7 +364,9 @@ async function indexFile(filePath, stat, force) {
 
   if (alId) {
     await storeAlbumCover(alId, meta, filePath);
-  } else if (!row.cover) {
+    // A cover the user picked for the single stays, and one the user removed
+    // stays removed - the embedded picture would win it back otherwise.
+  } else if (!row.cover && !row.cover_locked) {
     const name = await storeCoverFile(meta, filePath, `track-${trackId}`, false);
     if (name) setTrackCover.run(name, trackId);
   }

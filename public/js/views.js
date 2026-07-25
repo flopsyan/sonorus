@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, mosaic, stars, trackList, card, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, mosaic, trackList, card, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
 
 // --- Shared bits ------------------------------------------------------------
 
@@ -22,9 +22,17 @@ function pageHead(label, title, meta, actions = '') {
     </div>`;
 }
 
-function detailHead({ label, title, meta, artHtml, round = false, actions }) {
+// `zoom` is the URL of the picture behind the artwork: with one, the tile turns
+// into a button that opens the cover at full size.
+function detailHead({ label, title, meta, artHtml, round = false, actions, zoom = '' }) {
+  const tile = zoom
+    ? `<button type="button" class="detail-art zoomable${round ? ' round' : ''}"
+         data-zoom="${esc(zoom)}" data-zoom-label="${esc(title)}"
+         aria-label="Bild vergrößern">${artHtml}</button>`
+    : `<div class="detail-art${round ? ' round' : ''}">${artHtml}</div>`;
+
   return `<div class="detail-head">
-      <div class="detail-art${round ? ' round' : ''}">${artHtml}</div>
+      ${tile}
       <div class="detail-text">
         <span class="rack-label">${esc(label)}</span>
         <h1>${esc(title)}</h1>
@@ -129,9 +137,12 @@ export async function home() {
 
 // --- All songs --------------------------------------------------------------
 
-export async function tracks(params) {
-  const sort = params.get('sort') || 'title';
-  const dir = params.get('dir') || 'asc';
+// The sort survives the session: without one in the URL, the last one the
+// account used is the one that applies (app.js writes it on every click).
+export async function tracks(params, ctx) {
+  const saved = ctx.prefs.trackSort || {};
+  const sort = params.get('sort') || saved.key || 'title';
+  const dir = params.get('dir') || saved.dir || 'asc';
   const { tracks: list, total } = await api.tracks({ sort, dir, limit: 2000 });
 
   return {
@@ -157,13 +168,14 @@ export async function artists() {
         list.length
           ? `<div class="grid">${list
               .map((a) =>
+                // No play button on an artist: a round tile clips its corner,
+                // and an artist is a place you go to, not a queue you start.
                 card({
                   href: `/artists/${a.id}`,
                   cover: a.cover,
                   title: a.name,
                   sub: fmt.plural(a.trackCount, 'Song', 'Songs'),
                   round: true,
-                  playAction: `data-play-artist="${a.id}"`,
                 })
               )
               .join('')}</div>`
@@ -195,14 +207,18 @@ export async function artist(params) {
       label: 'Interpret',
       title: data.name,
       round: true,
-      artHtml: art(data.albums.find((a) => a.cover)?.cover, data.name),
+      artHtml: art(data.cover, data.name),
+      zoom: data.cover,
       meta: facts([
         fmt.plural(data.albums.length, 'Album', 'Alben'),
         data.singles.length ? fmt.plural(data.singles.length, 'Single', 'Singles') : '',
         fmt.plural(data.tracks.length, 'Song', 'Songs'),
         fmt.durationLong(total),
       ]),
-      actions: playActions('view'),
+      actions: `${playActions('view')}
+        <button type="button" class="btn btn-ghost" data-edit-artist="${data.id}">
+          ${icon('edit', 16)} Bearbeiten
+        </button>`,
     })}
       ${
         data.albums.length || singlesCard
@@ -262,19 +278,33 @@ export async function artistSingles(params) {
 
 // --- Albums -----------------------------------------------------------------
 
-export async function albums(params) {
-  const sort = params.get('sort') || 'title';
-  const dir = params.get('dir') || 'asc';
+// Both directions are spelled out instead of hiding one behind a reverse
+// button: "Z-A" says what it does, an arrow next to "Jahr" would not.
+const ALBUM_SORTS = [
+  ['title', 'asc', 'Titel A-Z'],
+  ['title', 'desc', 'Titel Z-A'],
+  ['artist', 'asc', 'Interpret A-Z'],
+  ['artist', 'desc', 'Interpret Z-A'],
+  ['year', 'desc', 'Jahr, neueste zuerst'],
+  ['year', 'asc', 'Jahr, älteste zuerst'],
+  ['tracks', 'desc', 'Songs, meiste zuerst'],
+  ['tracks', 'asc', 'Songs, wenigste zuerst'],
+];
+
+export async function albums(params, ctx) {
+  // Without a sort in the URL the last one the account picked applies, so a
+  // choice made once stays until it is changed again.
+  const saved = ctx.prefs.albumSort || {};
+  const sort = params.get('sort') || saved.key || 'title';
+  const dir = params.get('dir') || saved.dir || 'asc';
   const { albums: list } = await api.albums({ sort, dir });
 
-  const sortOptions = [
-    ['title', 'Titel'],
-    ['artist', 'Interpret'],
-    ['year', 'Jahr'],
-    ['tracks', 'Anzahl Songs'],
-  ]
-    .map(([key, label]) => `<option value="${key}"${key === sort ? ' selected' : ''}>${label}</option>`)
-    .join('');
+  const sortOptions = ALBUM_SORTS.map(
+    ([key, direction, label]) =>
+      `<option value="${key}:${direction}"${
+        key === sort && direction === dir ? ' selected' : ''
+      }>${label}</option>`
+  ).join('');
 
   return {
     title: 'Alben',
@@ -303,11 +333,13 @@ export async function albums(params) {
     // Sorting is not a place in the history, it is the same page seen
     // differently - and the router owns the history entries, so it has to do
     // the navigating.
-    after(root, ctx) {
+    after(root, ctx2) {
       const select = root.querySelector('[data-album-sort]');
       if (select) {
         select.addEventListener('change', () => {
-          ctx.navigate(`/albums?sort=${select.value}`, { replace: true });
+          const [key, direction] = select.value.split(':');
+          ctx2.setPref('albumSort', { key, dir: direction });
+          ctx2.navigate(`/albums?sort=${key}&dir=${direction}`, { replace: true });
         });
       }
     },
@@ -323,6 +355,7 @@ export async function album(params) {
       label: 'Album',
       title: data.title,
       artHtml: art(data.cover, data.title),
+      zoom: data.cover,
       meta: facts([
         data.artistId
           ? `<a href="/artists/${data.artistId}" data-link>${esc(data.artist)}</a>`
@@ -383,11 +416,49 @@ export async function genre(params) {
 
 // --- Star playlists ---------------------------------------------------------
 
+// "4 und 5 Sterne" is one list, so it needs one name.
+function joinAnd(parts) {
+  if (parts.length < 2) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} und ${parts[parts.length - 1]}`;
+}
+
+export function starSelectionLabel(values) {
+  const rated = values.filter((v) => v > 0).sort((a, b) => a - b);
+  const parts = [];
+  if (rated.length) {
+    parts.push(`${joinAnd(rated.map(String))} ${rated.length === 1 && rated[0] === 1 ? 'Stern' : 'Sterne'}`);
+  }
+  if (values.includes(0)) parts.push('Nicht bewertet');
+  return joinAnd(parts);
+}
+
+// The ratings this list is made of, each one a switch. Clicking one adds it to
+// the selection or takes it out again - that is the whole "mehrere Sterne auf
+// einmal". The last one standing cannot be switched off; an empty list would
+// have nothing to show.
+function starPicker(values) {
+  const chip = (value, content, label) => {
+    const on = values.includes(value);
+    const rest = on ? values.filter((v) => v !== value) : [...values, value];
+    const target = (rest.length ? rest : [value]).sort((a, b) => b - a).join(',');
+    return `<button type="button" class="star-chip${on ? ' active' : ''}" data-stars="${target}"
+              aria-pressed="${on}" title="${esc(label)}">${content}</button>`;
+  };
+
+  return `<div class="star-filter" role="group" aria-label="Bewertungen kombinieren">
+      ${[5, 4, 3, 2, 1]
+        .map((n) => chip(n, `<span class="num">${n}</span>${icon('star', 13)}`, `${n} ${n === 1 ? 'Stern' : 'Sterne'}`))
+        .join('')}
+      ${chip(0, 'Nicht bewertet', 'Nicht bewertet')}
+    </div>`;
+}
+
 export async function starred(params) {
-  const value = Number(params.stars);
-  const { tracks: list } = await api.starred(value);
-  const label = value === 0 ? 'Nicht bewertet' : `${value} ${value === 1 ? 'Stern' : 'Sterne'}`;
+  const values = [...new Set(String(params.stars).split(',').map(Number))].filter((n) => n >= 0 && n <= 5);
+  const { tracks: list } = await api.starred(values.join(','));
+  const label = starSelectionLabel(values);
   const total = list.reduce((sum, t) => sum + t.duration, 0);
+  const only = values.length === 1 ? values[0] : null;
 
   return {
     title: label,
@@ -398,14 +469,21 @@ export async function starred(params) {
       facts([fmt.plural(list.length, 'Song', 'Songs'), list.length ? fmt.durationLong(total) : '']),
       list.length ? playActions('view') : ''
     )}
+      ${starPicker(values)}
       ${
         list.length
           ? trackList(list)
           : empty(
-              value === 0 ? 'Alles bewertet' : `Noch nichts mit ${label} bewertet`,
-              value === 0
-                ? 'Jeder Song in deiner Bibliothek hat eine Bewertung. Neue Songs tauchen hier automatisch auf.'
-                : 'Bewerte einen Song über die Sterne in der Titelliste oder unten im Player. Diese Playlist füllt sich dann von selbst.'
+              only === null
+                ? 'Zu dieser Auswahl gibt es nichts'
+                : only === 0
+                  ? 'Alles bewertet'
+                  : `Noch nichts mit ${label} bewertet`,
+              only === null
+                ? 'Nimm eine Bewertung dazu oder wieder heraus.'
+                : only === 0
+                  ? 'Jeder Song in deiner Bibliothek hat eine Bewertung. Neue Songs tauchen hier automatisch auf.'
+                  : 'Bewerte einen Song über die Sterne in der Titelliste oder unten im Player. Diese Playlist füllt sich dann von selbst.'
             )
       }`,
   };
@@ -428,6 +506,10 @@ export async function playlist(params) {
       artHtml: mosaic(list, data.playlist.name),
       meta: facts([fmt.plural(list.length, 'Song', 'Songs'), list.length ? fmt.durationLong(total) : '']),
       actions: `${list.length ? playActions('view') : ''}
+        <button type="button" class="btn btn-ghost${data.playlist.pinned ? ' is-pinned' : ''}"
+          data-pin-playlist="${data.playlist.id}" aria-pressed="${!!data.playlist.pinned}">
+          ${icon('pin', 16)} ${data.playlist.pinned ? 'Angepinnt' : 'Anpinnen'}
+        </button>
         <button type="button" class="btn btn-ghost" data-rename-playlist="${data.playlist.id}">${icon('edit', 16)} Umbenennen</button>
         <button type="button" class="btn btn-quiet" data-delete-playlist="${data.playlist.id}">${icon('trash', 16)} Löschen</button>`,
     })}
@@ -476,7 +558,6 @@ export async function search(params) {
                       title: a.name,
                       sub: fmt.plural(a.trackCount, 'Song', 'Songs'),
                       round: true,
-                      playAction: `data-play-artist="${a.id}"`,
                     })
                   )
                   .join('')}</div></section>`

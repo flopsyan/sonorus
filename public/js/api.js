@@ -45,10 +45,12 @@ export const api = {
   tracksByIds: (ids) => request('POST', '/api/tracks/by-ids', { ids }),
   artists: (params) => request('GET', `/api/artists${query(params)}`),
   artist: (id) => request('GET', `/api/artists/${id}`),
+  updateArtist: (id, patch) => request('PATCH', `/api/artists/${id}`, patch),
   albums: (params) => request('GET', `/api/albums${query(params)}`),
   album: (id) => request('GET', `/api/albums/${id}`),
   updateAlbum: (id, patch) => request('PATCH', `/api/albums/${id}`, patch),
-  updateTrackYear: (id, year) => request('PATCH', `/api/tracks/${id}`, { year }),
+  // Year and cover art of a single - an album track takes both from its album.
+  updateTrack: (id, patch) => request('PATCH', `/api/tracks/${id}`, patch),
   genres: () => request('GET', '/api/genres'),
   genre: (id) => request('GET', `/api/genres/${id}`),
   starred: (stars) => request('GET', `/api/stars/${stars}`),
@@ -72,6 +74,8 @@ export const api = {
   addToPlaylist: (id, trackIds) => request('POST', `/api/playlists/${id}/tracks`, { trackIds }),
   removeFromPlaylist: (id, itemId) => request('DELETE', `/api/playlists/${id}/items/${itemId}`),
   reorderPlaylist: (id, itemIds) => request('PUT', `/api/playlists/${id}/order`, { itemIds }),
+  // The sidebar order of one container: a folder, or the top level (null).
+  reorderPlaylists: (folderId, ids) => request('PUT', '/api/playlists/order', { folderId, ids }),
 
   createFolder: (name) => request('POST', '/api/folders', { name }),
   renameFolder: (id, name) => request('PATCH', `/api/folders/${id}`, { name }),

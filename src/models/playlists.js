@@ -49,10 +49,16 @@ export function deleteFolder(userId, id) {
 
 // --- Playlists --------------------------------------------------------------
 
+// The sidebar order, and the only one there is: pinned lists first, then the
+// order the user dragged them into. Everything nobody has moved yet shares
+// position 0 and therefore still sorts by name.
+const PLAYLIST_ORDER = 'p.pinned DESC, p.position ASC, p.name COLLATE NOCASE ASC';
+
 export function listPlaylists(userId) {
   return db
     .prepare(
       `SELECT p.id, p.name, p.folder_id AS folderId, p.updated_at AS updatedAt,
+              p.pinned, p.position,
               COUNT(i.id) AS trackCount,
               COALESCE(SUM(t.duration), 0) AS duration
          FROM playlists p
@@ -60,9 +66,10 @@ export function listPlaylists(userId) {
          LEFT JOIN tracks t ON t.id = i.track_id
         WHERE p.user_id = ?
         GROUP BY p.id
-        ORDER BY p.name COLLATE NOCASE ASC`
+        ORDER BY ${PLAYLIST_ORDER}`
     )
-    .all(userId);
+    .all(userId)
+    .map((p) => ({ ...p, pinned: !!p.pinned }));
 }
 
 // Folders with their playlists, plus the playlists that sit at the top level.
@@ -80,29 +87,40 @@ export function playlistTree(userId) {
 }
 
 export function getPlaylist(userId, id) {
-  return db
-    .prepare('SELECT id, name, folder_id AS folderId, created_at AS createdAt FROM playlists WHERE id = ? AND user_id = ?')
+  const row = db
+    .prepare(
+      `SELECT id, name, folder_id AS folderId, pinned, position, created_at AS createdAt
+         FROM playlists WHERE id = ? AND user_id = ?`
+    )
     .get(id, userId);
+  return row ? { ...row, pinned: !!row.pinned } : row;
 }
+
+// A new list goes to the end of the sidebar, not into the middle of an order
+// the user arranged by hand.
+const nextPlaylistPosition = db.prepare(
+  'SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM playlists WHERE user_id = ?'
+);
 
 export function createPlaylist(userId, name, folderId = null) {
   const clean = cleanName(name, '');
   if (!clean) return { error: 'invalid_name' };
   const folder = folderId ? db.prepare('SELECT id FROM playlist_folders WHERE id = ? AND user_id = ?').get(folderId, userId) : null;
   const info = db
-    .prepare('INSERT INTO playlists (user_id, folder_id, name) VALUES (?, ?, ?)')
-    .run(userId, folder ? folder.id : null, clean);
+    .prepare('INSERT INTO playlists (user_id, folder_id, name, position) VALUES (?, ?, ?, ?)')
+    .run(userId, folder ? folder.id : null, clean, nextPlaylistPosition.get(userId).pos);
   return { playlist: getPlaylist(userId, Number(info.lastInsertRowid)) };
 }
 
-// Renames a playlist and/or moves it into another folder. `folderId` is only
-// applied when the caller passed the key at all, so a rename cannot silently
-// move the list out of its folder.
-export function updatePlaylist(userId, id, { name, folderId } = {}) {
+// Renames a playlist, pins it, and/or moves it into another folder. Every field
+// is only applied when the caller passed the key at all, so a rename cannot
+// silently move the list out of its folder or unpin it.
+export function updatePlaylist(userId, id, { name, folderId, pinned } = {}) {
   const current = getPlaylist(userId, id);
   if (!current) return { error: 'not_found' };
 
   const nextName = name === undefined ? current.name : cleanName(name, current.name);
+  const nextPinned = pinned === undefined ? current.pinned : !!pinned;
   let nextFolder = current.folderId;
   if (folderId !== undefined) {
     nextFolder = folderId
@@ -111,11 +129,40 @@ export function updatePlaylist(userId, id, { name, folderId } = {}) {
   }
 
   db.prepare(
-    `UPDATE playlists SET name = ?, folder_id = ?, updated_at = datetime('now')
+    `UPDATE playlists SET name = ?, folder_id = ?, pinned = ?, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?`
-  ).run(nextName, nextFolder, id, userId);
+  ).run(nextName, nextFolder, nextPinned ? 1 : 0, id, userId);
   return { playlist: getPlaylist(userId, id) };
 }
+
+// Writes the sidebar order of one container - a folder, or the top level when
+// `folderId` is null. The client sends the ids of everything in that container
+// in their new order after a drag, which is also how a list moves from one
+// folder into another: it simply arrives in the target's list.
+export const reorderPlaylists = db.transaction((userId, folderId, ids) => {
+  const folder = folderId
+    ? db.prepare('SELECT id FROM playlist_folders WHERE id = ? AND user_id = ?').get(folderId, userId)
+    : null;
+  if (folderId && !folder) return { error: 'not_found' };
+
+  const own = new Set(
+    db.prepare('SELECT id FROM playlists WHERE user_id = ?').all(userId).map((r) => r.id)
+  );
+  const update = db.prepare(
+    `UPDATE playlists SET folder_id = ?, position = ?, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?`
+  );
+
+  let pos = 0;
+  for (const raw of ids) {
+    const id = Number(raw);
+    if (!own.has(id)) continue;
+    update.run(folder ? folder.id : null, pos, id, userId);
+    own.delete(id);
+    pos += 1;
+  }
+  return { ok: true };
+});
 
 export function deletePlaylist(userId, id) {
   const info = db.prepare('DELETE FROM playlists WHERE id = ? AND user_id = ?').run(id, userId);

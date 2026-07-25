@@ -7,7 +7,7 @@
 import { api } from './api.js';
 import { icon, paintIcons } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, stars, toast, modal, closeModal, confirmDialog, contextMenu, closeContextMenu } from './ui.js';
+import { esc, art, stars, toast, modal, closeModal, confirmDialog, contextMenu, closeContextMenu, lightbox } from './ui.js';
 import * as views from './views.js';
 import * as player from './player.js';
 
@@ -22,6 +22,9 @@ const shell = {
   playlists: { folders: [], loose: [] },
   starCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   issues: 0,
+  // Everything the account remembers between visits: the player settings and
+  // the sort order of the album grid and the song table.
+  prefs: {},
 };
 
 // What the current view is showing, so the transport buttons know what to play.
@@ -35,6 +38,8 @@ const collapsedFolders = new Set(
 // Routing
 // ============================================================================
 
+// A star route can name several ratings at once ("/stars/4,5"), which is one
+// combined list - see views.starred.
 const ROUTES = [
   [/^\/$/, views.home],
   [/^\/tracks$/, views.tracks],
@@ -46,12 +51,20 @@ const ROUTES = [
   [/^\/genres$/, views.genres],
   [/^\/genres\/(\d+)$/, views.genre, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
-  [/^\/stars\/([0-5])$/, views.starred, ['stars']],
+  [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
   [/^\/settings$/, views.settings],
   [/^\/stats$/, views.stats],
   [/^\/profile$/, views.profile],
 ];
+
+// Preferences are stored on the account, so a sort picked once follows the user
+// to another device. Written through here so the shell's copy stays current
+// without another round trip.
+function setPref(key, value) {
+  shell.prefs[key] = value;
+  api.savePref(key, value).catch(() => {});
+}
 
 const ctx = {
   get user() {
@@ -61,6 +74,10 @@ const ctx = {
     shell.user = user;
     renderAccount();
   },
+  get prefs() {
+    return shell.prefs;
+  },
+  setPref,
   navigate,
   refreshShell,
 };
@@ -174,9 +191,17 @@ function starRow(n) {
   return `<span class="nav-stars" aria-hidden="true">${filled}</span>`;
 }
 
+// The ratings the current page is showing, so every one of them lights up in
+// the sidebar - a combined list belongs to several rows at once.
+function currentStars() {
+  const m = window.location.pathname.match(/^\/stars\/([0-5](?:,[0-5])*)$/);
+  return m ? m[1].split(',').map(Number) : [];
+}
+
 function renderSidebar() {
   const path = window.location.pathname;
   const { folders, loose } = shell.playlists;
+  const starred = currentStars();
 
   const library = [
     { href: '/', label: 'Start', iconName: 'home' },
@@ -190,7 +215,7 @@ function renderSidebar() {
 
   const starItems = [5, 4, 3, 2, 1]
     .map((n) =>
-      `<a class="nav-item${path === `/stars/${n}` ? ' active' : ''}" href="/stars/${n}" data-link>
+      `<a class="nav-item${starred.includes(n) ? ' active' : ''}" href="/stars/${n}" data-link>
         ${starRow(n)}
         <span class="nav-label sr-only">${n} ${n === 1 ? 'Stern' : 'Sterne'}</span>
         <span class="nav-count push-right">${fmt.number(shell.starCounts[n] || 0)}</span>
@@ -204,19 +229,21 @@ function renderSidebar() {
         label: 'Nicht bewertet',
         iconName: 'star-outline',
         count: shell.starCounts[0] || 0,
-        active: path === '/stars/0',
+        active: starred.includes(0),
       })
     )
     .join('');
 
+  // Draggable, so the order in the sidebar is the user's: within its list, into
+  // another folder, or out to the top level. A pinned list wears the pin
+  // instead of the list icon - it is already where the pin puts it, on top.
   const playlistItem = (p) =>
-    navItem({
-      href: `/playlists/${p.id}`,
-      label: p.name,
-      iconName: 'list',
-      count: p.trackCount,
-      active: path === `/playlists/${p.id}`,
-    });
+    `<a class="nav-item playlist-item${path === `/playlists/${p.id}` ? ' active' : ''}"
+        href="/playlists/${p.id}" data-link draggable="true" data-playlist="${p.id}">
+      ${icon(p.pinned ? 'pin' : 'list', 17)}
+      <span class="nav-label">${esc(p.name)}</span>
+      <span class="nav-count">${fmt.number(p.trackCount)}</span>
+    </a>`;
 
   const folderBlocks = folders
     .map(
@@ -257,7 +284,7 @@ function renderSidebar() {
         </span>
       </div>
       ${folderBlocks}
-      ${loose.map(playlistItem).join('')}
+      <div class="playlist-root" data-drop-root>${loose.map(playlistItem).join('')}</div>
       ${hasPlaylists ? '' : '<p class="sidebar-empty">Noch keine Playlist. Lege eine an oder importiere eine CSV-Datei.</p>'}
     </nav>
 
@@ -375,9 +402,38 @@ sidebarNav.addEventListener('contextmenu', (e) => {
   playlistMenu(e.clientX, e.clientY, id, name);
 });
 
+// Where a playlist currently sits: its folder (null = top level) and the list
+// it is part of. Both are needed to work out a new order after a drag.
+function locatePlaylist(id) {
+  for (const folder of shell.playlists.folders) {
+    const playlist = folder.playlists.find((p) => p.id === id);
+    if (playlist) return { playlist, folderId: folder.id, list: folder.playlists };
+  }
+  const playlist = shell.playlists.loose.find((p) => p.id === id);
+  return playlist ? { playlist, folderId: null, list: shell.playlists.loose } : null;
+}
+
+async function setPinned(id, pinned) {
+  try {
+    await api.updatePlaylist(id, { pinned });
+    await refreshShell();
+    if (window.location.pathname === `/playlists/${id}`) render();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
 function playlistMenu(x, y, id, name) {
   const folders = shell.playlists.folders;
+  const found = locatePlaylist(id);
+  const pinned = !!(found && found.playlist.pinned);
+
   const items = [
+    {
+      label: pinned ? 'Nicht mehr anpinnen' : 'Anpinnen',
+      icon: 'pin',
+      onSelect: () => setPinned(id, !pinned),
+    },
     {
       label: 'Umbenennen',
       icon: 'edit',
@@ -449,10 +505,158 @@ function promptFolderTarget(playlistId) {
   });
 }
 
+// --- Dragging playlists in the sidebar --------------------------------------
+// The order in the sidebar is the user's: drag a playlist up or down inside its
+// list, onto a folder row to move it in, or into the top level to move it out
+// again. What gets sent is the new order of the whole target list, which is why
+// dropping into another folder is the same operation as reordering.
+
+let playlistDrag = null;
+
+function clearDropMarks() {
+  sidebarNav
+    .querySelectorAll('.drop-above, .drop-below, .drop-target')
+    .forEach((node) => node.classList.remove('drop-above', 'drop-below', 'drop-target'));
+}
+
+function endPlaylistDrag() {
+  clearDropMarks();
+  sidebarNav.querySelectorAll('.dragging').forEach((node) => node.classList.remove('dragging'));
+  playlistDrag = null;
+}
+
+sidebarNav.addEventListener('dragstart', (e) => {
+  const item = e.target.closest('[data-playlist]');
+  if (!item) return;
+  playlistDrag = Number(item.dataset.playlist);
+  item.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(playlistDrag));
+});
+
+sidebarNav.addEventListener('dragover', (e) => {
+  if (playlistDrag === null) return;
+  const item = e.target.closest('[data-playlist]');
+  const container = e.target.closest('[data-drop-folder], [data-drop-root]');
+  if (!item && !container) return;
+
+  e.preventDefault();
+  clearDropMarks();
+  if (item) {
+    if (Number(item.dataset.playlist) === playlistDrag) return;
+    const rect = item.getBoundingClientRect();
+    item.classList.add(e.clientY > rect.top + rect.height / 2 ? 'drop-below' : 'drop-above');
+  } else {
+    container.classList.add('drop-target');
+  }
+});
+
+sidebarNav.addEventListener('dragend', endPlaylistDrag);
+
+sidebarNav.addEventListener('drop', async (e) => {
+  if (playlistDrag === null) return;
+  const item = e.target.closest('[data-playlist]');
+  const folder = e.target.closest('[data-drop-folder]');
+  const root = e.target.closest('[data-drop-root]');
+  if (!item && !folder && !root) return;
+  e.preventDefault();
+
+  const dragged = playlistDrag;
+  const source = locatePlaylist(dragged);
+  endPlaylistDrag();
+  if (!source) return;
+
+  let folderId = null;
+  let list;
+  let index;
+
+  if (item) {
+    const targetId = Number(item.dataset.playlist);
+    if (targetId === dragged) return;
+    const target = locatePlaylist(targetId);
+    if (!target) return;
+    folderId = target.folderId;
+    list = target.list.filter((p) => p.id !== dragged);
+    const rect = item.getBoundingClientRect();
+    index = list.findIndex((p) => p.id === targetId) + (e.clientY > rect.top + rect.height / 2 ? 1 : 0);
+  } else if (folder) {
+    folderId = Number(folder.dataset.dropFolder);
+    const target = shell.playlists.folders.find((f) => f.id === folderId);
+    if (!target) return;
+    list = target.playlists.filter((p) => p.id !== dragged);
+    index = list.length;
+  } else {
+    list = shell.playlists.loose.filter((p) => p.id !== dragged);
+    index = list.length;
+  }
+
+  list.splice(index, 0, source.playlist);
+  // Pinned lists stay on top, so the order that is sent has to say so too -
+  // the server sorts by it, and the sidebar would jump right after the drop
+  // otherwise. Array.prototype.sort is stable, so the drag order survives.
+  const ids = [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)).map((p) => p.id);
+
+  try {
+    await api.reorderPlaylists(folderId, ids);
+    await refreshShell();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+// --- Editing what the files cannot answer ------------------------------------
+// The music folder is read-only, so every edit here changes the library and not
+// the files - which the dialogs say out loud, because it is not obvious.
+
+const COVER_HINT = 'JPG, PNG oder WebP, maximal 6 MB. Am besten quadratisch.';
+const EDIT_NOTE = `<p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im
+  Musikordner werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>`;
+
+// The picture picker shared by the album, artist and single dialogs.
+function coverField(name, { label, cover, title, hint = COVER_HINT }) {
+  return `<div class="cover-edit">
+      <div class="cover-edit-art" id="${name}-preview">${art(cover, title)}</div>
+      <div class="cover-edit-side">
+        <div class="setting-label">${esc(label)}</div>
+        <p class="panel-hint">${esc(hint)}</p>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-pick-cover>Bild wählen</button>
+          <button type="button" class="btn btn-quiet btn-sm" data-drop-cover>Entfernen</button>
+        </div>
+        <input type="file" id="${name}-input" accept="image/jpeg,image/png,image/webp" hidden />
+      </div>
+    </div>`;
+}
+
+// Reports every pick back through `onPick`: null for "remove it", an object for
+// a new picture. Until it fires, the caller leaves the cover alone.
+function wireCoverField(root, name, title, onPick) {
+  const input = root.querySelector(`#${name}-input`);
+  const preview = root.querySelector(`#${name}-preview`);
+
+  root.querySelector('[data-pick-cover]').addEventListener('click', () => input.click());
+  root.querySelector('[data-drop-cover]').addEventListener('click', () => {
+    onPick(null);
+    preview.innerHTML = art(null, title);
+  });
+
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      // The CSP allows data: for images, so the same string serves as preview
+      // and as upload payload - no blob URL needed.
+      const url = String(reader.result);
+      onPick({ type: file.type, data: url.slice(url.indexOf(',') + 1) });
+      preview.innerHTML = `<img src="${esc(url)}" alt="" />`;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // "Album bearbeiten": year, genres and cover art. Everything the folder
 // structure does not decide and the file cannot be asked about reliably.
-// The music folder is read-only, so this changes the library, not the files -
-// which the dialog says out loud, because it is not obvious.
 async function editAlbumDialog(albumId) {
   let album;
   try {
@@ -468,18 +672,7 @@ async function editAlbumDialog(albumId) {
   modal({
     title: 'Album bearbeiten',
     body: `<form id="album-form">
-        <div class="cover-edit">
-          <div class="cover-edit-art" id="al-preview">${art(album.cover, album.title)}</div>
-          <div class="cover-edit-side">
-            <div class="setting-label">Albumcover</div>
-            <p class="panel-hint">JPG, PNG oder WebP, maximal 6 MB. Am besten quadratisch.</p>
-            <div class="form-actions">
-              <button type="button" class="btn btn-ghost btn-sm" data-pick-cover>Bild wählen</button>
-              <button type="button" class="btn btn-quiet btn-sm" data-drop-cover>Entfernen</button>
-            </div>
-            <input type="file" id="al-cover" accept="image/jpeg,image/png,image/webp" hidden />
-          </div>
-        </div>
+        ${coverField('al-cover', { label: 'Albumcover', cover: album.cover, title: album.title })}
         <div class="field">
           <label for="al-year">Jahr</label>
           <input type="number" id="al-year" min="1000" max="2999" step="1"
@@ -490,33 +683,13 @@ async function editAlbumDialog(albumId) {
           <input type="text" id="al-genres" value="${esc(genres)}" placeholder="Rock, Indie Pop" />
           <p class="panel-hint">Mehrere durch Komma trennen. Gilt für alle Songs des Albums.</p>
         </div>
-        <p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im Musikordner
-          werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>
+        ${EDIT_NOTE}
       </form>`,
     footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
              <button type="submit" form="album-form" class="btn btn-primary">Speichern</button>`,
     onOpen(root) {
-      const input = root.querySelector('#al-cover');
-      const preview = root.querySelector('#al-preview');
-
-      root.querySelector('[data-pick-cover]').addEventListener('click', () => input.click());
-      root.querySelector('[data-drop-cover]').addEventListener('click', () => {
-        cover = null;
-        preview.innerHTML = art(null, album.title);
-      });
-
-      input.addEventListener('change', () => {
-        const file = input.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          // The CSP allows data: for images, so the same string serves as
-          // preview and as upload payload - no blob URL needed.
-          const url = String(reader.result);
-          cover = { type: file.type, data: url.slice(url.indexOf(',') + 1) };
-          preview.innerHTML = `<img src="${esc(url)}" alt="" />`;
-        };
-        reader.readAsDataURL(file);
+      wireCoverField(root, 'al-cover', album.title, (picked) => {
+        cover = picked;
       });
 
       root.querySelector('#album-form').addEventListener('submit', async (e) => {
@@ -540,32 +713,87 @@ async function editAlbumDialog(albumId) {
   });
 }
 
-// "Jahr bearbeiten" for a single. A song inside an album takes its year from
-// the album, so this is only offered for the files that belong to none - they
-// have nothing else to carry one. Same promise as the album dialog: the music
-// folder is not touched, only what Sonorus shows.
-function editSingleYearDialog(track) {
+// "Interpret bearbeiten": the profile picture, and nothing else. The name is
+// the name of the folder, so editing it would last until the next scan.
+async function editArtistDialog(artistId) {
+  let artist;
+  try {
+    artist = (await api.artist(artistId)).artist;
+  } catch (err) {
+    return toast(err.message, 'err');
+  }
+
+  let cover;
+
   modal({
-    title: 'Jahr bearbeiten',
-    body: `<form id="year-form">
+    title: 'Interpret bearbeiten',
+    body: `<form id="artist-form">
+        ${coverField('ar-cover', {
+          label: 'Profilbild',
+          cover: artist.cover,
+          title: artist.name,
+          hint: `${COVER_HINT} Ohne eigenes Bild zeigt Sonorus das Cover eines Albums.`,
+        })}
+        <p class="panel-hint">Der Name kommt aus dem Ordnernamen und lässt sich hier nicht ändern -
+          ein späterer Scan würde ihn ohnehin wieder von der Festplatte lesen.</p>
+        ${EDIT_NOTE}
+      </form>`,
+    footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+             <button type="submit" form="artist-form" class="btn btn-primary">Speichern</button>`,
+    onOpen(root) {
+      wireCoverField(root, 'ar-cover', artist.name, (picked) => {
+        cover = picked;
+      });
+
+      root.querySelector('#artist-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (cover === undefined) return closeModal();
+        try {
+          await api.updateArtist(artistId, { cover });
+          closeModal();
+          toast('Profilbild gespeichert.');
+          render();
+        } catch (err) {
+          toast(err.message, 'err');
+        }
+      });
+    },
+  });
+}
+
+// "Single bearbeiten": cover art and year. A song inside an album takes both
+// from its album, so this is only offered for the files that belong to none -
+// they have nothing else to carry them.
+function editSingleDialog(track) {
+  let cover;
+
+  modal({
+    title: 'Single bearbeiten',
+    body: `<form id="single-form">
+        ${coverField('tr-cover', { label: 'Cover', cover: track.cover, title: track.title })}
         <div class="field">
           <label for="tr-year">Jahr von „${esc(track.title)}“</label>
           <input type="number" id="tr-year" min="1000" max="2999" step="1"
                  value="${track.year ? esc(track.year) : ''}" placeholder="z. B. 2013" />
           <p class="panel-hint">Leer lassen, um das Jahr zu entfernen.</p>
         </div>
-        <p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im Musikordner
-          werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>
+        ${EDIT_NOTE}
       </form>`,
     footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
-             <button type="submit" form="year-form" class="btn btn-primary">Speichern</button>`,
+             <button type="submit" form="single-form" class="btn btn-primary">Speichern</button>`,
     onOpen(root) {
-      root.querySelector('#year-form').addEventListener('submit', async (e) => {
+      wireCoverField(root, 'tr-cover', track.title, (picked) => {
+        cover = picked;
+      });
+
+      root.querySelector('#single-form').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const patch = { year: root.querySelector('#tr-year').value.trim() };
+        if (cover !== undefined) patch.cover = cover;
         try {
-          await api.updateTrackYear(track.id, root.querySelector('#tr-year').value.trim());
+          await api.updateTrack(track.id, patch);
           closeModal();
-          toast('Jahr gespeichert.');
+          toast('Single gespeichert.');
           render();
         } catch (err) {
           toast(err.message, 'err');
@@ -675,7 +903,6 @@ function addToPlaylistDialog(trackIds) {
 // Loads the track list behind a "play this collection" button.
 async function tracksFor(el) {
   if (el.dataset.playAlbum) return (await api.album(el.dataset.playAlbum)).album.tracks;
-  if (el.dataset.playArtist) return (await api.artist(el.dataset.playArtist)).artist.tracks;
   if (el.dataset.playSingles) return (await api.artist(el.dataset.playSingles)).artist.singles;
   if (el.dataset.playGenre) return (await api.genre(el.dataset.playGenre)).genre.tracks;
   if (el.dataset.playTrack) {
@@ -708,7 +935,7 @@ content.addEventListener('click', async (e) => {
   }
 
   // Collection play / shuffle buttons on cards and page heads
-  const play = e.target.closest('[data-play-all], [data-play-album], [data-play-artist], [data-play-singles], [data-play-genre], [data-play-track]');
+  const play = e.target.closest('[data-play-all], [data-play-album], [data-play-singles], [data-play-genre], [data-play-track]');
   if (play) {
     e.preventDefault();
     e.stopPropagation();
@@ -743,12 +970,35 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
-  // Sortable column headers on "Alle Songs"
+  // A cover at full size. The tile itself is the button (see detailHead).
+  const zoom = e.target.closest('[data-zoom]');
+  if (zoom) {
+    e.preventDefault();
+    lightbox(zoom.dataset.zoom, zoom.dataset.zoomLabel || '');
+    return;
+  }
+
+  // Combining star playlists: each chip carries the selection it leads to.
+  const starChip = e.target.closest('[data-stars]');
+  if (starChip) {
+    navigate(`/stars/${starChip.dataset.stars}`, { replace: true });
+    return;
+  }
+
+  // Sortable column headers on "Alle Songs". The sort is remembered on the
+  // account, so the current one may come from there instead of from the URL -
+  // reading it back from the URL alone would break the asc/desc toggle.
   const sortBtn = e.target.closest('[data-sort]');
   if (sortBtn) {
     const key = sortBtn.dataset.sort;
     const params = new URLSearchParams(window.location.search);
-    const dir = params.get('sort') === key && params.get('dir') !== 'desc' ? 'desc' : 'asc';
+    const saved = shell.prefs.trackSort || {};
+    const current = {
+      key: params.get('sort') || saved.key || 'title',
+      dir: params.get('dir') || saved.dir || 'asc',
+    };
+    const dir = current.key === key && current.dir !== 'desc' ? 'desc' : 'asc';
+    setPref('trackSort', { key, dir });
     navigate(`${window.location.pathname}?sort=${key}&dir=${dir}`, { replace: true });
     return;
   }
@@ -764,6 +1014,18 @@ content.addEventListener('click', async (e) => {
   const editAlbum = e.target.closest('[data-edit-album]');
   if (editAlbum) {
     editAlbumDialog(Number(editAlbum.dataset.editAlbum));
+    return;
+  }
+
+  const editArtist = e.target.closest('[data-edit-artist]');
+  if (editArtist) {
+    editArtistDialog(Number(editArtist.dataset.editArtist));
+    return;
+  }
+
+  const pin = e.target.closest('[data-pin-playlist]');
+  if (pin) {
+    setPinned(Number(pin.dataset.pinPlaylist), pin.getAttribute('aria-pressed') !== 'true');
     return;
   }
 
@@ -828,8 +1090,9 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (track.albumId) {
     items.push({ label: 'Zum Album', icon: 'disc', onSelect: () => navigate(`/albums/${track.albumId}`) });
   } else {
-    // A single has no album page and no album year - it gets its own.
-    items.push({ label: 'Jahr bearbeiten …', icon: 'edit', onSelect: () => editSingleYearDialog(track) });
+    // A single has no album page to take its cover and its year from - it
+    // carries both itself, so it gets its own editor.
+    items.push({ label: 'Single bearbeiten …', icon: 'edit', onSelect: () => editSingleDialog(track) });
   }
   if (track.artistId) {
     items.push({ label: 'Zum Interpreten', icon: 'user', onSelect: () => navigate(`/artists/${track.artistId}`) });
@@ -963,6 +1226,19 @@ el.shuffleBtn.addEventListener('click', () => player.setShuffle(!player.state.sh
 el.repeatBtn.addEventListener('click', () => player.cycleRepeat());
 el.muteBtn.addEventListener('click', () => player.toggleMute());
 el.volume.addEventListener('input', () => player.setVolume(Number(el.volume.value) / 100));
+
+// The wheel over the volume control changes it, the way a streaming client
+// does: up is louder. Not passive - the page must not scroll underneath it.
+const VOLUME_STEP = 0.05;
+document.querySelector('.volume').addEventListener(
+  'wheel',
+  (e) => {
+    e.preventDefault();
+    player.setVolume(player.state.volume + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP));
+  },
+  { passive: false }
+);
+
 el.queueBtn.addEventListener('click', () => el.queue.classList.toggle('open'));
 document.getElementById('queue-close').addEventListener('click', () => el.queue.classList.remove('open'));
 el.visualBtn.addEventListener('click', openVisualizer);
@@ -1466,6 +1742,7 @@ async function boot() {
   shell.playlists = data.playlists;
   shell.starCounts = data.stars;
   shell.issues = data.issues;
+  shell.prefs = data.prefs || {};
 
   let savedTheme = null;
   try {

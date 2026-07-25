@@ -7,7 +7,9 @@
 //
 // What can be edited is what the file has to answer: year, genres and cover.
 // Title, artist and track number come from the folder structure - editing those
-// here would only last until the next scan reads the folder names again.
+// here would only last until the next scan reads the folder names again. The
+// profile picture of an artist is the one thing that comes from nowhere else at
+// all, so it needs no lock: no scan ever writes it.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -43,7 +45,10 @@ function parseGenres(value) {
   return [...seen.values()];
 }
 
-async function writeCover(albumId, cover) {
+// `baseName` says what the picture belongs to ("album-7", "artist-3",
+// "track-91"); the timestamp appended to it is what stops the browser from
+// serving the old picture from cache after a replacement.
+async function writeCover(baseName, cover) {
   const type = IMAGE_TYPES[String(cover.type || '').toLowerCase()];
   if (!type) return { error: 'bad_image' };
 
@@ -56,18 +61,25 @@ async function writeCover(albumId, cover) {
   if (!data.length || data.length > MAX_COVER_BYTES) return { error: 'image_too_big' };
   if (!type.magic.every((byte, i) => data[i] === byte)) return { error: 'bad_image' };
 
-  // A new name per save, so a replaced cover is not served from the browser
-  // cache under the old URL.
-  const name = `album-${albumId}-${Date.now()}${type.ext}`;
+  const name = `${baseName}-${Date.now()}${type.ext}`;
   await fs.writeFile(path.join(coversDir, name), data);
   return { name };
 }
 
-// Deletes a cover file that no album references any more. Best effort: a file
-// left behind is harmless, a failed edit would not be.
+// Deletes a cover file nothing references any more. Best effort: a file left
+// behind is harmless, a failed edit would not be.
 async function dropCoverFile(name) {
   if (!name) return;
-  const inUse = db.prepare('SELECT 1 FROM albums WHERE cover = ?').get(name);
+  const inUse = db
+    .prepare(
+      `SELECT 1 FROM albums  WHERE cover = @name
+        UNION ALL
+       SELECT 1 FROM artists WHERE cover = @name
+        UNION ALL
+       SELECT 1 FROM tracks  WHERE cover = @name
+       LIMIT 1`
+    )
+    .get({ name });
   if (inUse) return;
   try {
     await fs.unlink(path.join(coversDir, name));
@@ -120,7 +132,7 @@ export async function updateAlbum(albumId, patch) {
     if (patch.cover === null) {
       db.prepare("UPDATE albums SET cover = '', cover_locked = 1 WHERE id = ?").run(album.id);
     } else {
-      const written = await writeCover(album.id, patch.cover || {});
+      const written = await writeCover(`album-${album.id}`, patch.cover || {});
       if (written.error) return { error: written.error };
       db.prepare('UPDATE albums SET cover = ?, cover_locked = 1 WHERE id = ?').run(written.name, album.id);
     }
@@ -130,18 +142,52 @@ export async function updateAlbum(albumId, patch) {
   return { ok: true };
 }
 
-// The year of a single. An album track takes its year from its album, so this
-// is only for the files that belong to none - they have nowhere else to carry
-// one. Same deal as an album edit: it lives in the database, and the lock keeps
-// the next scan from putting the file's year back (an emptied year too).
-export function updateTrackYear(trackId, value) {
-  const track = db.prepare('SELECT id, album_id FROM tracks WHERE id = ?').get(trackId);
+// Year and cover art of a single. An album track takes both from its album, so
+// this is only for the files that belong to none - they have nowhere else to
+// carry them. Same deal as an album edit: it lives in the database, and the
+// locks keep the next scan from putting the file's version back (an emptied
+// year and a removed cover too).
+export async function updateSingle(trackId, patch) {
+  const track = db.prepare('SELECT id, album_id, cover FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
   if (track.album_id) return { error: 'not_a_single' };
 
-  const year = parseYear(value);
-  if (!year.ok) return { error: 'invalid_year' };
+  if ('year' in patch) {
+    const year = parseYear(patch.year);
+    if (!year.ok) return { error: 'invalid_year' };
+    db.prepare('UPDATE tracks SET year = ?, year_locked = 1 WHERE id = ?').run(year.year, track.id);
+  }
 
-  db.prepare('UPDATE tracks SET year = ?, year_locked = 1 WHERE id = ?').run(year.year, track.id);
+  if ('cover' in patch) {
+    const previous = track.cover;
+    if (patch.cover === null) {
+      db.prepare("UPDATE tracks SET cover = '', cover_locked = 1 WHERE id = ?").run(track.id);
+    } else {
+      const written = await writeCover(`track-${track.id}`, patch.cover || {});
+      if (written.error) return { error: written.error };
+      db.prepare('UPDATE tracks SET cover = ?, cover_locked = 1 WHERE id = ?').run(written.name, track.id);
+    }
+    await dropCoverFile(previous);
+  }
+
+  return { ok: true };
+}
+
+// The profile picture of an artist. Nothing else about an artist can be edited:
+// the name is the folder name, and the next scan would read it again anyway.
+// No lock needed - the scanner never writes this column.
+export async function updateArtistCover(artistId, cover) {
+  const artist = db.prepare('SELECT id, cover FROM artists WHERE id = ?').get(artistId);
+  if (!artist) return { error: 'not_found' };
+
+  const previous = artist.cover;
+  if (cover === null) {
+    db.prepare("UPDATE artists SET cover = '' WHERE id = ?").run(artist.id);
+  } else {
+    const written = await writeCover(`artist-${artist.id}`, cover || {});
+    if (written.error) return { error: written.error };
+    db.prepare('UPDATE artists SET cover = ? WHERE id = ?').run(written.name, artist.id);
+  }
+  await dropCoverFile(previous);
   return { ok: true };
 }

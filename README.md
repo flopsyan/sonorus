@@ -20,9 +20,16 @@ belong to the account that created them.
 
 ### Library
 
-- **Alle Songs** - every track in the library, sortable and searchable.
+- **Alle Songs** - every track in the library, sortable and searchable. Clicking
+  a column header sorts by it, clicking it again reverses the direction, and the
+  sort is remembered on your account until you change it again.
 - **Interpreten** - all artists, with their albums, singles and tracks.
-- **Alben** - album grid with embedded cover art, track list per album.
+- **Alben** - album grid with embedded cover art, track list per album. Sortable
+  by title, artist, year or number of songs, each in both directions ("Titel
+  Z-A", "Jahr, älteste zuerst"), and the choice is remembered like the one on
+  Alle Songs.
+- **Cover groß ansehen** - clicking the artwork on an album or artist page opens
+  it at full size; click anywhere or press Escape to close it again.
 - **Genres** - everything grouped by genre (multi-genre tags supported).
 - **The folder structure is the library.** Artist, album, track number and title
   come from the layout, not from the file tags:
@@ -53,11 +60,15 @@ belong to the account that created them.
   scan does not put the file's version back. Title, artist and track number are
   not editable: they come from the folder structure, which the next scan reads
   again.
-- **Singles have a year of their own.** A single belongs to no album, so nothing
-  else can carry one: the list under "Singles" has a Jahr column, and the year
-  comes from the file tag or from "Jahr bearbeiten" in the track's context menu.
-  Locked and never written into the file, exactly like an album edit. The Singles
-  folder itself has no year - only the songs in it do.
+- **Singles bearbeiten** - a single belongs to no album, so nothing else can
+  carry its year or its cover art: the list under "Singles" has a Jahr column,
+  and "Single bearbeiten" in the track's context menu sets both. Locked and never
+  written into the file, exactly like an album edit. The Singles folder itself
+  has no year - only the songs in it do.
+- **Interpret bearbeiten** - the artist page has a "Bearbeiten" button for the
+  profile picture. Without one the artist keeps borrowing the cover of one of the
+  albums, which is what it did before. The name is not editable: it is the name
+  of the folder, and the next scan would read it back again.
 - Rescan on demand from the settings; unchanged files are skipped, removed files
   disappear from the library - **except when you rated them, put them in a
   playlist or listened to them.** Those keep their row and are shown greyed out
@@ -72,7 +83,7 @@ belong to the account that created them.
   it goes to the track that really played before, shuffle included.
 - The seek bar is the top edge of the transport: full width, grab it anywhere.
 - Shuffle and repeat (off / repeat all / repeat one).
-- Volume slider with mute.
+- Volume slider with mute. The mouse wheel over it works too: up is louder.
 - **Aktuelle Wiedergabeliste** - the live queue in a side panel, showing the
   real upcoming order even while shuffle is on; drag to reorder, click to jump.
 - A live level meter in the transport and a fullscreen **Visualisierung**, both
@@ -104,11 +115,19 @@ belong to the account that created them.
 - Create, rename and delete playlists; add tracks from any view.
 - **Playlist folders** to group playlists in the sidebar.
 - Drag and drop to reorder tracks inside a playlist.
+- **Drag and drop in the sidebar** to arrange the playlists themselves: up and
+  down inside their list, onto a folder to move them in, or back out to the top
+  level. The order is stored on your account.
+- **Anpinnen** keeps a playlist at the top of its list, marked with a pin.
+  Right-click it in the sidebar, or use the button on the playlist page.
 - **Sterne-Playlists** - rate any track from 1 to 5 stars from any track list or
   from the transport; Sonorus keeps one automatic playlist per rating that
   always reflects the current ratings. Clicking a track's current rating again
   clears it. **Nicht bewertet** is the counterpart: everything still waiting for
   a rating.
+- **Several ratings at once.** Every star playlist has a row of switches above
+  it, one per rating: switch on 4 and 5 and you get one combined list of both
+  (`/stars/5,4`), best rated first. "Nicht bewertet" can join in too.
 - Automatic views for recently added, recently played and most played tracks.
 
 ### Statistik
@@ -128,10 +147,10 @@ same numbers.
   played in is shown as the zero it is instead of being left out.
 - The most played tracks, artists and albums, with play count and time.
 
-A play is counted once a track has run for 30 seconds (or half its length, for
-short tracks). What is counted is the **time actually listened**: the player
-keeps reporting how far it really got, so skipping away after a minute counts
-as a minute, not as a whole track.
+A play is counted once a track has run for 30 seconds - a third of its length
+for tracks shorter than that, which can never reach the mark. What is counted is
+the **time actually listened**: the player keeps reporting how far it really
+got, so skipping away after a minute counts as a minute, not as a whole track.
 
 ### CSV import
 

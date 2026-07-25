@@ -18,8 +18,7 @@ import {
   getAlbum,
   listGenres,
   getGenre,
-  tracksByStars,
-  unratedTracks,
+  tracksByStarSelection,
   starCounts,
   recentlyAdded,
   recentlyPlayed,
@@ -39,13 +38,14 @@ import {
   addTracks,
   removeItem,
   reorderItems,
+  reorderPlaylists,
   createFolder,
   renameFolder,
   deleteFolder,
 } from '../models/playlists.js';
 import { setRating, recordPlay, updatePlaySeconds, clearHistory, historyCount } from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
-import { updateAlbum, updateTrackYear } from '../models/edits.js';
+import { updateAlbum, updateSingle, updateArtistCover } from '../models/edits.js';
 import {
   listIssues,
   countIssues,
@@ -81,7 +81,7 @@ const ERRORS = {
   invalid_name: 'Bitte einen Namen angeben.',
   invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
   invalid_year: 'Bitte ein Jahr zwischen 1000 und 2999 angeben.',
-  not_a_single: 'Nur Singles haben ein eigenes Jahr. Songs eines Albums bekommen es vom Album.',
+  not_a_single: 'Nur Singles lassen sich einzeln bearbeiten. Songs eines Albums bekommen Jahr und Cover vom Album.',
   nothing_to_edit: 'Es gibt nichts zu ändern.',
   bad_image: 'Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.',
   image_too_big: 'Das Bild ist zu groß (maximal 6 MB).',
@@ -155,12 +155,16 @@ router.get('/tracks/:id', (req, res) => {
   res.json({ ok: true, track });
 });
 
-// The only thing a track can be edited for is the year of a single - everything
-// else about it comes from the folder structure or from its album.
-router.patch('/tracks/:id', (req, res) => {
-  if (!('year' in req.body)) return fail(res, 'nothing_to_edit');
+// A track can be edited where it has nobody to take the value from: year and
+// cover art of a single. Everything else comes from the folder structure or
+// from the album.
+router.patch('/tracks/:id', async (req, res) => {
+  const patch = {};
+  if ('year' in req.body) patch.year = req.body.year;
+  if ('cover' in req.body) patch.cover = req.body.cover;
+  if (!Object.keys(patch).length) return fail(res, 'nothing_to_edit');
 
-  const result = updateTrackYear(id(req.params.id), req.body.year);
+  const result = await updateSingle(id(req.params.id), patch);
   if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
   res.json({ ok: true, track: getTrack(id(req.params.id), req.user.id) });
 });
@@ -173,6 +177,16 @@ router.get('/artists/:id', (req, res) => {
   const artist = getArtist(id(req.params.id), req.user.id);
   if (!artist) return fail(res, 'not_found', 404);
   res.json({ ok: true, artist });
+});
+
+// The profile picture, and nothing else: the name of an artist is the name of
+// the folder, so the next scan would read it back anyway.
+router.patch('/artists/:id', async (req, res) => {
+  if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
+
+  const result = await updateArtistCover(id(req.params.id), req.body.cover);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, artist: getArtist(id(req.params.id), req.user.id) });
 });
 
 router.get('/albums', (req, res) => {
@@ -213,12 +227,12 @@ router.get('/genres/:id', (req, res) => {
   res.json({ ok: true, genre });
 });
 
-// 0 is the list of everything that has no rating yet.
+// 0 is the list of everything that has no rating yet. Several ratings can be
+// asked for at once ("4,5"), which gives one combined list.
 router.get('/stars/:stars', (req, res) => {
-  const stars = id(req.params.stars);
-  if (!(stars >= 0 && stars <= 5)) return fail(res, 'invalid_stars');
-  const tracks = stars === 0 ? unratedTracks(req.user.id) : tracksByStars(stars, req.user.id);
-  res.json({ ok: true, stars, tracks });
+  const stars = [...new Set(String(req.params.stars).split(',').map((v) => id(v)))];
+  if (!stars.length || stars.some((n) => !(n >= 0 && n <= 5))) return fail(res, 'invalid_stars');
+  res.json({ ok: true, stars, tracks: tracksByStarSelection(stars, req.user.id) });
 });
 
 // The home page: what is new, what was played, what gets played most.
@@ -295,6 +309,15 @@ router.post('/playlists', (req, res) => {
   res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
 });
 
+// The sidebar order of one container after a drag. Declared before the :id
+// routes so "order" is never read as a playlist id.
+router.put('/playlists/order', (req, res) => {
+  const folderId = id(req.body.folderId) || null;
+  const result = reorderPlaylists(req.user.id, folderId, req.body.ids || []);
+  if (result.error) return fail(res, result.error, 404);
+  res.json({ ok: true, tree: playlistTree(req.user.id) });
+});
+
 router.get('/playlists/:id', (req, res) => {
   const playlist = getPlaylist(req.user.id, id(req.params.id));
   if (!playlist) return fail(res, 'not_found', 404);
@@ -305,6 +328,7 @@ router.patch('/playlists/:id', (req, res) => {
   const patch = {};
   if ('name' in req.body) patch.name = req.body.name;
   if ('folderId' in req.body) patch.folderId = id(req.body.folderId) || null;
+  if ('pinned' in req.body) patch.pinned = !!req.body.pinned;
   const result = updatePlaylist(req.user.id, id(req.params.id), patch);
   if (result.error) return fail(res, result.error, 404);
   res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
