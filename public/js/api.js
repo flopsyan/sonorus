@@ -21,7 +21,15 @@ async function request(method, path, body, extra) {
   try {
     data = await res.json();
   } catch {
-    throw new Error('Unerwartete Antwort vom Server.');
+    // Not JSON means the answer did not come from the app itself: a reverse
+    // proxy refusing the request size, a gateway error, a route that does not
+    // exist. The status is the only clue there is, so it goes into the message -
+    // a bare "Unerwartete Antwort" names no cause at all.
+    throw new Error(
+      res.status === 413
+        ? 'Die Anfrage war für den Server zu groß.'
+        : `Unerwartete Antwort vom Server (HTTP ${res.status}).`
+    );
   }
   if (!res.ok || data.ok === false) {
     throw new Error(data.message || 'Da ist etwas schiefgelaufen.');

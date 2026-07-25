@@ -608,7 +608,7 @@ sidebarNav.addEventListener('drop', async (e) => {
 // The music folder is read-only, so every edit here changes the library and not
 // the files - which the dialogs say out loud, because it is not obvious.
 
-const COVER_HINT = 'JPG, PNG oder WebP, maximal 6 MB. Am besten quadratisch.';
+const COVER_HINT = 'JPG, PNG oder WebP. Große Bilder werden automatisch verkleinert. Am besten quadratisch.';
 const EDIT_NOTE = `<p class="panel-hint">Änderungen gelten nur in Sonorus - deine Dateien im
   Musikordner werden nicht angefasst. Ein späterer Scan überschreibt sie nicht mehr.</p>`;
 
@@ -628,6 +628,38 @@ function coverField(name, { label, cover, title, hint = COVER_HINT }) {
     </div>`;
 }
 
+// A cover is never shown larger than a few hundred pixels, so the picture is
+// scaled down here before it goes anywhere. A photo from a phone or from the
+// web is several megabytes and base64 adds a third on top - big enough for the
+// reverse proxy in front of the app to refuse the request (nginx allows 1 MB by
+// default) before Express ever sees it, which is exactly the "Unerwartete
+// Antwort vom Server" that made this feature unusable in the deployment.
+// Re-encoding as JPEG also means the server always gets a type it accepts,
+// whatever the file dialog handed us.
+const MAX_COVER_EDGE = 1000;
+const COVER_QUALITY = 0.85;
+
+async function prepareCover(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_COVER_EDGE / Math.max(bitmap.width, bitmap.height));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+
+  const ctx = canvas.getContext('2d');
+  // JPEG has no transparency: without a background a transparent PNG goes black.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  // The CSP allows data: for images, so the same string serves as preview and
+  // as upload payload - no blob URL needed.
+  const url = canvas.toDataURL('image/jpeg', COVER_QUALITY);
+  return { type: 'image/jpeg', data: url.slice(url.indexOf(',') + 1), url };
+}
+
 // Reports every pick back through `onPick`: null for "remove it", an object for
 // a new picture. Until it fires, the caller leaves the cover alone.
 function wireCoverField(root, name, title, onPick) {
@@ -640,18 +672,16 @@ function wireCoverField(root, name, title, onPick) {
     preview.innerHTML = art(null, title);
   });
 
-  input.addEventListener('change', () => {
+  input.addEventListener('change', async () => {
     const file = input.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      // The CSP allows data: for images, so the same string serves as preview
-      // and as upload payload - no blob URL needed.
-      const url = String(reader.result);
-      onPick({ type: file.type, data: url.slice(url.indexOf(',') + 1) });
-      preview.innerHTML = `<img src="${esc(url)}" alt="" />`;
-    };
-    reader.readAsDataURL(file);
+    try {
+      const cover = await prepareCover(file);
+      onPick({ type: cover.type, data: cover.data });
+      preview.innerHTML = `<img src="${esc(cover.url)}" alt="" />`;
+    } catch {
+      toast('Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.', 'err');
+    }
   });
 }
 

@@ -69,6 +69,11 @@ belong to the account that created them.
   profile picture. Without one the artist keeps borrowing the cover of one of the
   albums, which is what it did before. The name is not editable: it is the name
   of the folder, and the next scan would read it back again.
+- Every uploaded picture (album, single, artist) is **scaled down in the browser**
+  to at most 1000 px on its longer side and re-encoded as JPEG before it is sent.
+  A cover is never shown larger than that, and it keeps the upload small enough
+  for a reverse proxy in front of Sonorus to let it through - nginx, for one,
+  allows a 1 MB request body by default.
 - Rescan on demand from the settings; unchanged files are skipped, removed files
   disappear from the library - **except when you rated them, put them in a
   playlist or listened to them.** Those keep their row and are shown greyed out

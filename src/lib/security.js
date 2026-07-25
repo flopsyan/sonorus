@@ -50,7 +50,13 @@ export function rejectCrossSite(req, res, next) {
   if (!cross) return next();
 
   if (req.path.startsWith('/api/')) {
-    return res.status(403).json({ ok: false, error: 'Anfrage von fremder Herkunft blockiert.' });
+    // `message` is what the client shows - without it the toast falls back to
+    // a generic "Da ist etwas schiefgelaufen".
+    return res.status(403).json({
+      ok: false,
+      error: 'cross_site',
+      message: 'Anfrage von fremder Herkunft blockiert.',
+    });
   }
   return res.status(403).render('error', {
     title: 'Nicht erlaubt',

@@ -85,7 +85,13 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);
+  // A body over the JSON limit never reaches its route: body-parser hands it
+  // straight to this handler, and "Serverfehler" would say nothing about why.
+  const tooLarge = err && (err.type === 'entity.too.large' || err.status === 413);
   if (req.path.startsWith('/api/')) {
+    if (tooLarge) {
+      return res.status(413).json({ ok: false, error: 'too_large', message: 'Die Daten sind zu groß für den Server.' });
+    }
     return res.status(500).json({ ok: false, error: 'server_error', message: 'Serverfehler.' });
   }
   res.status(500).render('error', {
