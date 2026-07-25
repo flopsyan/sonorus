@@ -456,6 +456,12 @@ body.app { height: 100vh; overflow: hidden; }
 .th-sort.active { color: var(--accent); }
 .sort-caret { font-size: 0.6rem; }
 
+/* The file is gone, the rating is not: the row stays, dimmed and unplayable,
+   and its title attribute says where the file used to be. */
+.track-row.item.missing { opacity: 0.5; }
+.track-row.item.missing .track-title { text-decoration: line-through; text-decoration-color: var(--text-faint); }
+.track-row.item.missing:hover { background: var(--surface); opacity: 0.75; }
+
 .track-row.item:hover { background: var(--surface); }
 .track-row.item.playing { background: var(--accent-soft); }
 .track-row.item.playing .track-title { color: var(--accent); }
@@ -795,6 +801,7 @@ body.app { height: 100vh; overflow: hidden; }
 .badge { font-size: 0.66rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; letter-spacing: 0.04em; }
 .badge.admin { background: var(--accent-soft); color: var(--accent); }
 .badge.you { background: var(--surface-2); color: var(--text-dim); }
+.badge.gone { background: var(--surface-2); color: var(--text-faint); }
 
 /* Import notices: a persistent list of what the CSV import could not find */
 .issue-list { max-height: 460px; overflow-y: auto; margin: 0 -6px; }

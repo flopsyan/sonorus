@@ -624,8 +624,8 @@ function scanBlock(scan, lastScan) {
         !running && scan.phase === 'done' && scan.finishedAt
           ? `<div class="setting-sub mt-sm">
               ${fmt.number(scan.added)} neu · ${fmt.number(scan.updated)} aktualisiert · ${fmt.number(scan.removed)} entfernt${
-                scan.failed ? ` · ${fmt.number(scan.failed)} nicht lesbar` : ''
-              }
+                scan.kept ? ` · ${fmt.number(scan.kept)} fehlen, aber bewertet` : ''
+              }${scan.failed ? ` · ${fmt.number(scan.failed)} nicht lesbar` : ''}
             </div>`
           : ''
       }

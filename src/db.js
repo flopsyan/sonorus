@@ -84,6 +84,9 @@ db.exec(`
     codec       TEXT NOT NULL DEFAULT '',
     lossless    INTEGER NOT NULL DEFAULT 0,
     cover       TEXT NOT NULL DEFAULT '',
+    -- Set when the file is gone but the row has to stay: a rating, a playlist
+    -- entry or a play refers to it. Empty means the file is there.
+    missing_at  TEXT NOT NULL DEFAULT '',
     size        INTEGER NOT NULL DEFAULT 0,
     mtime       INTEGER NOT NULL DEFAULT 0,
     norm_title  TEXT NOT NULL DEFAULT '',
@@ -114,6 +117,8 @@ function addColumn(table, name, definition) {
 
 // A single has no album, so it carries its own artwork.
 addColumn('tracks', 'cover', "TEXT NOT NULL DEFAULT ''");
+// A rated track survives its file: the row stays and is marked instead.
+addColumn('tracks', 'missing_at', "TEXT NOT NULL DEFAULT ''");
 
 // --- Per-account data -------------------------------------------------------
 // The library is shared, everything below belongs to one account: playlists

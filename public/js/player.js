@@ -202,13 +202,17 @@ async function start() {
   }
 }
 
-// Replaces the queue and starts at `startIndex`.
+// Replaces the queue and starts at `startIndex`. Tracks whose file is gone are
+// still listed (they keep their rating), but they never enter the queue - so
+// the index has to be mapped onto the filtered list.
 export function playTracks(tracks, startIndex = 0, source = '') {
-  const list = (tracks || []).filter(Boolean);
+  const all = (tracks || []).filter(Boolean);
+  const wanted = all[startIndex];
+  const list = all.filter((t) => !t.missing);
   if (!list.length) return;
   state.queue = list;
   state.source = source;
-  buildOrder(startIndex);
+  buildOrder(wanted ? Math.max(0, list.indexOf(wanted)) : 0);
   load(currentTrack(), true);
   save();
   emit();
@@ -315,7 +319,7 @@ export function seekTo(fraction) {
 // Appends to the end of the queue. With shuffle on the new tracks are appended
 // to the play order too, so "als Nächstes" stays predictable.
 export function enqueue(tracks, source = '') {
-  const list = (tracks || []).filter(Boolean);
+  const list = (tracks || []).filter((t) => t && !t.missing);
   if (!list.length) return;
   // Filling an empty queue only cues the first track up; adding to the queue
   // should never start playing on its own.
@@ -338,7 +342,7 @@ export function enqueue(tracks, source = '') {
 
 // Inserts right after the current track.
 export function playNext(tracks) {
-  const list = (tracks || []).filter(Boolean);
+  const list = (tracks || []).filter((t) => t && !t.missing);
   if (!list.length) return;
   if (!state.queue.length) {
     playTracks(list, 0);

@@ -633,13 +633,17 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (!track) return;
   const index = view.tracks.indexOf(track);
 
-  const items = [
-    { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
-    { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
-    { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
-    null,
-    { label: 'Zu Playlist hinzufügen …', icon: 'list', onSelect: () => addToPlaylistDialog([trackId]) },
-  ];
+  // A track whose file is gone keeps its rating and its place in playlists, so
+  // it keeps its menu - only the playback entries would go nowhere.
+  const items = track.missing
+    ? [{ label: 'Zu Playlist hinzufügen …', icon: 'list', onSelect: () => addToPlaylistDialog([trackId]) }]
+    : [
+        { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
+        { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
+        { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
+        null,
+        { label: 'Zu Playlist hinzufügen …', icon: 'list', onSelect: () => addToPlaylistDialog([trackId]) },
+      ];
 
   if (track.albumId) {
     items.push({ label: 'Zum Album', icon: 'disc', onSelect: () => navigate(`/albums/${track.albumId}`) });

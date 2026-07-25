@@ -85,19 +85,29 @@ export function trackList(tracks, options = {}) {
   const rows = tracks
     .map((track, i) => {
       const shown = numbering === 'track' ? track.trackNo || i + 1 : i + 1;
-      return `<div class="track-row item" data-track-id="${track.id}" data-index="${i}"
+      // A track whose file is gone keeps its rating, so it keeps its row. It is
+      // greyed out, cannot be played, and says on hover where the file was.
+      const gone = !!track.missing;
+      return `<div class="track-row item${gone ? ' missing' : ''}" data-track-id="${track.id}" data-index="${i}"
+             ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(track.path)}"` : ''}
              ${track.itemId ? `data-item-id="${track.itemId}"` : ''}
              ${draggable ? 'draggable="true"' : ''}>
         <span class="track-index">
-          <button type="button" data-play-index="${i}" aria-label="${esc(track.title)} abspielen">
-            <span class="num-label">${shown}</span>
-            <span class="play-hint">${icon('play', 13)}</span>
-          </button>
+          ${
+            gone
+              ? `<span class="num-label">${shown}</span>`
+              : `<button type="button" data-play-index="${i}" aria-label="${esc(track.title)} abspielen">
+                  <span class="num-label">${shown}</span>
+                  <span class="play-hint">${icon('play', 13)}</span>
+                </button>`
+          }
         </span>
         <span class="track-main">
           <span class="track-art">${art(track.cover, track.album || track.title)}</span>
           <span class="track-text">
-            <span class="track-title">${esc(track.title)}</span>
+            <span class="track-title">${esc(track.title)}${
+              gone ? ' <span class="badge gone">fehlt</span>' : ''
+            }</span>
             <span class="track-artist">${
               track.artistId
                 ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>`

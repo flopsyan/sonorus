@@ -60,6 +60,7 @@ const state = {
   added: 0,
   updated: 0,
   removed: 0,
+  kept: 0, // files gone, rows kept because a rating or playlist needs them
   skipped: 0,
   failed: 0,
   startedAt: null,
@@ -250,19 +251,24 @@ async function collectFiles(root) {
 
 // --- Writing one track ------------------------------------------------------
 
-const selectTrackByPath = db.prepare('SELECT id, size, mtime, cover FROM tracks WHERE path = ?');
+const selectTrackByPath = db.prepare(
+  'SELECT id, size, mtime, cover, missing_at FROM tracks WHERE path = ?'
+);
+const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, duration,
-                      bitrate, codec, lossless, cover, size, mtime, norm_title, loose_title, norm_artist)
+                      bitrate, codec, lossless, cover, missing_at, size, mtime,
+                      norm_title, loose_title, norm_artist)
   VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @duration,
-          @bitrate, @codec, @lossless, @cover, @size, @mtime, @norm_title, @loose_title, @norm_artist)
+          @bitrate, @codec, @lossless, @cover, @missing_at, @size, @mtime,
+          @norm_title, @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
                     track_no = @track_no, disc_no = @disc_no, year = @year, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
-                    size = @size, mtime = @mtime, norm_title = @norm_title,
-                    loose_title = @loose_title, norm_artist = @norm_artist
+                    missing_at = @missing_at, size = @size, mtime = @mtime,
+                    norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist
    WHERE id = @id
 `);
 const clearTrackGenres = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
@@ -288,6 +294,9 @@ const writeTrack = db.transaction((row, genres, existingId) => {
 async function indexFile(filePath, stat, force) {
   const existing = selectTrackByPath.get(filePath);
   if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
+    // A file that was marked missing and is back unchanged never reaches the
+    // write below, so it is cleared here.
+    if (existing.missing_at) markFound.run(existing.id);
     state.skipped += 1;
     return;
   }
@@ -316,6 +325,7 @@ async function indexFile(filePath, stat, force) {
     lossless: format.lossless ? 1 : 0,
     // Only singles carry their own artwork; an album track shows its album's.
     cover: alId ? '' : (existing && existing.cover) || '',
+    missing_at: '',
     size: stat.size,
     mtime: Math.floor(stat.mtimeMs),
     norm_title: normalize(place.title),
@@ -338,9 +348,36 @@ async function indexFile(filePath, stat, force) {
 
 // --- Pruning ----------------------------------------------------------------
 
-// Removes rows whose file is gone, then the artists, albums and genres that no
-// track references any more. Playlist entries and ratings pointing at a removed
-// track cascade away with it.
+// A star rating outlives its file: deleting the row would cascade the rating
+// away, so a track someone has rated, put in a playlist or listened to is only
+// marked as missing and stays visible - greyed out, with its path. Everything
+// else nobody would miss is deleted as before.
+const isReferenced = db.prepare(`
+  SELECT 1 FROM ratings        WHERE track_id = @id
+   UNION ALL
+  SELECT 1 FROM playlist_items WHERE track_id = @id
+   UNION ALL
+  SELECT 1 FROM plays          WHERE track_id = @id
+   LIMIT 1
+`);
+const markMissing = db.prepare('UPDATE tracks SET missing_at = @now WHERE id = @id');
+const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
+
+const retireTracks = db.transaction((ids) => {
+  const now = new Date().toISOString();
+  let removed = 0;
+  for (const id of ids) {
+    if (isReferenced.get({ id })) markMissing.run({ id, now });
+    else {
+      deleteTrack.run(id);
+      removed += 1;
+    }
+  }
+  return removed;
+});
+
+// Removes the artists, albums and genres that no track references any more.
+// Playlist entries and ratings pointing at a deleted track cascade away with it.
 const prune = db.transaction(() => {
   db.exec(`
     DELETE FROM albums
@@ -368,6 +405,7 @@ export async function runScan() {
     added: 0,
     updated: 0,
     removed: 0,
+    kept: 0,
     skipped: 0,
     failed: 0,
     startedAt: new Date().toISOString(),
@@ -405,9 +443,8 @@ export async function runScan() {
     const known = db.prepare('SELECT id, path FROM tracks').all();
     const gone = known.filter((t) => !seen.has(t.path)).map((t) => t.id);
     if (gone.length) {
-      const del = db.prepare('DELETE FROM tracks WHERE id = ?');
-      db.transaction(() => gone.forEach((id) => del.run(id)))();
-      state.removed = gone.length;
+      state.removed = retireTracks(gone);
+      state.kept = gone.length - state.removed;
     }
     prune();
 
