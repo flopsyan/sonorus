@@ -43,7 +43,8 @@ import {
   renameFolder,
   deleteFolder,
 } from '../models/playlists.js';
-import { setRating, recordPlay, clearHistory, historyCount } from '../models/ratings.js';
+import { setRating, recordPlay, updatePlaySeconds, clearHistory, historyCount } from '../models/ratings.js';
+import { listeningStats } from '../models/stats.js';
 import {
   listIssues,
   countIssues,
@@ -226,9 +227,24 @@ router.put('/tracks/:id/rating', (req, res) => {
 });
 
 router.post('/plays', (req, res) => {
-  const result = recordPlay(req.user.id, id(req.body.trackId));
+  const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds);
   if (result.error) return fail(res, result.error, 404);
+  res.json({ ok: true, playId: result.id });
+});
+
+// The player keeps this up to date while a track runs, so the statistics count
+// the time actually listened instead of the length of the file.
+router.put('/plays/:id', (req, res) => {
+  updatePlaySeconds(req.user.id, id(req.params.id), req.body.seconds);
   res.json({ ok: true });
+});
+
+router.get('/stats', (req, res) => {
+  res.json({
+    ok: true,
+    library: libraryStats(),
+    listening: listeningStats(req.user.id, req.query.offset),
+  });
 });
 
 router.delete('/plays', (req, res) => {

@@ -54,6 +54,15 @@ export function plural(count, one, many) {
   return `${number(count)} ${count === 1 ? one : many}`;
 }
 
+// Just the day: "25. Juli 2026".
+export function date(value) {
+  if (!value) return '';
+  const iso = /^\d{4}-\d{2}-\d{2} /.test(value) ? `${value.replace(' ', 'T')}Z` : value;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export function dateTime(value) {
   if (!value) return '';
   // SQLite writes "YYYY-MM-DD HH:MM:SS" in UTC.

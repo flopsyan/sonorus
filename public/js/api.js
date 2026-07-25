@@ -2,8 +2,8 @@
 // failed request throws an Error carrying the German message the server sent,
 // so callers can show it straight in a toast.
 
-async function request(method, path, body) {
-  const options = { method, headers: {} };
+async function request(method, path, body, extra) {
+  const options = { method, headers: {}, ...extra };
   if (body !== undefined) {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
@@ -55,8 +55,12 @@ export const api = {
   search: (q) => request('GET', `/api/search${query({ q })}`),
 
   rate: (trackId, stars) => request('PUT', `/api/tracks/${trackId}/rating`, { stars }),
-  play: (trackId) => request('POST', '/api/plays', { trackId }),
+  play: (trackId, seconds) => request('POST', '/api/plays', { trackId, seconds }),
+  // keepalive lets the last report survive the page being closed.
+  playTime: (playId, seconds, keepalive = false) =>
+    request('PUT', `/api/plays/${playId}`, { seconds }, keepalive ? { keepalive: true } : undefined),
   clearHistory: () => request('DELETE', '/api/plays'),
+  stats: () => request('GET', `/api/stats?offset=${-new Date().getTimezoneOffset()}`),
 
   playlists: () => request('GET', '/api/playlists'),
   playlist: (id) => request('GET', `/api/playlists/${id}`),

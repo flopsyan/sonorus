@@ -192,11 +192,38 @@ export async function restore(prefs) {
 
 // --- Loading and playback ---------------------------------------------------
 
+// How much of the current track was really listened to, and the play row on the
+// server that is being kept up to date with it. The statistics count time spent
+// listening, so pausing, skipping ahead and leaving early all have to show up -
+// which the track length alone would never tell.
 let playCounted = false;
+let playId = null;
+let listened = 0;
+let lastTick = 0;
+let reported = 0;
+
+const REPORT_EVERY = 20; // seconds of listening between two reports
+
+// Sends the current total for this play. Called on a timer while playing, when
+// the track changes and when the page goes away.
+function reportListening(keepalive = false) {
+  if (!playId || Math.round(listened) <= reported) return;
+  reported = Math.round(listened);
+  api.playTime(playId, reported, keepalive).catch(() => {});
+}
+
+function resetListening() {
+  reportListening();
+  playCounted = false;
+  playId = null;
+  listened = 0;
+  lastTick = 0;
+  reported = 0;
+}
 
 function load(track, autoplay, startAt = 0) {
   if (!track) return;
-  playCounted = false;
+  resetListening();
   audio.src = `/api/stream/${track.id}`;
   if (startAt > 0) {
     audio.addEventListener('loadedmetadata', () => {
@@ -538,17 +565,39 @@ audio.addEventListener('timeupdate', () => {
   if (audio.buffered.length) {
     state.buffered = audio.buffered.end(audio.buffered.length - 1);
   }
+
+  // Time really spent listening: the step between two timeupdates, but only
+  // when it looks like playback. A jump (seeking) or a step backwards is not
+  // listening time.
+  const step = audio.currentTime - lastTick;
+  if (step > 0 && step < 2) listened += step;
+  lastTick = audio.currentTime;
+
   // Count a play once the track has run long enough to mean something.
   if (!playCounted && state.duration) {
     const threshold = Math.min(30, state.duration * 0.5);
-    if (audio.currentTime >= threshold) {
+    if (listened >= threshold) {
       playCounted = true;
+      reported = Math.round(listened);
       const track = currentTrack();
-      if (track) api.play(track.id).catch(() => {});
+      if (track) {
+        api
+          .play(track.id, reported)
+          .then((res) => {
+            playId = res.playId;
+          })
+          .catch(() => {});
+      }
     }
+  } else if (playId && listened - reported >= REPORT_EVERY) {
+    reportListening();
   }
+
   emit();
 });
+
+// The last seconds of a track would otherwise never be reported.
+window.addEventListener('pagehide', () => reportListening(true));
 
 audio.addEventListener('durationchange', () => {
   if (Number.isFinite(audio.duration)) state.duration = audio.duration;

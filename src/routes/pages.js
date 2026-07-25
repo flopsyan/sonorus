@@ -96,6 +96,7 @@ const APP_ROUTES = [
   '/stars/:stars',
   '/search',
   '/settings',
+  '/stats',
   '/profile',
 ];
 

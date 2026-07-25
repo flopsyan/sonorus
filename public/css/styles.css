@@ -304,17 +304,20 @@ body.app { height: 100vh; overflow: hidden; }
 }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
-.theme-switch {
+/* The segmented switch: the theme picker in the topbar and the time range on
+   the statistics page. Same control, but only the theme one is dropped on a
+   narrow screen. */
+.theme-switch, .seg-switch {
   display: inline-flex; background: var(--surface); border: 1px solid var(--line);
   border-radius: 999px; padding: 2px;
 }
-.theme-switch button {
+.theme-switch button, .seg-switch button {
   border: none; background: transparent; color: var(--text-dim);
   font-size: 0.78rem; font-weight: 600; padding: 4px 11px;
   border-radius: 999px; cursor: pointer;
 }
-.theme-switch button:hover { color: var(--text); }
-.theme-switch button.active { background: var(--surface-3); color: var(--text); }
+.theme-switch button:hover, .seg-switch button:hover { color: var(--text); }
+.theme-switch button.active, .seg-switch button.active { background: var(--surface-3); color: var(--text); }
 
 .avatar { display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -379,6 +382,48 @@ body.app { height: 100vh; overflow: hidden; }
 .readout-cell.accent .readout-value { color: var(--accent); }
 
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; }
+
+/* --- Statistics ------------------------------------------------------------ */
+/* Same front-panel language as the home readout: a column chart drawn from
+   plain divs (no chart library, and the CSP would block one anyway) and top
+   lists whose bar is part of the row. */
+
+.panel .readout { margin-bottom: 0; }
+.panel-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.panel-head-row h2 { margin: 0; }
+
+.chart { display: flex; align-items: flex-end; gap: 6px; height: 190px; overflow-x: auto; padding-bottom: 2px; }
+.chart-col { flex: 1 1 0; min-width: 28px; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }
+.chart-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.chart-bar {
+  display: block;
+  width: 100%; min-height: 2px; border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-soft));
+  transition: height 0.25s ease;
+}
+.chart-col:hover .chart-bar { background: var(--accent-hi); }
+.chart-key {
+  font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
+  color: var(--text-faint); white-space: nowrap;
+}
+
+.top-list { margin-bottom: 30px; }
+.top-row {
+  display: grid; grid-template-columns: 26px 40px minmax(0, 1fr) minmax(0, 1.1fr) 64px 90px;
+  align-items: center; gap: 12px;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+}
+.top-row:hover { background: var(--surface); }
+.top-rank { font-size: 0.8rem; color: var(--text-faint); text-align: right; }
+.top-art { width: 40px; height: 40px; border-radius: var(--radius-xs); overflow: hidden; background: var(--surface-2); }
+.top-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.top-art .art-fallback { font-size: 0.85rem; }
+.top-text { display: flex; flex-direction: column; min-width: 0; }
+.top-title { font-size: 0.91rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-sub { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-meter { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.top-meter .chart-bar { height: 100%; min-height: 0; border-radius: 3px; transition: width 0.25s ease; }
+.top-count, .top-time { font-size: 0.82rem; color: var(--text-dim); text-align: right; white-space: nowrap; }
 
 /* --- Card grids (albums, artists, genres) --------------------------------- */
 
@@ -880,6 +925,10 @@ body.app { height: 100vh; overflow: hidden; }
   .readout { grid-template-columns: 1fr 1fr; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px 12px; }
   .queue { width: 100%; }
+  /* The bar is the first thing to go when the row gets narrow - the number
+     next to it says the same thing. */
+  .top-row { grid-template-columns: 22px 36px minmax(0, 1fr) 46px; gap: 10px; }
+  .top-meter, .top-time { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -49,6 +49,7 @@ const ROUTES = [
   [/^\/stars\/([0-5])$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
   [/^\/settings$/, views.settings],
+  [/^\/stats$/, views.stats],
   [/^\/profile$/, views.profile],
 ];
 
@@ -262,6 +263,12 @@ function renderSidebar() {
 
     <nav class="nav-group">
       <div class="nav-group-head"><span class="rack-label">System</span></div>
+      ${navItem({
+        href: '/stats',
+        label: 'Statistik',
+        iconName: 'chart',
+        active: path === '/stats',
+      })}
       ${navItem({
         href: '/settings',
         label: 'Einstellungen',

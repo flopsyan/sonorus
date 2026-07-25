@@ -108,18 +108,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_track_genres_genre ON track_genres(genre_id);
 `);
 
-// Columns added after the first release. CREATE TABLE only runs on a fresh
-// database, so an existing one gets them here.
-function addColumn(table, name, definition) {
-  const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === name);
-  if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
-}
-
-// A single has no album, so it carries its own artwork.
-addColumn('tracks', 'cover', "TEXT NOT NULL DEFAULT ''");
-// A rated track survives its file: the row stays and is marked instead.
-addColumn('tracks', 'missing_at', "TEXT NOT NULL DEFAULT ''");
-
 // --- Per-account data -------------------------------------------------------
 // The library is shared, everything below belongs to one account: playlists
 // (optionally grouped in folders), star ratings and the listening history.
@@ -163,6 +151,9 @@ db.exec(`
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     track_id  INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    -- Seconds actually listened, reported by the player while it plays. Not
+    -- the track length: skipping away after a minute is a minute.
+    seconds   INTEGER NOT NULL DEFAULT 0,
     played_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_plays_user ON plays(user_id, played_at DESC);
@@ -182,6 +173,20 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_issues_user ON import_issues(user_id, created_at DESC);
 `);
+
+// --- Columns added after the first release ----------------------------------
+// CREATE TABLE only runs on a fresh database, so an existing one gets them here.
+function addColumn(table, name, definition) {
+  const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === name);
+  if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+}
+
+// A single has no album, so it carries its own artwork.
+addColumn('tracks', 'cover', "TEXT NOT NULL DEFAULT ''");
+// A rated track survives its file: the row stays and is marked instead.
+addColumn('tracks', 'missing_at', "TEXT NOT NULL DEFAULT ''");
+// Listening time per play, for the statistics.
+addColumn('plays', 'seconds', 'INTEGER NOT NULL DEFAULT 0');
 
 export function getMeta(key) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);

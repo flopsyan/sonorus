@@ -25,12 +25,31 @@ export function setRating(userId, trackId, stars) {
 }
 
 // Records that a track was listened to. The client calls this once a track has
-// played far enough to count, not when playback merely started.
-export function recordPlay(userId, trackId) {
+// played far enough to count, not when playback merely started. The id comes
+// back so the player can keep reporting how long it really played.
+export function recordPlay(userId, trackId, seconds = 0) {
   const track = db.prepare('SELECT id FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
-  db.prepare('INSERT INTO plays (user_id, track_id) VALUES (?, ?)').run(userId, trackId);
-  return { ok: true };
+  const info = db
+    .prepare('INSERT INTO plays (user_id, track_id, seconds) VALUES (?, ?, ?)')
+    .run(userId, trackId, clampSeconds(seconds));
+  return { ok: true, id: Number(info.lastInsertRowid) };
+}
+
+// The player reports the seconds it has played of the current track, several
+// times per track. Only ever upwards, and never more than a plausible day, so
+// a wrong value cannot poison the statistics.
+export function updatePlaySeconds(userId, playId, seconds) {
+  const value = clampSeconds(seconds);
+  const info = db
+    .prepare('UPDATE plays SET seconds = ? WHERE id = ? AND user_id = ? AND seconds < ?')
+    .run(value, playId, userId, value);
+  return { ok: true, updated: info.changes > 0 };
+}
+
+function clampSeconds(seconds) {
+  const value = Math.round(Number(seconds) || 0);
+  return Math.max(0, Math.min(24 * 3600, value));
 }
 
 export function clearHistory(userId) {

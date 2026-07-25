@@ -581,6 +581,176 @@ export async function profile(_params, ctx) {
   };
 }
 
+// --- Statistics -------------------------------------------------------------
+
+// The four ways of slicing the history, in the order the switch shows them.
+const RANGES = [
+  ['day', 'Tage', (key) => key.slice(8) + '.' + key.slice(5, 7) + '.'],
+  ['week', 'Wochen', (key) => 'KW ' + isoWeek(key)],
+  ['month', 'Monate', (key) => MONTHS[Number(key.slice(5, 7)) - 1] + ' ' + key.slice(2, 4)],
+  ['year', 'Jahre', (key) => key],
+];
+
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+// The bucket key of a week is its Monday; the label is the calendar week.
+function isoWeek(day) {
+  const d = new Date(`${day}T00:00:00Z`);
+  const thursday = new Date(d);
+  thursday.setUTCDate(d.getUTCDate() + 3);
+  const firstThursday = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round((thursday - firstThursday) / (7 * 86400000));
+  return String(week);
+}
+
+// A column chart without a library: the bars are divs and their height is set
+// through the CSSOM afterwards, because the CSP forbids inline styles.
+function chart(rows, label) {
+  if (!rows.length) return '<div class="empty small"><p>Für diesen Zeitraum gibt es noch nichts.</p></div>';
+  const peak = Math.max(...rows.map((r) => r.seconds), 1);
+  return `<div class="chart">${rows
+    .map(
+      (r) => `<div class="chart-col" title="${esc(label(r.key))}: ${esc(fmt.durationLong(r.seconds))} · ${fmt.plural(r.plays, 'Wiedergabe', 'Wiedergaben')}">
+          <div class="chart-track">
+            <div class="chart-bar" data-bar="${Math.round((r.seconds / peak) * 100)}"></div>
+          </div>
+          <span class="chart-key">${esc(label(r.key))}</span>
+        </div>`
+    )
+    .join('')}</div>`;
+}
+
+function topList(title, rows, href) {
+  if (!rows.length) return '';
+  const peak = Math.max(...rows.map((r) => r.plays), 1);
+  return `<section class="top-list">
+      <div class="section-head"><h2>${esc(title)}</h2></div>
+      ${rows
+        .map(
+          (r, i) => `<a class="top-row" href="${href(r)}" data-link>
+            <span class="top-rank num">${i + 1}</span>
+            <span class="top-art">${art(r.cover, r.title)}</span>
+            <span class="top-text">
+              <span class="top-title">${esc(r.title)}</span>
+              <span class="top-sub">${esc(r.artist || fmt.plural(r.tracks || 0, 'Song', 'Songs'))}</span>
+            </span>
+            <span class="top-meter"><span class="chart-bar" data-bar="${Math.round((r.plays / peak) * 100)}"></span></span>
+            <span class="top-count num">${fmt.number(r.plays)}×</span>
+            <span class="top-time num">${esc(fmt.durationRack(r.seconds))}</span>
+          </a>`
+        )
+        .join('')}
+    </section>`;
+}
+
+export async function stats() {
+  const { library, listening } = await api.stats();
+  const t = listening.totals;
+
+  const cell = (label, value, accent = false) =>
+    `<div class="readout-cell${accent ? ' accent' : ''}">
+      <span class="rack-label">${esc(label)}</span>
+      <span class="readout-value">${esc(value)}</span>
+    </div>`;
+
+  const ranges = RANGES.map(
+    ([key, label], i) =>
+      `<button type="button" data-range="${key}"${i === 0 ? ' class="active"' : ''}>${label}</button>`
+  ).join('');
+
+  const charts = RANGES.map(
+    ([key, , label], i) =>
+      `<div class="chart-panel" data-range-panel="${key}"${i === 0 ? '' : ' hidden'}>
+        ${chart(listening.buckets[key], label)}
+      </div>`
+  ).join('');
+
+  return {
+    title: 'Statistik',
+    html: `${pageHead(
+      'System',
+      'Statistik',
+      'Alles, was du gehört hast - über alle Geräte hinweg, gezählt für deinen Account.'
+    )}
+
+      <div class="panel">
+        <h2>Bibliothek</h2>
+        <div class="readout">
+          ${cell('Songs', fmt.number(library.tracks))}
+          ${cell('Interpreten', fmt.number(library.artists))}
+          ${cell('Alben', fmt.number(library.albums))}
+          ${cell('Singles', fmt.number(library.singles))}
+          ${cell('Genres', fmt.number(library.genres))}
+          ${cell('Spielzeit', fmt.durationRack(library.duration), true)}
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Gehört</h2>
+        <p class="panel-hint">${
+          t.plays
+            ? `Seit dem ${esc(fmt.date(t.firstPlay))} - das sind ${fmt.plural(t.days, 'Tag', 'Tage')}, an ${fmt.plural(t.activeDays, 'Tag', 'Tagen')} davon lief Musik.`
+            : 'Sobald du etwas hörst, füllt sich diese Seite von selbst. Ein Song zählt, wenn er 30 Sekunden gelaufen ist.'
+        }</p>
+        <div class="readout">
+          ${cell('Gesamt', fmt.durationRack(t.seconds), true)}
+          ${cell('Wiedergaben', fmt.number(t.plays))}
+          ${cell('Songs', fmt.number(t.tracks))}
+          ${cell('Interpreten', fmt.number(t.artists))}
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Durchschnitt</h2>
+        <p class="panel-hint">Gerechnet über die gesamte Zeit seit dem ersten Anhören, stille Tage eingeschlossen.</p>
+        <div class="readout">
+          ${cell('Pro Tag', fmt.durationRack(listening.average.day))}
+          ${cell('Pro Woche', fmt.durationRack(listening.average.week))}
+          ${cell('Pro Monat', fmt.durationRack(listening.average.month))}
+          ${cell('Pro Jahr', fmt.durationRack(listening.average.year))}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head-row">
+          <h2>Spielzeit</h2>
+          <div class="seg-switch" role="group" aria-label="Zeitraum">${ranges}</div>
+        </div>
+        ${charts}
+      </div>
+
+      ${topList('Meistgehörte Songs', listening.top.tracks, (r) =>
+        r.albumId ? `/albums/${r.albumId}` : `/artists/${r.artistId}`
+      )}
+      ${topList('Meistgehörte Interpreten', listening.top.artists, (r) => `/artists/${r.id}`)}
+      ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}`,
+
+    after(root) {
+      applyBars(root);
+      const switcher = root.querySelector('[aria-label="Zeitraum"]');
+      if (!switcher) return;
+      switcher.addEventListener('click', (e) => {
+        const button = e.target.closest('[data-range]');
+        if (!button) return;
+        switcher.querySelectorAll('[data-range]').forEach((b) => b.classList.toggle('active', b === button));
+        root.querySelectorAll('[data-range-panel]').forEach((panel) => {
+          panel.hidden = panel.dataset.rangePanel !== button.dataset.range;
+        });
+        applyBars(root);
+      });
+    },
+  };
+}
+
+// Bar sizes are data, not markup - same reason as the scan progress bar.
+function applyBars(root) {
+  root.querySelectorAll('[data-bar]').forEach((bar) => {
+    const percent = `${bar.dataset.bar}%`;
+    if (bar.closest('.top-meter')) bar.style.width = percent;
+    else bar.style.height = percent;
+  });
+}
+
 // --- Settings ---------------------------------------------------------------
 
 // The running scan reports its progress here, right under the button that

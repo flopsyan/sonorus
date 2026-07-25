@@ -46,7 +46,11 @@ belong to the account that created them.
   cover art. An album with no embedded artwork in any of its files picks up a
   `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
 - Rescan on demand from the settings; unchanged files are skipped, removed files
-  disappear from the library.
+  disappear from the library - **except when you rated them, put them in a
+  playlist or listened to them.** Those keep their row and are shown greyed out
+  and struck through, with the last known path in the tooltip, so a rating is
+  never lost to a moved file. Put the file back and the next scan clears the
+  mark.
 
 ### Playback
 
@@ -88,8 +92,28 @@ belong to the account that created them.
 - **Sterne-Playlists** - rate any track from 1 to 5 stars from any track list or
   from the transport; Sonorus keeps one automatic playlist per rating that
   always reflects the current ratings. Clicking a track's current rating again
-  clears it.
+  clears it. **Nicht bewertet** is the counterpart: everything still waiting for
+  a rating.
 - Automatic views for recently added, recently played and most played tracks.
+
+### Statistik
+
+A page of its own, next to the settings. The listening history lives on the
+server and belongs to the account, so the phone and the desktop count into the
+same numbers.
+
+- Library at a glance: songs, artists, albums, singles, genres, total playtime.
+- Time listened in total, since the first play, with the number of days music
+  actually ran.
+- Averages per day, week, month and year, over the whole time since the first
+  play - quiet days included.
+- A column chart of the time listened, by day, week, month or year.
+- The most played tracks, artists and albums, with play count and time.
+
+A play is counted once a track has run for 30 seconds (or half its length, for
+short tracks). What is counted is the **time actually listened**: the player
+keeps reporting how far it really got, so skipping away after a minute counts
+as a minute, not as a whole track.
 
 ### CSV import
 
