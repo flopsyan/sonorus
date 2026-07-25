@@ -36,6 +36,18 @@ export const TRACK_FROM = `
 // this; the star playlists and playlists deliberately do not.
 export const PRESENT = "t.missing_at = ''";
 
+// What "sort by year" actually sorts by: the release date, as exactly as it is
+// known. The year column alone puts two records of the same year in an
+// arbitrary order; the date string does not, because 'YYYY', 'YYYY-MM' and
+// 'YYYY-MM-DD' compare as text exactly the way they run in time - a bare year
+// first, then the dated releases of that year in order.
+//
+// A row from a library that has not been rescanned since the column was added
+// has no date, so the year stands in for it. NULL only when neither is known,
+// which keeps the NULLS LAST trick of the queries below working.
+const ALBUM_DATE = "COALESCE(NULLIF(al.release_date, ''), CAST(al.year AS TEXT))";
+const TRACK_DATE = "COALESCE(NULLIF(t.release_date, ''), CAST(t.year AS TEXT))";
+
 // Turns a raw row into the shape the client expects: a cover URL instead of a
 // file name, genres as an array, numbers as numbers.
 //
@@ -77,7 +89,7 @@ const SORTS = {
   artist: 'ar.name COLLATE NOCASE',
   album: 'al.title COLLATE NOCASE',
   duration: 't.duration',
-  year: 't.year',
+  year: TRACK_DATE,
   added: 't.added_at',
   stars: 'stars',
   genre: 'genres',
@@ -185,7 +197,7 @@ export function getArtist(id, userId) {
         WHERE al.artist_id = @id
         GROUP BY al.id
        HAVING trackCount > 0
-        ORDER BY (al.year IS NULL), al.year DESC, al.title COLLATE NOCASE ASC`
+        ORDER BY (${ALBUM_DATE}) IS NULL, ${ALBUM_DATE} DESC, al.title COLLATE NOCASE ASC`
     )
     .all({ id })
     .map(shapeAlbum);
@@ -194,7 +206,7 @@ export function getArtist(id, userId) {
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
         WHERE t.artist_id = @id AND ${PRESENT}
-        ORDER BY (al.year IS NULL), al.year DESC, al.title COLLATE NOCASE,
+        ORDER BY (${ALBUM_DATE}) IS NULL, ${ALBUM_DATE} DESC, al.title COLLATE NOCASE,
                  t.disc_no, t.track_no, t.title COLLATE NOCASE`
     )
     .all({ id, userId })
@@ -235,7 +247,7 @@ function shapeAlbum(row) {
 const ALBUM_SORTS = {
   title: 'al.title COLLATE NOCASE',
   artist: 'ar.name COLLATE NOCASE',
-  year: 'al.year',
+  year: ALBUM_DATE,
   tracks: 'trackCount',
 };
 

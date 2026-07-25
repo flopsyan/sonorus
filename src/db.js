@@ -66,7 +66,8 @@ db.exec(`
     year      INTEGER,
     -- The release date as exactly as the file knows it: 'YYYY-MM-DD', 'YYYY-MM'
     -- or just 'YYYY'. Only the album page shows it in full; everywhere else the
-    -- year above is what is printed, so it stays the sortable column.
+    -- year above is what is printed - but sorting by year goes by this column,
+    -- so two records of the same year keep their real order.
     release_date TEXT NOT NULL DEFAULT '',
     cover     TEXT NOT NULL DEFAULT '',
     -- Set once the user has edited the field by hand, so the scanner leaves it
