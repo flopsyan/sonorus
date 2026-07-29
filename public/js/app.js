@@ -1709,6 +1709,9 @@ searchInput.addEventListener('input', () => {
 document.getElementById('nav-back').addEventListener('click', () => window.history.back());
 document.getElementById('nav-forward').addEventListener('click', () => window.history.forward());
 document.getElementById('menu-toggle').addEventListener('click', () => sidebar.classList.toggle('open'));
+// The drawer covers part of the screen, so tapping the rest of it is the way
+// out. The scrim only exists while it is open (see .sidebar-backdrop).
+document.getElementById('sidebar-backdrop').addEventListener('click', () => sidebar.classList.remove('open'));
 
 // Theme switch
 function applyTheme(choice) {
