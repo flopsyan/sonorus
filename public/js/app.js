@@ -840,6 +840,29 @@ function editSingleDialog(track) {
   });
 }
 
+// "Bewerten": the stars at a size a thumb can hit. On a narrow screen the
+// track list has no room for the rating column, so the row menu is the only way
+// to a rating there - and this dialog is what it opens.
+function rateDialog(track) {
+  modal({
+    title: 'Bewerten',
+    body: `<p class="panel-hint">${esc(track.title)} · ${esc(track.artist)}</p>
+      <div class="rate-picker">${stars(track.stars, track.id)}</div>
+      <p class="panel-hint">Noch einmal auf die aktuelle Bewertung tippen entfernt sie wieder.</p>`,
+    footer: '<button type="button" class="btn btn-ghost" data-close>Schließen</button>',
+    onOpen(root) {
+      // The delegated star handler sits on #content, which this dialog is not
+      // part of, so it wires its own.
+      root.querySelector('.rate-picker').addEventListener('click', (e) => {
+        const star = e.target.closest('[data-rate]');
+        if (!star) return;
+        closeModal();
+        rate(track.id, Number(star.dataset.rate));
+      });
+    },
+  });
+}
+
 // A small single-field dialog, used for every "give this a name" case.
 function promptText({ title, label, value = '', confirmLabel = 'Anlegen', onSubmit }) {
   modal({
@@ -1123,6 +1146,11 @@ function openTrackMenu(x, y, trackId, itemId) {
         null,
         { label: 'Zu Playlist hinzufügen …', icon: 'list', onSelect: () => addToPlaylistDialog([trackId]) },
       ];
+
+  // The rating column is dropped from the track list on a narrow screen, so
+  // this entry is the phone's way to it - a missing file keeps its rating and
+  // therefore keeps the entry too.
+  items.push({ label: 'Bewerten …', icon: 'star', onSelect: () => rateDialog(track) });
 
   if (track.albumId) {
     items.push({ label: 'Zum Album', icon: 'disc', onSelect: () => navigate(`/albums/${track.albumId}`) });

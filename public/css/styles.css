@@ -598,6 +598,13 @@ body.app { height: 100vh; overflow: hidden; }
 .stars:not(.readonly) button:hover ~ button { color: var(--accent-hi); }
 .stars.readonly button { cursor: default; pointer-events: none; }
 
+/* The dialog behind "Bewerten …" in a track's menu: the same widget, at a size
+   a thumb can hit. It exists because the rating column is dropped from the
+   track list on a narrow screen. */
+.rate-picker { display: flex; justify-content: center; padding: 2px 0 14px; }
+.rate-picker .stars button { padding: 6px; }
+.rate-picker .stars button .icon { width: 30px; height: 30px; }
+
 /* Star playlists can be combined ("4 und 5 Sterne"), so the ratings the list is
    made of are switches, not links: the amber ones are in, the others are out. */
 .star-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
@@ -1084,6 +1091,12 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   .player.expanded .meter, .player.expanded .volume { display: none; }
   /* Opened from the full screen, the queue has to cover it. */
   .player.expanded ~ .queue { bottom: 0; z-index: 65; }
+}
+
+/* Without a pointer there is no hover to reveal anything, and the row menu is
+   where a phone reaches a track's actions - the rating among them. */
+@media (hover: none) {
+  .track-row .row-menu { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
