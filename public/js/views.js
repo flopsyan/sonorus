@@ -74,13 +74,16 @@ export async function home() {
   const data = await api.home();
   const s = data.stats;
 
-  const readout = `<div class="readout">
-      <div class="readout-cell"><span class="rack-label">Songs</span><span class="readout-value">${fmt.number(s.tracks)}</span></div>
-      <div class="readout-cell"><span class="rack-label">Interpreten</span><span class="readout-value">${fmt.number(s.artists)}</span></div>
-      <div class="readout-cell"><span class="rack-label">Alben</span><span class="readout-value">${fmt.number(s.albums)}</span></div>
-      <div class="readout-cell"><span class="rack-label">Singles</span><span class="readout-value">${fmt.number(s.singles)}</span></div>
-      <div class="readout-cell"><span class="rack-label">Genres</span><span class="readout-value">${fmt.number(s.genres)}</span></div>
-      <div class="readout-cell accent"><span class="rack-label">Spielzeit</span><span class="readout-value">${esc(fmt.durationRack(s.duration))}</span></div>
+  // The same five counts and the same playtime as the statistics page, so it
+  // is laid out the same way: the counts in one row, the playtime across the
+  // second, where a four-digit hour count still fits on one line.
+  const readout = `<div class="readout split">
+      ${readoutCell('Songs', fmt.number(s.tracks))}
+      ${readoutCell('Interpreten', fmt.number(s.artists))}
+      ${readoutCell('Alben', fmt.number(s.albums))}
+      ${readoutCell('Singles', fmt.number(s.singles))}
+      ${readoutCell('Genres', fmt.number(s.genres))}
+      ${readoutCell('Spielzeit', fmt.durationRack(s.duration), { accent: true, span: 10 })}
     </div>`;
 
   if (!s.tracks) {
@@ -862,10 +865,15 @@ function topList(title, rows, href) {
     </section>`;
 }
 
-const readoutCell = (label, value, accent = false) =>
-  `<div class="readout-cell${accent ? ' accent' : ''}">
+// One value on the front panel. `span` is how many of the split readout's ten
+// columns the cell takes and `sub` a quiet second line under the number - both
+// only used by the library readout, where two values need more room than a
+// plain count does.
+const readoutCell = (label, value, opts = {}) =>
+  `<div class="readout-cell${opts.accent ? ' accent' : ''}${opts.span ? ` span-${opts.span}` : ''}">
     <span class="rack-label">${esc(label)}</span>
     <span class="readout-value">${esc(value)}</span>
+    ${opts.sub ? `<span class="readout-sub">${esc(opts.sub)}</span>` : ''}
   </div>`;
 
 // Everything that belongs to the selected period, as one block: the switch, the
@@ -902,7 +910,7 @@ function periodSection(listening) {
       </div>
       ${nav}
       <div class="readout">
-        ${readoutCell('Spielzeit', fmt.durationRack(totals.seconds), true)}
+        ${readoutCell('Spielzeit', fmt.durationRack(totals.seconds), { accent: true })}
         ${readoutCell('Wiedergaben', fmt.number(totals.plays))}
         ${readoutCell('Songs', fmt.number(totals.tracks))}
         ${readoutCell('Interpreten', fmt.number(totals.artists))}
@@ -928,6 +936,9 @@ export async function stats(params, ctx) {
   // Which period is on screen. The arrows step from it, so it has to survive
   // between two renders of the block.
   let showing = listening.period;
+  // The day the most was listened to sits in the library readout - the one
+  // panel above the period that speaks for all of the history.
+  const best = t.bestDay;
 
   return {
     title: 'Statistik',
@@ -939,31 +950,29 @@ export async function stats(params, ctx) {
 
       <div class="panel">
         <h2>Bibliothek</h2>
-        <div class="readout">
+        ${
+          t.plays
+            ? ''
+            : '<p class="panel-hint">Sobald du etwas hörst, füllt sich diese Seite von selbst. Ein Song zählt, wenn er 30 Sekunden gelaufen ist.</p>'
+        }
+        <div class="readout split">
           ${readoutCell('Songs', fmt.number(library.tracks))}
           ${readoutCell('Interpreten', fmt.number(library.artists))}
           ${readoutCell('Alben', fmt.number(library.albums))}
           ${readoutCell('Singles', fmt.number(library.singles))}
           ${readoutCell('Genres', fmt.number(library.genres))}
-          ${readoutCell('Spielzeit', fmt.durationRack(library.duration), true)}
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>Gehört</h2>
-        <p class="panel-hint">${
-          t.plays
-            ? `Seit dem ${esc(fmt.date(t.firstPlay))} - das sind ${fmt.plural(t.days, 'Tag', 'Tage')}, an ${fmt.plural(t.activeDays, 'Tag', 'Tagen')} davon lief Musik.${
-                t.bestDay ? ` Am meisten lief am ${esc(dayLabel(t.bestDay.day))}.` : ''
-              }`
-            : 'Sobald du etwas hörst, füllt sich diese Seite von selbst. Ein Song zählt, wenn er 30 Sekunden gelaufen ist.'
-        }</p>
-        <div class="readout">
-          ${readoutCell('Gesamt', fmt.durationRack(t.seconds), true)}
-          ${readoutCell('Wiedergaben', fmt.number(t.plays))}
-          ${readoutCell('Songs', fmt.number(t.tracks))}
-          ${readoutCell('Interpreten', fmt.number(t.artists))}
-          ${t.bestDay ? readoutCell('Bester Tag', fmt.durationRack(t.bestDay.seconds)) : ''}
+          ${readoutCell('Spielzeit', fmt.durationRack(library.duration), {
+            accent: true,
+            span: best ? 5 : 10,
+          })}
+          ${
+            best
+              ? readoutCell('Bester Tag', fmt.durationRack(best.seconds), {
+                  span: 5,
+                  sub: RANGES.day.title(best.day),
+                })
+              : ''
+          }
         </div>
       </div>
 
@@ -972,8 +981,9 @@ export async function stats(params, ctx) {
           ? `<div class="panel">
         <h2>Durchschnitt</h2>
         <p class="panel-hint">Alles gemessen, nichts hochgerechnet: Grundlage sind die
-          ${fmt.plural(t.days, 'Tag', 'Tage')} seit dem ersten Anhören. Ein Hörtag ist ein Tag,
-          an dem wirklich Musik lief (${fmt.plural(t.activeDays, 'Tag', 'Tage')}).</p>
+          ${fmt.plural(t.days, 'Tag', 'Tage')} seit dem ersten Anhören am ${esc(fmt.date(t.firstPlay))}.
+          Ein Hörtag ist ein Tag, an dem wirklich Musik lief
+          (${fmt.plural(t.activeDays, 'Tag', 'Tage')}).</p>
         <div class="readout">
           ${readoutCell('Pro Tag', fmt.durationRack(listening.average.day))}
           ${readoutCell('Pro Hörtag', fmt.durationRack(listening.average.activeDay))}

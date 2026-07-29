@@ -395,6 +395,19 @@ body.app { height: 100vh; overflow: hidden; }
   color: var(--text); display: block; margin-top: 5px; white-space: nowrap;
 }
 .readout-cell.accent .readout-value { color: var(--accent); }
+.readout-sub { display: block; margin-top: 5px; font-size: 0.78rem; color: var(--text-dim); }
+
+/* Two kinds of value do not share a row of equal columns: five plain counts,
+   and the ones that need the width - a playtime heading for four digits of
+   hours, a date under the number. Ten columns are what makes both rows divide
+   evenly, five cells of two and then two of five. */
+.readout.split { grid-template-columns: repeat(10, 1fr); }
+.readout.split > .readout-cell { grid-column: span 2; }
+.readout.split > .readout-cell:nth-child(5) { border-right: none; }
+.readout.split > .span-5,
+.readout.split > .span-10 { border-top: 1px solid var(--line); }
+.readout.split > .span-5 { grid-column: span 5; }
+.readout.split > .span-10 { grid-column: span 10; border-right: none; }
 
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; }
 
@@ -1053,6 +1066,12 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   .seg-switch button { padding: 4px 8px; font-size: 0.73rem; }
   .period-title { font-size: 0.86rem; }
   .readout { grid-template-columns: 1fr 1fr; }
+  /* The split readout keeps its two kinds of row here, they just get narrower:
+     the counts two to a row, the wide values across the whole width. */
+  .readout.split { grid-template-columns: 1fr 1fr; }
+  .readout.split > .readout-cell { grid-column: span 1; }
+  .readout.split > .span-5,
+  .readout.split > .span-10 { grid-column: span 2; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px 12px; }
   .queue { width: 100%; }
   /* The bar is the first thing to go when the row gets narrow - the number
