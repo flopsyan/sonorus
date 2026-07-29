@@ -81,7 +81,8 @@ const ERRORS = {
   invalid_name: 'Bitte einen Namen angeben.',
   invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
   invalid_date: 'Bitte ein Datum wie 17.05.2013, 05.2013 oder 2013 angeben.',
-  not_a_single: 'Nur Singles lassen sich einzeln bearbeiten. Songs eines Albums bekommen Datum und Cover vom Album.',
+  not_a_single:
+    'Nur Singles lassen sich einzeln bearbeiten. Songs eines Albums bekommen Datum, Genres und Cover vom Album.',
   nothing_to_edit: 'Es gibt nichts zu ändern.',
   bad_image: 'Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.',
   image_too_big: 'Das Bild ist zu groß (maximal 6 MB).',
@@ -156,11 +157,12 @@ router.get('/tracks/:id', (req, res) => {
 });
 
 // A track can be edited where it has nobody to take the value from: release
-// date and cover art of a single. Everything else comes from the folder
+// date, genres and cover art of a single. Everything else comes from the folder
 // structure or from the album.
 router.patch('/tracks/:id', async (req, res) => {
   const patch = {};
   if ('date' in req.body) patch.date = req.body.date;
+  if ('genres' in req.body) patch.genres = req.body.genres;
   if ('cover' in req.body) patch.cover = req.body.cover;
   if (!Object.keys(patch).length) return fail(res, 'nothing_to_edit');
 

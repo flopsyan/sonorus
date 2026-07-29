@@ -798,9 +798,9 @@ async function editArtistDialog(artistId) {
   });
 }
 
-// "Single bearbeiten": cover art and release date. A song inside an album takes
-// both from its album, so this is only offered for the files that belong to
-// none - they have nothing else to carry them.
+// "Single bearbeiten": cover art, release date and genres. A song inside an
+// album takes all three from its album, so this is only offered for the files
+// that belong to none - they have nothing else to carry them.
 function editSingleDialog(track) {
   let cover;
 
@@ -814,6 +814,11 @@ function editSingleDialog(track) {
                  value="${esc(fmt.releaseDateInput(track.releaseDate))}" placeholder="z. B. 17.05.2013" />
           <p class="panel-hint">${DATE_HINT} Leer lassen, um das Datum zu entfernen.</p>
         </div>
+        <div class="field">
+          <label for="tr-genres">Genres</label>
+          <input type="text" id="tr-genres" value="${esc(track.genres.join(', '))}" placeholder="Rock, Indie Pop" />
+          <p class="panel-hint">Mehrere durch Komma trennen. Leer lassen, um die Genres zu entfernen.</p>
+        </div>
         ${EDIT_NOTE}
       </form>`,
     footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
@@ -825,7 +830,10 @@ function editSingleDialog(track) {
 
       root.querySelector('#single-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const patch = { date: root.querySelector('#tr-date').value.trim() };
+        const patch = {
+          date: root.querySelector('#tr-date').value.trim(),
+          genres: root.querySelector('#tr-genres').value,
+        };
         if (cover !== undefined) patch.cover = cover;
         try {
           await api.updateTrack(track.id, patch);
@@ -1155,8 +1163,8 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (track.albumId) {
     items.push({ label: 'Zum Album', icon: 'disc', onSelect: () => navigate(`/albums/${track.albumId}`) });
   } else {
-    // A single has no album page to take its cover and its date from - it
-    // carries both itself, so it gets its own editor.
+    // A single has no album page to take its cover, its date and its genres
+    // from - it carries all three itself, so it gets its own editor.
     items.push({ label: 'Single bearbeiten …', icon: 'edit', onSelect: () => editSingleDialog(track) });
   }
   if (track.artistId) {

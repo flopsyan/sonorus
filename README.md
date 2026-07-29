@@ -66,10 +66,11 @@ belong to the account that created them.
   artist and track number are not editable: they come from the folder structure,
   which the next scan reads again.
 - **Singles bearbeiten** - a single belongs to no album, so nothing else can
-  carry its release date or its cover art: the list under "Singles" has a Jahr
-  column, and "Single bearbeiten" in the track's context menu sets both. Locked
-  and never written into the file, exactly like an album edit. The Singles folder
-  itself has no year - only the songs in it do.
+  carry its release date, its genres or its cover art: the list under "Singles"
+  has a Jahr column, and "Single bearbeiten" in the track's context menu sets all
+  three. Genres are comma separated like on an album, and an empty field removes
+  them. Locked and never written into the file, exactly like an album edit. The
+  Singles folder itself has no year - only the songs in it do.
 - **Interpret bearbeiten** - the artist page has a "Bearbeiten" button for the
   profile picture. Without one the artist keeps borrowing the cover of one of the
   albums, which is what it did before. The name is not editable: it is the name

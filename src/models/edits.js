@@ -92,8 +92,10 @@ async function dropCoverFile(name) {
   }
 }
 
-const setGenres = db.transaction((albumId, genres) => {
-  const tracks = db.prepare('SELECT id FROM tracks WHERE album_id = ?').all(albumId);
+// Genres are stored per track, never on the album - `track_genres` stays the
+// single source for the Genres view. So an album edit writes the same list to
+// every track of the album, and a single edit to the one track it is about.
+const setGenres = db.transaction((trackIds, genres) => {
   const findGenre = db.prepare('SELECT id FROM genres WHERE name = ?');
   const addGenre = db.prepare('INSERT INTO genres (name) VALUES (?)');
   const clear = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
@@ -105,15 +107,17 @@ const setGenres = db.transaction((albumId, genres) => {
     return found ? found.id : Number(addGenre.run(name).lastInsertRowid);
   });
 
-  for (const track of tracks) {
-    clear.run(track.id);
-    for (const genreId of ids) link.run(track.id, genreId);
-    lock.run(track.id);
+  for (const trackId of trackIds) {
+    clear.run(trackId);
+    for (const genreId of ids) link.run(trackId, genreId);
+    lock.run(trackId);
   }
 
   // A genre nobody uses any more should not stay in the sidebar.
   db.exec('DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM track_genres)');
 });
+
+const albumTrackIds = db.prepare('SELECT id FROM tracks WHERE album_id = ?');
 
 // Applies the parts of `patch` that are present. Every field is optional, so
 // the dialog can send only what changed.
@@ -130,7 +134,10 @@ export async function updateAlbum(albumId, patch) {
   }
 
   if ('genres' in patch) {
-    setGenres(album.id, parseGenres(patch.genres));
+    setGenres(
+      albumTrackIds.all(album.id).map((row) => row.id),
+      parseGenres(patch.genres)
+    );
   }
 
   if ('cover' in patch) {
@@ -148,11 +155,11 @@ export async function updateAlbum(albumId, patch) {
   return { ok: true };
 }
 
-// Release date and cover art of a single. An album track takes both from its
-// album, so this is only for the files that belong to none - they have nowhere
-// else to carry them. Same deal as an album edit: it lives in the database, and
-// the locks keep the next scan from putting the file's version back (an emptied
-// date and a removed cover too).
+// Release date, genres and cover art of a single. An album track takes all
+// three from its album, so this is only for the files that belong to none -
+// they have nowhere else to carry them. Same deal as an album edit: it lives in
+// the database, and the locks keep the next scan from putting the file's version
+// back (an emptied date, emptied genres and a removed cover too).
 export async function updateSingle(trackId, patch) {
   const track = db.prepare('SELECT id, album_id, cover FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
@@ -164,6 +171,10 @@ export async function updateSingle(trackId, patch) {
     db.prepare(
       'UPDATE tracks SET year = ?, release_date = ?, year_locked = 1 WHERE id = ?'
     ).run(parsed.year, parsed.date, track.id);
+  }
+
+  if ('genres' in patch) {
+    setGenres([track.id], parseGenres(patch.genres));
   }
 
   if ('cover' in patch) {
