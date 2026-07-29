@@ -918,8 +918,12 @@ function periodSection(listening) {
     ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}`;
 }
 
-export async function stats() {
-  const { library, listening } = await api.stats();
+export async function stats(params, ctx) {
+  // The page opens on the width the account picked last - "Gesamt" stays
+  // "Gesamt" until it is changed again. Only the width is kept, not which
+  // period the arrows walked to: a saved day would be yesterday tomorrow.
+  const saved = ctx.prefs.statsRange;
+  const { library, listening } = await api.stats(saved ? { range: saved } : {});
   const t = listening.totals;
   // Which period is on screen. The arrows step from it, so it has to survive
   // between two renders of the block.
@@ -982,7 +986,7 @@ export async function stats() {
 
       <div id="period-view">${periodSection(listening)}</div>`,
 
-    after(root) {
+    after(root, ctx2) {
       applyBars(root);
       const view = root.querySelector('#period-view');
       if (!view) return;
@@ -1003,6 +1007,9 @@ export async function stats() {
           const data = await api.stats(
             width ? { range: width.dataset.range } : { range: showing.range, period: step.dataset.period }
           );
+          // Remembered only once the width really answered, so a failed
+          // request cannot leave the page opening on something it never showed.
+          if (width) ctx2.setPref('statsRange', width.dataset.range);
           showing = data.listening.period;
           view.innerHTML = periodSection(data.listening);
           applyBars(view);
