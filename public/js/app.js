@@ -169,6 +169,8 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   navigate(link.getAttribute('href'));
   sidebar.classList.remove('open');
+  // Following a link out of the fullscreen player means going to that page.
+  expandPlayer(false);
 });
 
 // ============================================================================
@@ -1252,6 +1254,10 @@ const el = {
   queueList: document.getElementById('queue-list'),
   queueSource: document.getElementById('queue-source'),
   meter: document.getElementById('meter'),
+  playerBar: document.querySelector('.player'),
+  now: document.querySelector('.now'),
+  nowSource: document.getElementById('now-source'),
+  collapseBtn: document.getElementById('now-collapse'),
 };
 
 el.playBtn.addEventListener('click', () => player.toggle());
@@ -1278,7 +1284,53 @@ el.queueBtn.addEventListener('click', () => el.queue.classList.toggle('open'));
 document.getElementById('queue-close').addEventListener('click', () => el.queue.classList.remove('open'));
 el.visualBtn.addEventListener('click', openVisualizer);
 
+// --- The player as a screen of its own (phones) -----------------------------
+// A phone gets the transport as a strip along the bottom; tapping it opens the
+// same element full screen (.player.expanded in the stylesheet). Nothing is
+// duplicated - it is the bar with another layout - so every control in it keeps
+// the wiring it already has, and the app is still there once it is closed.
+const compact = window.matchMedia('(max-width: 900px)');
+
+function expandPlayer(on) {
+  el.playerBar.classList.toggle('expanded', !!on && compact.matches && !!player.currentTrack());
+}
+
+el.now.addEventListener('click', (e) => {
+  // A link still leads somewhere, and inside the full screen the artwork is
+  // just artwork - the chevron is the way out.
+  if (e.target.closest('a[data-link]') || el.playerBar.classList.contains('expanded')) return;
+  expandPlayer(true);
+});
+
+el.collapseBtn.addEventListener('click', () => expandPlayer(false));
+
+// Swiping the artwork away is what a phone reaches for before it looks for a
+// button. Only downwards, and only far enough that no tap can mean it.
+const SWIPE_CLOSE = 90;
+let swipeFrom = null;
+
+el.now.addEventListener('touchstart', (e) => {
+  swipeFrom = el.playerBar.classList.contains('expanded') && e.touches.length === 1
+    ? e.touches[0].clientY
+    : null;
+}, { passive: true });
+
+el.now.addEventListener('touchend', (e) => {
+  if (swipeFrom === null) return;
+  const travelled = e.changedTouches[0].clientY - swipeFrom;
+  swipeFrom = null;
+  if (travelled > SWIPE_CLOSE) expandPlayer(false);
+}, { passive: true });
+
+// A wide viewport has no fullscreen layout to fall back on, so drop the state
+// with it (turning the phone sideways is enough to get here).
+compact.addEventListener('change', (e) => {
+  if (!e.matches) expandPlayer(false);
+});
+
 el.nowArt.addEventListener('click', () => {
+  // On a phone the artwork opens the full screen instead - see above.
+  if (compact.matches) return;
   const track = player.currentTrack();
   if (track && track.albumId) navigate(`/albums/${track.albumId}`);
 });
@@ -1310,6 +1362,16 @@ window.addEventListener('mouseup', () => {
   seeking = false;
   el.seek.classList.remove('dragging');
 });
+
+// A finger has no button to hold down, so touch drives the same rail directly.
+// Not passive: without preventDefault the page scrolls under the drag and the
+// browser fires a synthetic click on top of it afterwards.
+function seekFromTouch(e) {
+  e.preventDefault();
+  seekFromEvent(e);
+}
+el.seek.addEventListener('touchstart', seekFromTouch, { passive: false });
+el.seek.addEventListener('touchmove', seekFromTouch, { passive: false });
 
 // Keyboard access for the rail: it is a slider, so arrows should move it.
 el.seek.addEventListener('keydown', (e) => {
@@ -1376,6 +1438,8 @@ function renderPlayer(s) {
   el.muteBtn.innerHTML = icon(s.muted || s.volume === 0 ? 'volume-mute' : s.volume < 0.5 ? 'volume-low' : 'volume-high', 18);
   el.muteBtn.setAttribute('aria-label', s.muted ? 'Ton einschalten' : 'Stumm schalten');
   if (document.activeElement !== el.volume) el.volume.value = String(Math.round(s.volume * 100));
+
+  el.nowSource.textContent = s.source || 'Warteschlange';
 
   if (track) {
     el.nowArt.innerHTML = art(track.cover, track.album || track.title);
