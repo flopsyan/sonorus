@@ -242,6 +242,9 @@ function load(track, autoplay, startAt = 0) {
   state.duration = track.duration || 0;
   state.currentTime = startAt;
   updateMediaSession(track);
+  // The length is already known from the database, so the bar can show the new
+  // track right away instead of staying on the previous one until it opens.
+  updatePositionState(true);
   if (autoplay) start();
   else emit();
 }
@@ -533,14 +536,22 @@ export function applyRating(trackId, starValue) {
 }
 
 // --- Media Session ----------------------------------------------------------
+// This is the whole notification the phone shows while something is playing.
+// It has three halves and it needs all of them: the metadata fills the card,
+// a registered action handler is what makes a button exist at all, and
+// setPositionState is what draws the progress bar. Without the last one the
+// notification has a title and a play button and nothing else.
+
+const session = 'mediaSession' in navigator ? navigator.mediaSession : null;
+const canPosition = !!session && typeof session.setPositionState === 'function';
 
 function updateMediaSession(track) {
-  if (!('mediaSession' in navigator) || !track) return;
+  if (!session || !track) return;
   const artwork = track.cover
     ? [{ src: track.cover, sizes: '512x512', type: 'image/jpeg' }]
     : [];
   try {
-    navigator.mediaSession.metadata = new window.MediaMetadata({
+    session.metadata = new window.MediaMetadata({
       title: track.title,
       artist: track.artist,
       album: track.album || '',
@@ -551,20 +562,59 @@ function updateMediaSession(track) {
   }
 }
 
+function setPlaybackState(value) {
+  if (session) session.playbackState = value;
+}
+
+// The playhead the notification draws. The browser interpolates between two
+// calls from playbackRate, so this does not need to run per timeupdate - once a
+// second corrects the drift, and every jump of the playhead forces one.
+let positionAt = 0;
+const POSITION_EVERY = 1000; // ms between two unforced updates
+
+function updatePositionState(force = false) {
+  if (!canPosition) return;
+  // audio.duration is the truth once the file is open; before that the length
+  // from the database keeps the bar from starting out empty.
+  const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : state.duration;
+  if (!duration || !Number.isFinite(duration)) return;
+  const now = performance.now();
+  if (!force && now - positionAt < POSITION_EVERY) return;
+  positionAt = now;
+  try {
+    session.setPositionState({
+      duration,
+      playbackRate: audio.playbackRate || 1,
+      // Clamped on purpose: a position past the duration is a TypeError, and
+      // right after a track change the element still reports the old playhead.
+      position: Math.min(Math.max(audio.currentTime || 0, 0), duration),
+    });
+  } catch {
+    // an implementation that rejects these values must not take the
+    // timeupdate handler down with it
+  }
+}
+
 function wireMediaSession() {
-  if (!('mediaSession' in navigator)) return;
+  if (!session) return;
   const handlers = {
     play: () => start(),
     pause: () => audio.pause(),
     previoustrack: () => previous(),
     nexttrack: () => next(true),
     seekto: (details) => {
-      if (details && typeof details.seekTime === 'number') audio.currentTime = details.seekTime;
+      if (!details || typeof details.seekTime !== 'number') return;
+      if (details.fastSeek && typeof audio.fastSeek === 'function') audio.fastSeek(details.seekTime);
+      else audio.currentTime = details.seekTime;
+      updatePositionState(true);
     },
   };
+  // Deliberately no seekbackward/seekforward: a notification only has room for
+  // a few buttons and the browser picks them from what is registered, so those
+  // two would compete with skipping a track - which is what this is for.
   for (const [action, handler] of Object.entries(handlers)) {
     try {
-      navigator.mediaSession.setActionHandler(action, handler);
+      session.setActionHandler(action, handler);
     } catch {
       // action not supported by this browser
     }
@@ -575,15 +625,21 @@ function wireMediaSession() {
 
 audio.addEventListener('play', () => {
   state.playing = true;
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  setPlaybackState('playing');
+  updatePositionState(true);
   emit();
 });
 
 audio.addEventListener('pause', () => {
   state.playing = false;
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  setPlaybackState('paused');
+  // The notification stops interpolating from the last reported position, so
+  // without this the bar would sit wherever the final update left it.
+  updatePositionState(true);
   emit();
 });
+
+audio.addEventListener('seeked', () => updatePositionState(true));
 
 audio.addEventListener('timeupdate', () => {
   state.currentTime = audio.currentTime;
@@ -597,6 +653,7 @@ audio.addEventListener('timeupdate', () => {
   const step = audio.currentTime - lastTick;
   if (step > 0 && step < 2) listened += step;
   lastTick = audio.currentTime;
+  updatePositionState();
 
   // Count a play once the track has run long enough to mean something.
   if (!playCounted && state.duration) {
@@ -625,6 +682,7 @@ window.addEventListener('pagehide', () => reportListening(true));
 
 audio.addEventListener('durationchange', () => {
   if (Number.isFinite(audio.duration)) state.duration = audio.duration;
+  updatePositionState(true);
   emit();
 });
 
