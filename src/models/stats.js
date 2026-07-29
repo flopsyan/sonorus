@@ -7,6 +7,10 @@
 // A play row is written once a track has run far enough to count, and the
 // player keeps reporting how many seconds it really played into `seconds` -
 // so skipping away after a minute is a minute, not a full track.
+//
+// The page reads the history **one period at a time**: pick how wide a period
+// is (a day, a week, a month, a year, or everything) and which one, and the
+// chart, the readout and the three top lists all answer for that period.
 
 import db from '../db.js';
 
@@ -28,31 +32,100 @@ function zone(offsetMinutes) {
   return `${m >= 0 ? '+' : '-'}${Math.abs(m)} minutes`;
 }
 
-// The four ways of slicing the history. `key` is what a bucket is grouped by,
-// `label` how it is written on the axis.
-const BUCKETS = {
-  day: { key: "strftime('%Y-%m-%d', p.played_at, @tz)", limit: 14 },
+// The five ways of slicing the history.
+//
+// `key` puts a play into one period and is *also* what selects that period
+// ("the period shown" is simply "key = @period"), so a period key can never
+// mean one thing while grouping and another while filtering. `inner` is how
+// that one period is broken down for the chart.
+//
+// Both are written as functions of the column they read, so the same rule can
+// be pointed at `'now'` to name the current period without a second copy of it.
+// `all` has no key - it is every period at once and therefore filters nothing.
+const RANGES = {
+  day: {
+    key: (c) => `strftime('%Y-%m-%d', ${c}, @tz)`,
+    inner: (c) => `strftime('%H', ${c}, @tz)`,
+  },
   // The Monday of that week: forward to Sunday, then back six days.
-  week: { key: "date(p.played_at, @tz, 'weekday 0', '-6 days')", limit: 12 },
-  month: { key: "strftime('%Y-%m', p.played_at, @tz)", limit: 12 },
-  year: { key: "strftime('%Y', p.played_at, @tz)", limit: 10 },
+  week: {
+    key: (c) => `date(${c}, @tz, 'weekday 0', '-6 days')`,
+    inner: (c) => `strftime('%Y-%m-%d', ${c}, @tz)`,
+  },
+  month: {
+    key: (c) => `strftime('%Y-%m', ${c}, @tz)`,
+    inner: (c) => `strftime('%Y-%m-%d', ${c}, @tz)`,
+  },
+  year: {
+    key: (c) => `strftime('%Y', ${c}, @tz)`,
+    inner: (c) => `strftime('%Y-%m', ${c}, @tz)`,
+  },
+  all: {
+    key: null,
+    inner: (c) => `strftime('%Y', ${c}, @tz)`,
+  },
 };
 
-function bucket(userId, tz, name) {
-  const { key, limit } = BUCKETS[name];
-  return db
-    .prepare(
-      `SELECT ${key} AS key, COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
-        WHERE p.user_id = @userId
-        GROUP BY key
-        ORDER BY key DESC
-        LIMIT ${limit}`
-    )
-    .all({ userId, tz })
-    .reverse();
+export const DEFAULT_RANGE = 'day';
+
+// A period key is only ever produced by the expressions above, so anything that
+// does not have their shape (YYYY, YYYY-MM, YYYY-MM-DD) did not come from here.
+// It is bound as a parameter either way; this only keeps a typed URL honest
+// instead of quietly showing an empty period.
+const KEY_SHAPE = /^\d{4}(-\d{2}(-\d{2})?)?$/;
+
+// Account and period live in the same WHERE, so no query on this page can
+// forget one of them. better-sqlite3 refuses parameters a statement does not
+// use, which is why the bindings are handed back together with the clause.
+function scope(userId, range, period) {
+  const { key } = RANGES[range];
+  if (!key || !period) return { where: 'p.user_id = @userId', params: { userId } };
+  return {
+    where: `p.user_id = @userId AND ${key('p.played_at')} = @period`,
+    params: { userId, period },
+  };
 }
 
-function topTracks(userId, limit) {
+// Which period a moment in time falls into - used for "now" (where the
+// navigator starts) and for the first play (how far back it may step).
+function periodKey(range, tz, when) {
+  const { key } = RANGES[range];
+  if (!key || !when) return '';
+  return db.prepare(`SELECT ${key('@when')} AS key`).get({ tz, when }).key || '';
+}
+
+function periodTotals(userId, tz, range, period) {
+  const { where, params } = scope(userId, range, period);
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS plays, ROUND(COALESCE(SUM(${SECONDS}), 0)) AS seconds,
+              COUNT(DISTINCT t.id) AS tracks,
+              COUNT(DISTINCT t.artist_id) AS artists,
+              COUNT(DISTINCT t.album_id) AS albums ${FROM}
+        WHERE ${where}`
+    )
+    .get(params.period ? { ...params, tz } : params);
+}
+
+// The bars inside the selected period: hours of a day, days of a week or month,
+// months of a year, years of everything. Only the slots something was played in
+// come back - the client fills the quiet ones, because it knows how long a
+// period is and the query does not.
+function chart(userId, tz, range, period) {
+  const { where, params } = scope(userId, range, period);
+  return db
+    .prepare(
+      `SELECT ${RANGES[range].inner('p.played_at')} AS key,
+              COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
+        WHERE ${where}
+        GROUP BY key
+        ORDER BY key ASC`
+    )
+    .all({ ...params, tz });
+}
+
+function topTracks(userId, tz, range, period, limit) {
+  const { where, params } = scope(userId, range, period);
   return db
     .prepare(
       `SELECT t.id, t.title, ar.name AS artist, al.title AS album,
@@ -61,16 +134,17 @@ function topTracks(userId, limit) {
               COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
          LEFT JOIN artists ar ON ar.id = t.artist_id
          LEFT JOIN albums  al ON al.id = t.album_id
-        WHERE p.user_id = @userId
+        WHERE ${where}
         GROUP BY t.id
         ORDER BY plays DESC, seconds DESC
         LIMIT @limit`
     )
-    .all({ userId, limit })
+    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-function topArtists(userId, limit) {
+function topArtists(userId, tz, range, period, limit) {
+  const { where, params } = scope(userId, range, period);
   return db
     .prepare(
       `SELECT ar.id, ar.name AS title, COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds,
@@ -78,33 +152,36 @@ function topArtists(userId, limit) {
               (SELECT al.cover FROM albums al
                 WHERE al.artist_id = ar.id AND al.cover <> '' LIMIT 1) AS cover ${FROM}
          JOIN artists ar ON ar.id = t.artist_id
-        WHERE p.user_id = @userId
+        WHERE ${where}
         GROUP BY ar.id
         ORDER BY plays DESC, seconds DESC
         LIMIT @limit`
     )
-    .all({ userId, limit })
+    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-function topAlbums(userId, limit) {
+function topAlbums(userId, tz, range, period, limit) {
+  const { where, params } = scope(userId, range, period);
   return db
     .prepare(
       `SELECT al.id, al.title, ar.name AS artist, al.cover,
               COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
          JOIN albums al ON al.id = t.album_id
          LEFT JOIN artists ar ON ar.id = al.artist_id
-        WHERE p.user_id = @userId
+        WHERE ${where}
         GROUP BY al.id
         ORDER BY plays DESC, seconds DESC
         LIMIT @limit`
     )
-    .all({ userId, limit })
+    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-export function listeningStats(userId, offsetMinutes = 0, top = 10) {
+export function listeningStats(userId, offsetMinutes = 0, options = {}) {
   const tz = zone(offsetMinutes);
+  const range = RANGES[options.range] ? options.range : DEFAULT_RANGE;
+  const top = Math.max(1, Math.min(50, Math.round(Number(options.top) || 10)));
 
   const totals = db
     .prepare(
@@ -117,6 +194,13 @@ export function listeningStats(userId, offsetMinutes = 0, top = 10) {
         WHERE p.user_id = @userId`
     )
     .get({ userId, tz });
+
+  // The two ends the navigator may not step past: the period the first play
+  // falls into, and the one that is running right now.
+  const current = periodKey(range, tz, 'now');
+  const first = periodKey(range, tz, totals.firstPlay);
+  const asked = String(options.period || '');
+  const period = KEY_SHAPE.test(asked) ? asked : current;
 
   // Averages run over the whole time since the first play, not only over the
   // days something was played - "pro Tag" should include the quiet ones.
@@ -155,16 +239,22 @@ export function listeningStats(userId, offsetMinutes = 0, top = 10) {
       play: totals.plays ? totals.seconds / totals.plays : 0,
       playsPerDay: totals.plays / days,
     },
-    buckets: {
-      day: bucket(userId, tz, 'day'),
-      week: bucket(userId, tz, 'week'),
-      month: bucket(userId, tz, 'month'),
-      year: bucket(userId, tz, 'year'),
+    // What the selection currently shows, and the two ends it can move between.
+    // The client walks from `key` to its neighbour in its own timezone and uses
+    // `first` / `current` to know when to stop, so no round trip is needed just
+    // to grey out an arrow.
+    period: {
+      range,
+      key: period,
+      first,
+      current,
+      totals: periodTotals(userId, tz, range, period),
     },
+    chart: chart(userId, tz, range, period),
     top: {
-      tracks: topTracks(userId, top),
-      artists: topArtists(userId, top),
-      albums: topAlbums(userId, top),
+      tracks: topTracks(userId, tz, range, period, top),
+      artists: topArtists(userId, tz, range, period, top),
+      albums: topAlbums(userId, tz, range, period, top),
     },
   };
 }

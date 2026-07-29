@@ -407,6 +407,19 @@ body.app { height: 100vh; overflow: hidden; }
 .panel-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .panel-head-row h2 { margin: 0; }
 
+/* Which single period is on screen, with the arrows that walk to its
+   neighbours. Centred like the readout it sits on, so the name of the period
+   reads as the heading of everything below it. */
+.period-nav { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+.period-title {
+  font-size: 0.95rem; font-weight: 550; text-align: center;
+  min-width: 0; flex: 0 1 auto;
+}
+/* The whole block is swapped out at once while the next period is fetched -
+   dimming it says "these numbers are the old ones" without moving anything. */
+#period-view.busy { opacity: 0.55; pointer-events: none; }
+#period-view { transition: opacity 0.15s ease; }
+
 .chart { display: flex; align-items: flex-end; gap: 8px; height: 210px; overflow-x: auto; padding-bottom: 2px; }
 /* A width cap, or a single day of history would draw one bar across the whole
    panel. The labels above and below each bar need the min-width. */
@@ -440,6 +453,16 @@ body.app { height: 100vh; overflow: hidden; }
   font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
   color: var(--text-faint); white-space: nowrap;
 }
+
+/* A day is 24 bars and a long month is 31, so the columns have to give up most
+   of their width. The numbers stay - a value you only see after hovering is a
+   value you do not see - they are just allowed to wrap onto a second line
+   instead of pushing the whole chart into a horizontal scroll. */
+.chart.dense { gap: 3px; }
+.chart.dense .chart-col { min-width: 26px; max-width: 56px; }
+.chart.dense .chart-value { white-space: normal; font-size: 0.58rem; }
+.chart.dense .chart-plays { white-space: normal; font-size: 0.55rem; }
+.chart.dense .chart-key { font-size: 0.58rem; letter-spacing: 0; }
 
 .top-list { margin-bottom: 30px; }
 .top-row {
@@ -1025,6 +1048,10 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   .now-art { width: 46px; height: 46px; }
   .now .stars { display: none; }
   .theme-switch { display: none; }
+  /* Five widths at full size are wider than a phone. The switch itself stays -
+     it is the only way to change what the whole page below it shows. */
+  .seg-switch button { padding: 4px 8px; font-size: 0.73rem; }
+  .period-title { font-size: 0.86rem; }
   .readout { grid-template-columns: 1fr 1fr; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px 12px; }
   .queue { width: 100%; }

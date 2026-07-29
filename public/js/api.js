@@ -72,7 +72,10 @@ export const api = {
   playTime: (playId, seconds, keepalive = false) =>
     request('PUT', `/api/plays/${playId}`, { seconds }, keepalive ? { keepalive: true } : undefined),
   clearHistory: () => request('DELETE', '/api/plays'),
-  stats: () => request('GET', `/api/stats?offset=${-new Date().getTimezoneOffset()}`),
+  // The statistics answer for one period; `range` and `period` say which one.
+  // The offset is what makes a day the listener's day, not the server's.
+  stats: (params) =>
+    request('GET', `/api/stats${query({ offset: -new Date().getTimezoneOffset(), ...params })}`),
 
   playlists: () => request('GET', '/api/playlists'),
   playlist: (id) => request('GET', `/api/playlists/${id}`),

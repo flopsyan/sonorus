@@ -666,22 +666,32 @@ export async function profile(_params, ctx) {
     },
   };
 }
-
 // --- Statistics -------------------------------------------------------------
 
-// The four ways of slicing the history, in the order the switch shows them.
+// The history is read one period at a time. The switch picks how *wide* a
+// period is (a day, a week, a month, a year, or everything), the arrows next to
+// it pick *which* one - and the chart, the readout and the three top lists all
+// answer for exactly that period. "Meistgehörte Songs" therefore means "in
+// this week", not "ever"; "ever" is what the "Gesamt" width is for.
+
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
 // "2026-07-25" -> "25.07.2026". Cut from the string, not parsed into a Date, so
 // no timezone can move it to the day before.
 const dayLabel = (key) => `${key.slice(8)}.${key.slice(5, 7)}.${key.slice(0, 4)}`;
 
-const RANGES = [
-  ['day', 'Tage', (key) => key.slice(8) + '.' + key.slice(5, 7) + '.'],
-  ['week', 'Wochen', (key) => 'KW ' + isoWeek(key)],
-  ['month', 'Monate', (key) => MONTHS[Number(key.slice(5, 7)) - 1] + ' ' + key.slice(2, 4)],
-  ['year', 'Jahre', (key) => key],
-];
-
-const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+// A period key back into a local Date. Keys are 'YYYY', 'YYYY-MM' or
+// 'YYYY-MM-DD' and the parts they do not say start at the beginning of the
+// period. Built from the pieces, never handed to `new Date('2026-07-25')` -
+// that is parsed as UTC midnight and lands on the 24th west of Greenwich.
+function keyDate(key) {
+  const [y, m, d] = String(key).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
 
 // The bucket key of a week is its Monday; the label is the calendar week.
 function isoWeek(day) {
@@ -693,85 +703,136 @@ function isoWeek(day) {
   return String(week);
 }
 
-const pad2 = (n) => String(n).padStart(2, '0');
-const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const monthTitle = (key) => keyDate(key).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
 
-// How to walk one range backwards, in the browser's own timezone - the same one
-// the server grouped the buckets by. `limit` mirrors the number of periods the
-// query returns, so the chart never shows more than was asked for.
-const STEPS = {
-  day: { limit: 14, start: (d) => d, key: isoDay, back: (d) => d.setDate(d.getDate() - 1) },
-  // A week is keyed by its Monday.
-  week: {
-    limit: 12,
-    start: (d) => {
-      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-      return d;
+// One entry per width, in the order the switch shows them. `title` names the
+// single period the arrows have landed on, `step` walks to the neighbouring
+// one, and `slots` lists every bar the period is made of - all of them, because
+// the query only returns what was played and a silent Tuesday is a real zero,
+// not a missing value. Everything here works in the browser's own timezone,
+// the same one the server grouped the plays by.
+const RANGES = {
+  day: {
+    label: 'Tage',
+    title: (key) =>
+      keyDate(key).toLocaleDateString('de-DE', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+      }),
+    step: (key, by) => {
+      const d = keyDate(key);
+      d.setDate(d.getDate() + by);
+      return isoDay(d);
     },
-    key: isoDay,
-    back: (d) => d.setDate(d.getDate() - 7),
+    slots: () => Array.from({ length: 24 }, (_, h) => pad2(h)),
+    slotLabel: (k) => String(Number(k)),
+    slotTitle: (k) => `${Number(k)} Uhr`,
   },
-  // Stepping from the first of the month, so a 31st does not skip a short one.
-  month: {
-    limit: 12,
-    start: (d) => {
-      d.setDate(1);
-      return d;
+  week: {
+    label: 'Wochen',
+    title: (key) => {
+      const end = keyDate(key);
+      end.setDate(end.getDate() + 6);
+      return `KW ${isoWeek(key)} · ${dayLabel(key).slice(0, 6)} - ${dayLabel(isoDay(end))}`;
     },
-    key: (d) => isoDay(d).slice(0, 7),
-    back: (d) => d.setMonth(d.getMonth() - 1),
+    step: (key, by) => {
+      const d = keyDate(key);
+      d.setDate(d.getDate() + by * 7);
+      return isoDay(d);
+    },
+    slots: (key) =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = keyDate(key);
+        d.setDate(d.getDate() + i);
+        return isoDay(d);
+      }),
+    slotLabel: (k) => `${WEEKDAYS[(keyDate(k).getDay() + 6) % 7]} ${k.slice(8)}.`,
+    slotTitle: dayLabel,
+  },
+  month: {
+    label: 'Monate',
+    // Stepping from the first of the month, so a 31st does not skip a short one.
+    title: monthTitle,
+    step: (key, by) => {
+      const d = keyDate(key);
+      d.setMonth(d.getMonth() + by);
+      return isoDay(d).slice(0, 7);
+    },
+    // Day 0 of the next month is the last day of this one.
+    slots: (key) => {
+      const d = keyDate(key);
+      const days = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      return Array.from({ length: days }, (_, i) => `${key}-${pad2(i + 1)}`);
+    },
+    slotLabel: (k) => `${Number(k.slice(8))}.`,
+    slotTitle: dayLabel,
   },
   year: {
-    limit: 10,
-    start: (d) => {
-      d.setMonth(0, 1);
-      return d;
+    label: 'Jahre',
+    title: (key) => key,
+    step: (key, by) => String(Number(key) + by),
+    slots: (key) => Array.from({ length: 12 }, (_, i) => `${key}-${pad2(i + 1)}`),
+    slotLabel: (k) => MONTHS[Number(k.slice(5, 7)) - 1],
+    slotTitle: monthTitle,
+  },
+  all: {
+    label: 'Gesamt',
+    title: () => 'Seit dem ersten Anhören',
+    // Every period at once, so there is no neighbouring one to step to - which
+    // is also what hides the arrows.
+    step: null,
+    // From the first year something was played to the one running now.
+    slots: (key, rows) => {
+      if (!rows.length) return [];
+      const from = Number(rows[0].key);
+      const to = Math.max(from, new Date().getFullYear());
+      return Array.from({ length: to - from + 1 }, (_, i) => String(from + i));
     },
-    key: (d) => String(d.getFullYear()),
-    back: (d) => d.setFullYear(d.getFullYear() - 1),
+    slotLabel: (k) => k,
+    slotTitle: (k) => k,
   },
 };
 
-// The query only returns the periods something was played in, so two bars a
-// month apart would stand side by side as if they were neighbours. A quiet day
-// is a real zero, not a missing value, so the gaps are filled in and the series
-// always ends with the current period.
-function fillGaps(rows, range) {
-  const step = STEPS[range];
-  if (!step || !rows.length) return rows;
+const RANGE_ORDER = ['day', 'week', 'month', 'year', 'all'];
 
-  const byKey = new Map(rows.map((r) => [r.key, r]));
-  const oldest = rows[0].key;
-  const cursor = step.start(new Date());
-  const series = [];
-
-  for (let i = 0; i < step.limit; i += 1) {
-    const key = step.key(cursor);
-    series.unshift(byKey.get(key) || { key, plays: 0, seconds: 0 });
-    if (key <= oldest) break;
-    step.back(cursor);
-  }
-
-  // Nothing was played inside that window - then the real bars say more than a
-  // row of zeros does.
-  return series.some((r) => r.plays) ? series : rows;
+// Every slot the selected period consists of, carrying what the query found on
+// it. The query only returns the slots something was played in, so without this
+// two bars a month apart would stand side by side as if they were neighbours.
+function series(range, key, rows) {
+  const spec = RANGES[range];
+  const found = new Map(rows.map((r) => [r.key, r]));
+  return spec.slots(key, rows).map((slot) => {
+    const row = found.get(slot) || { plays: 0, seconds: 0 };
+    return {
+      label: spec.slotLabel(slot),
+      title: spec.slotTitle(slot),
+      plays: row.plays,
+      seconds: row.seconds,
+    };
+  });
 }
+
+// Past this many bars the columns get narrow (the 24 hours of a day, the 31
+// days of a month) and the labels are allowed to wrap onto a second line
+// instead of pushing the whole chart into a horizontal scroll.
+const DENSE_FROM = 14;
 
 // A column chart without a library: the bars are divs and their height is set
 // through the CSSOM afterwards, because the CSP forbids inline styles. Both
 // numbers stand at the bar, listening time above it and plays below - a value
 // you only see after hovering is a value you do not see.
-function chart(rows, label) {
-  if (!rows.length) return '<div class="empty small"><p>Für diesen Zeitraum gibt es noch nichts.</p></div>';
+function chart(rows) {
+  if (!rows.some((r) => r.plays)) {
+    return '<div class="empty small"><p>In diesem Zeitraum lief nichts.</p></div>';
+  }
   const peak = Math.max(...rows.map((r) => r.seconds), 1);
-  return `<div class="chart">${rows
+  return `<div class="chart${rows.length >= DENSE_FROM ? ' dense' : ''}">${rows
     .map(
-      (r) => `<div class="chart-col${r.plays ? '' : ' quiet'}" title="${esc(label(r.key))}: ${esc(fmt.durationLong(r.seconds))} · ${fmt.plural(r.plays, 'Wiedergabe', 'Wiedergaben')}">
+      (r) => `<div class="chart-col${r.plays ? '' : ' quiet'}" title="${esc(r.title)}: ${esc(fmt.durationLong(r.seconds))} · ${fmt.plural(r.plays, 'Wiedergabe', 'Wiedergaben')}">
           <div class="chart-track">
             <span class="chart-value num">${r.seconds ? esc(fmt.durationRack(r.seconds)) : ''}</span>
             <div class="chart-bar" data-bar="${Math.round((r.seconds / peak) * 100)}"></div>
           </div>
-          <span class="chart-key">${esc(label(r.key))}</span>
+          <span class="chart-key">${esc(r.label)}</span>
           <span class="chart-plays num">${r.plays ? `${fmt.number(r.plays)}×` : ''}</span>
         </div>`
     )
@@ -801,27 +862,68 @@ function topList(title, rows, href) {
     </section>`;
 }
 
+const readoutCell = (label, value, accent = false) =>
+  `<div class="readout-cell${accent ? ' accent' : ''}">
+    <span class="rack-label">${esc(label)}</span>
+    <span class="readout-value">${esc(value)}</span>
+  </div>`;
+
+// Everything that belongs to the selected period, as one block: the switch, the
+// arrows, what that period adds up to, its chart and the three top lists. It is
+// re-rendered in one piece whenever the selection changes, so no part of it can
+// be left showing the numbers of the period before.
+function periodSection(listening) {
+  const { range, key, first, current, totals } = listening.period;
+  const spec = RANGES[range];
+
+  const switcher = RANGE_ORDER.map(
+    (r) =>
+      `<button type="button" data-range="${r}"${r === range ? ' class="active"' : ''}>${RANGES[r].label}</button>`
+  ).join('');
+
+  // The arrows stop where the history does: at the period the first play falls
+  // into, and at the one that is running now. Both ends come from the server as
+  // a key of the same shape, so comparing the strings is the whole test.
+  const arrow = (dir, label, iconName, off) =>
+    `<button type="button" class="icon-btn" data-period="${spec.step(key, dir)}" aria-label="${label}"${
+      off ? ' disabled' : ''
+    }>${icon(iconName)}</button>`;
+
+  const nav = `<div class="period-nav">
+      ${spec.step ? arrow(-1, 'Früherer Zeitraum', 'chevron-left', !first || key <= first) : ''}
+      <span class="period-title">${esc(spec.title(key))}</span>
+      ${spec.step ? arrow(1, 'Späterer Zeitraum', 'chevron-right', key >= current) : ''}
+    </div>`;
+
+  return `<div class="panel">
+      <div class="panel-head-row">
+        <h2>Zeitraum</h2>
+        <div class="seg-switch" role="group" aria-label="Zeitraum">${switcher}</div>
+      </div>
+      ${nav}
+      <div class="readout">
+        ${readoutCell('Spielzeit', fmt.durationRack(totals.seconds), true)}
+        ${readoutCell('Wiedergaben', fmt.number(totals.plays))}
+        ${readoutCell('Songs', fmt.number(totals.tracks))}
+        ${readoutCell('Interpreten', fmt.number(totals.artists))}
+        ${readoutCell('Alben', fmt.number(totals.albums))}
+      </div>
+      <div class="mt-lg">${chart(series(range, key, listening.chart))}</div>
+    </div>
+
+    ${topList('Meistgehörte Songs', listening.top.tracks, (r) =>
+      r.albumId ? `/albums/${r.albumId}` : `/artists/${r.artistId}`
+    )}
+    ${topList('Meistgehörte Interpreten', listening.top.artists, (r) => `/artists/${r.id}`)}
+    ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}`;
+}
+
 export async function stats() {
   const { library, listening } = await api.stats();
   const t = listening.totals;
-
-  const cell = (label, value, accent = false) =>
-    `<div class="readout-cell${accent ? ' accent' : ''}">
-      <span class="rack-label">${esc(label)}</span>
-      <span class="readout-value">${esc(value)}</span>
-    </div>`;
-
-  const ranges = RANGES.map(
-    ([key, label], i) =>
-      `<button type="button" data-range="${key}"${i === 0 ? ' class="active"' : ''}>${label}</button>`
-  ).join('');
-
-  const charts = RANGES.map(
-    ([key, , label], i) =>
-      `<div class="chart-panel" data-range-panel="${key}"${i === 0 ? '' : ' hidden'}>
-        ${chart(fillGaps(listening.buckets[key], key), label)}
-      </div>`
-  ).join('');
+  // Which period is on screen. The arrows step from it, so it has to survive
+  // between two renders of the block.
+  let showing = listening.period;
 
   return {
     title: 'Statistik',
@@ -834,12 +936,12 @@ export async function stats() {
       <div class="panel">
         <h2>Bibliothek</h2>
         <div class="readout">
-          ${cell('Songs', fmt.number(library.tracks))}
-          ${cell('Interpreten', fmt.number(library.artists))}
-          ${cell('Alben', fmt.number(library.albums))}
-          ${cell('Singles', fmt.number(library.singles))}
-          ${cell('Genres', fmt.number(library.genres))}
-          ${cell('Spielzeit', fmt.durationRack(library.duration), true)}
+          ${readoutCell('Songs', fmt.number(library.tracks))}
+          ${readoutCell('Interpreten', fmt.number(library.artists))}
+          ${readoutCell('Alben', fmt.number(library.albums))}
+          ${readoutCell('Singles', fmt.number(library.singles))}
+          ${readoutCell('Genres', fmt.number(library.genres))}
+          ${readoutCell('Spielzeit', fmt.durationRack(library.duration), true)}
         </div>
       </div>
 
@@ -853,11 +955,11 @@ export async function stats() {
             : 'Sobald du etwas hörst, füllt sich diese Seite von selbst. Ein Song zählt, wenn er 30 Sekunden gelaufen ist.'
         }</p>
         <div class="readout">
-          ${cell('Gesamt', fmt.durationRack(t.seconds), true)}
-          ${cell('Wiedergaben', fmt.number(t.plays))}
-          ${cell('Songs', fmt.number(t.tracks))}
-          ${cell('Interpreten', fmt.number(t.artists))}
-          ${t.bestDay ? cell('Bester Tag', fmt.durationRack(t.bestDay.seconds)) : ''}
+          ${readoutCell('Gesamt', fmt.durationRack(t.seconds), true)}
+          ${readoutCell('Wiedergaben', fmt.number(t.plays))}
+          ${readoutCell('Songs', fmt.number(t.tracks))}
+          ${readoutCell('Interpreten', fmt.number(t.artists))}
+          ${t.bestDay ? readoutCell('Bester Tag', fmt.durationRack(t.bestDay.seconds)) : ''}
         </div>
       </div>
 
@@ -869,41 +971,47 @@ export async function stats() {
           ${fmt.plural(t.days, 'Tag', 'Tage')} seit dem ersten Anhören. Ein Hörtag ist ein Tag,
           an dem wirklich Musik lief (${fmt.plural(t.activeDays, 'Tag', 'Tage')}).</p>
         <div class="readout">
-          ${cell('Pro Tag', fmt.durationRack(listening.average.day))}
-          ${cell('Pro Hörtag', fmt.durationRack(listening.average.activeDay))}
-          ${cell('Pro Wiedergabe', `${fmt.duration(listening.average.play)} Min.`)}
-          ${cell('Wiedergaben pro Tag', fmt.number(Math.round(listening.average.playsPerDay * 10) / 10))}
+          ${readoutCell('Pro Tag', fmt.durationRack(listening.average.day))}
+          ${readoutCell('Pro Hörtag', fmt.durationRack(listening.average.activeDay))}
+          ${readoutCell('Pro Wiedergabe', `${fmt.duration(listening.average.play)} Min.`)}
+          ${readoutCell('Wiedergaben pro Tag', fmt.number(Math.round(listening.average.playsPerDay * 10) / 10))}
         </div>
       </div>`
           : ''
       }
 
-      <div class="panel">
-        <div class="panel-head-row">
-          <h2>Spielzeit</h2>
-          <div class="seg-switch" role="group" aria-label="Zeitraum">${ranges}</div>
-        </div>
-        ${charts}
-      </div>
-
-      ${topList('Meistgehörte Songs', listening.top.tracks, (r) =>
-        r.albumId ? `/albums/${r.albumId}` : `/artists/${r.artistId}`
-      )}
-      ${topList('Meistgehörte Interpreten', listening.top.artists, (r) => `/artists/${r.id}`)}
-      ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}`,
+      <div id="period-view">${periodSection(listening)}</div>`,
 
     after(root) {
       applyBars(root);
-      const switcher = root.querySelector('[aria-label="Zeitraum"]');
-      if (!switcher) return;
-      switcher.addEventListener('click', (e) => {
-        const button = e.target.closest('[data-range]');
-        if (!button) return;
-        switcher.querySelectorAll('[data-range]').forEach((b) => b.classList.toggle('active', b === button));
-        root.querySelectorAll('[data-range-panel]').forEach((panel) => {
-          panel.hidden = panel.dataset.rangePanel !== button.dataset.range;
-        });
-        applyBars(root);
+      const view = root.querySelector('#period-view');
+      if (!view) return;
+
+      // One handler for both controls: the switch hands over a width, the
+      // arrows a period key. Either way the whole block is fetched again and
+      // swapped in - the top lists under the switch must never be older than
+      // the switch itself. Changing the width lands on the current period, so
+      // picking "Jahre" shows this year and the arrows walk back from there.
+      let busy = false;
+      view.addEventListener('click', async (e) => {
+        const width = e.target.closest('[data-range]');
+        const step = e.target.closest('[data-period]');
+        if ((!width && !step) || busy) return;
+        busy = true;
+        view.classList.add('busy');
+        try {
+          const data = await api.stats(
+            width ? { range: width.dataset.range } : { range: showing.range, period: step.dataset.period }
+          );
+          showing = data.listening.period;
+          view.innerHTML = periodSection(data.listening);
+          applyBars(view);
+        } catch (err) {
+          toast(err.message, 'err');
+        } finally {
+          busy = false;
+          view.classList.remove('busy');
+        }
       });
     },
   };

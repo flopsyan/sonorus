@@ -284,11 +284,17 @@ router.put('/plays/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// One period at a time: `range` says how wide a period is, `period` which one.
+// Both are optional - without them the current period of the default range
+// comes back, which is what the page asks for on its first load.
 router.get('/stats', (req, res) => {
   res.json({
     ok: true,
     library: libraryStats(),
-    listening: listeningStats(req.user.id, req.query.offset),
+    listening: listeningStats(req.user.id, req.query.offset, {
+      range: req.query.range,
+      period: req.query.period,
+    }),
   });
 });
 
