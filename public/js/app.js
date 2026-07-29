@@ -610,7 +610,10 @@ sidebarNav.addEventListener('drop', async (e) => {
 // The music folder is read-only, so every edit here changes the library and not
 // the files - which the dialogs say out loud, because it is not obvious.
 
-const COVER_HINT = 'JPG, PNG oder WebP. Große Bilder werden automatisch verkleinert. Am besten quadratisch.';
+// Not a word about the aspect ratio any more: a picture that is not square is
+// dragged into place in the frame, and the hint for that appears the moment one
+// is picked (see wireCoverField).
+const COVER_HINT = 'JPG, PNG oder WebP. Große Bilder werden automatisch verkleinert.';
 // As exact as it is known: a day, a month or a bare year are all valid, because
 // that is all some files say. Everywhere but the album page it is the year that
 // is printed anyway.
@@ -625,6 +628,7 @@ function coverField(name, { label, cover, title, hint = COVER_HINT }) {
       <div class="cover-edit-side">
         <div class="setting-label">${esc(label)}</div>
         <p class="panel-hint">${esc(hint)}</p>
+        <p class="panel-hint" id="${name}-move" hidden></p>
         <div class="form-actions">
           <button type="button" class="btn btn-ghost btn-sm" data-pick-cover>Bild wählen</button>
           <button type="button" class="btn btn-quiet btn-sm" data-drop-cover>Entfernen</button>
@@ -645,7 +649,10 @@ function coverField(name, { label, cover, title, hint = COVER_HINT }) {
 const MAX_COVER_EDGE = 1000;
 const COVER_QUALITY = 0.85;
 
-async function prepareCover(file) {
+// Decodes the file once and hands the downscaled canvas back. Every square the
+// user drags to is then cut out of it, so the picture is read and scaled exactly
+// once, however often the frame is moved.
+async function loadCover(file) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_COVER_EDGE / Math.max(bitmap.width, bitmap.height));
 
@@ -659,11 +666,30 @@ async function prepareCover(file) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
+  return canvas;
+}
 
-  // The CSP allows data: for images, so the same string serves as preview and
-  // as upload payload - no blob URL needed.
+// Cuts out the square Sonorus actually shows. `fx`/`fy` say where that square
+// sits on the picture: 0 is its left/top edge, 1 the right/bottom one. Only the
+// longer side has room to move, the other fraction has nowhere to go.
+//
+// The crop is baked into the stored file on purpose: a cover is shown square in
+// every grid, on the detail page and in the Android notification, and the
+// notification's artwork cannot take a CSS offset. So what is saved is what the
+// dialog showed.
+function cropCover(source, fx, fy) {
+  const edge = Math.min(source.width, source.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = edge;
+  canvas.height = edge;
+  canvas.getContext('2d').drawImage(
+    source,
+    Math.round(fx * (source.width - edge)), Math.round(fy * (source.height - edge)), edge, edge,
+    0, 0, edge, edge
+  );
+
   const url = canvas.toDataURL('image/jpeg', COVER_QUALITY);
-  return { type: 'image/jpeg', data: url.slice(url.indexOf(',') + 1), url };
+  return { type: 'image/jpeg', data: url.slice(url.indexOf(',') + 1) };
 }
 
 // Reports every pick back through `onPick`: null for "remove it", an object for
@@ -671,10 +697,31 @@ async function prepareCover(file) {
 function wireCoverField(root, name, title, onPick) {
   const input = root.querySelector(`#${name}-input`);
   const preview = root.querySelector(`#${name}-preview`);
+  const moveHint = root.querySelector(`#${name}-move`);
+
+  // The picked picture, downscaled once, plus where its square sits. Centred to
+  // start with, which is what the frame showed before it could be moved at all.
+  let source = null;
+  let fx = 0.5;
+  let fy = 0.5;
+
+  // `object-fit: cover` plus this offset shows exactly the square `cropCover`
+  // cuts, so the frame is the preview. Written through the CSSOM because the CSP
+  // blocks style attributes.
+  const place = () => {
+    const img = preview.querySelector('img');
+    if (img) img.style.objectPosition = `${fx * 100}% ${fy * 100}%`;
+  };
+
+  const movable = () => source && source.width !== source.height;
+  const commit = () => onPick(cropCover(source, fx, fy));
 
   root.querySelector('[data-pick-cover]').addEventListener('click', () => input.click());
   root.querySelector('[data-drop-cover]').addEventListener('click', () => {
     onPick(null);
+    source = null;
+    preview.classList.remove('movable');
+    moveHint.hidden = true;
     preview.innerHTML = art(null, title);
   });
 
@@ -682,13 +729,65 @@ function wireCoverField(root, name, title, onPick) {
     const file = input.files[0];
     if (!file) return;
     try {
-      const cover = await prepareCover(file);
-      onPick({ type: cover.type, data: cover.data });
-      preview.innerHTML = `<img src="${esc(cover.url)}" alt="" />`;
+      source = await loadCover(file);
     } catch {
-      toast('Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.', 'err');
+      return toast('Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.', 'err');
+    }
+    fx = 0.5;
+    fy = 0.5;
+    commit();
+
+    // The whole picture in the frame, not the crop - the part outside the square
+    // is what the drag brings in. The CSP allows data: for images.
+    const url = source.toDataURL('image/jpeg', COVER_QUALITY);
+    preview.innerHTML = `<img src="${esc(url)}" alt="" draggable="false" />`;
+    place();
+
+    // A square picture hides nothing, so there is nothing to drag.
+    preview.classList.toggle('movable', movable());
+    moveHint.hidden = !movable();
+    if (movable()) {
+      moveHint.textContent = source.width > source.height
+        ? 'Bild nach links oder rechts ziehen, um den quadratischen Ausschnitt zu wählen.'
+        : 'Bild nach oben oder unten ziehen, um den quadratischen Ausschnitt zu wählen.';
     }
   });
+
+  // Dragging the picture inside the frame is how the square is placed. Pointer
+  // events with capture keep every listener on the frame itself, so the modal
+  // takes them with it when it closes - a window listener opened by a dialog
+  // would outlive it.
+  let from = null;
+
+  preview.addEventListener('dragstart', (e) => e.preventDefault());
+
+  preview.addEventListener('pointerdown', (e) => {
+    if (!movable()) return;
+    from = { x: e.clientX, y: e.clientY, fx, fy };
+    preview.setPointerCapture(e.pointerId);
+    preview.classList.add('dragging');
+  });
+
+  preview.addEventListener('pointermove', (e) => {
+    if (!from) return;
+    // The picture follows the pointer one to one, so the travel is exactly the
+    // part that is hidden: the size it is displayed at minus the square frame.
+    const frame = preview.clientWidth;
+    const spanX = frame * (source.width / source.height - 1);
+    const spanY = frame * (source.height / source.width - 1);
+    if (spanX > 0) fx = Math.max(0, Math.min(1, from.fx - (e.clientX - from.x) / spanX));
+    if (spanY > 0) fy = Math.max(0, Math.min(1, from.fy - (e.clientY - from.y) / spanY));
+    place();
+  });
+
+  const release = () => {
+    if (!from) return;
+    from = null;
+    preview.classList.remove('dragging');
+    commit();
+  };
+  preview.addEventListener('pointerup', release);
+  preview.addEventListener('pointercancel', release);
 }
 
 // "Album bearbeiten": release date, genres and cover art. Everything the folder

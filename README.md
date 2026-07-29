@@ -75,6 +75,13 @@ belong to the account that created them.
   profile picture. Without one the artist keeps borrowing the cover of one of the
   albums, which is what it did before. The name is not editable: it is the name
   of the folder, and the next scan would read it back again.
+- **Bildausschnitt verschieben** - a picture that is not exactly square is
+  **dragged inside the frame** of the dialog to pick which square of it becomes
+  the cover: left and right on a wide picture, up and down on a tall one. The
+  frame shows the result while you drag, and that square is what gets saved -
+  covers are shown square in every grid, on the detail page and in the phone's
+  notification, so the section is decided once, when the picture is added.
+  Works for album, single and artist pictures alike.
 - Every uploaded picture (album, single, artist) is **scaled down in the browser**
   to at most 1000 px on its longer side and re-encoded as JPEG before it is sent.
   A cover is never shown larger than that, and it keeps the upload small enough
