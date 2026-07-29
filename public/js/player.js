@@ -473,6 +473,7 @@ export function clearQueue() {
   state.source = '';
   state.currentTime = 0;
   state.duration = 0;
+  clearMediaSession();
   save();
   emit();
 }
@@ -592,6 +593,19 @@ function updatePositionState(force = false) {
   } catch {
     // an implementation that rejects these values must not take the
     // timeupdate handler down with it
+  }
+}
+
+function clearMediaSession() {
+  if (!session) return;
+  session.metadata = null;
+  setPlaybackState('none');
+  if (canPosition) {
+    try {
+      session.setPositionState();
+    } catch {
+      // nothing to clear
+    }
   }
 }
 
