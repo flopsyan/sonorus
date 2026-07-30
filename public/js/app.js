@@ -182,7 +182,18 @@ function closeOverlays(depth = 0) {
 // history - this is where they are hung into it.
 setOverlayHooks({ push: pushOverlay, drop: forgetOverlay });
 
-async function render() {
+// Counts the renders so a slow answer cannot overwrite a newer list. Only
+// reachable since a `keep` render leaves the list clickable while it loads:
+// rating song 500, then 501 before the first answer is back, starts two.
+let renderSeq = 0;
+
+// `keep` marks a re-render that is not a navigation: the list changed under the
+// user (a rating moved a track out of the star playlist they are looking at),
+// so the scroll position has to survive it - at song 500 of "Nicht bewertet",
+// being thrown back to the top after every star makes the list unusable. It
+// also skips the loading placeholder, which collapses the content to nothing
+// and would take the position with it.
+async function render({ keep = false } = {}) {
   if (view.cleanup) {
     view.cleanup();
     view.cleanup = null;
@@ -208,18 +219,22 @@ async function render() {
     params[name] = match.m[i + 1];
   });
 
-  content.innerHTML = '<div class="loading">Wird geladen …</div>';
+  const scroll = keep ? content.scrollTop : 0;
+  if (!keep) content.innerHTML = '<div class="loading">Wird geladen …</div>';
+  const seq = (renderSeq += 1);
   try {
     const result = await match.handler(params, ctx);
+    if (seq !== renderSeq) return; // a newer render is already on screen
     view.tracks = result.tracks || [];
     view.playlistId = result.playlistId || null;
     content.innerHTML = `<div class="content-inner">${result.html}</div>`;
     document.title = result.title ? `${result.title} · ${shell.siteName}` : shell.siteName;
     paintIcons(content);
-    content.scrollTop = 0;
+    content.scrollTop = scroll;
     if (result.after) view.cleanup = result.after(content, ctx) || null;
     markPlayingRow();
   } catch (err) {
+    if (seq !== renderSeq) return;
     content.innerHTML = `<div class="empty"><h3>Konnte nicht geladen werden</h3><p>${esc(err.message)}</p></div>`;
   }
   renderSidebar();
@@ -1454,8 +1469,9 @@ async function rate(trackId, value) {
       node.outerHTML = stars(res.stars, trackId, node.classList.contains('readonly'));
     });
     renderSidebar();
-    // The star playlists are generated, so the list you are looking at changes.
-    if (window.location.pathname.startsWith('/stars/')) render();
+    // The star playlists are generated, so the list you are looking at changes -
+    // but the user did not navigate anywhere, so they stay where they were.
+    if (window.location.pathname.startsWith('/stars/')) render({ keep: true });
   } catch (err) {
     toast(err.message, 'err');
   }

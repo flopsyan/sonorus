@@ -169,7 +169,9 @@ dropping features.
   from the transport; Sonorus keeps one automatic playlist per rating that
   always reflects the current ratings. Clicking a track's current rating again
   clears it. **Nicht bewertet** is the counterpart: everything still waiting for
-  a rating.
+  a rating. Rating a track there moves it out of the list, but **your place in
+  the list stays** - working through a few hundred unrated songs does not send
+  you back to the top after every star.
 - **Several ratings at once.** Every star playlist has a row of switches above
   it, one per rating: switch on 4 and 5 and you get one combined list of both
   (`/stars/5,4`), best rated first. "Nicht bewertet" can join in too.
