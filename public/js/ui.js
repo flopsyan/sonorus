@@ -159,6 +159,19 @@ export function empty(title, text, action = '') {
 
 // --- Overlays ---------------------------------------------------------------
 
+// Everything in here lies over the page, and on a phone the back button is what
+// closes that. app.js hangs its history bookkeeping into these two hooks; with
+// nothing hooked in they do nothing and the overlays behave as they always did.
+let overlayHooks = { push: () => {}, drop: () => {} };
+
+export function setOverlayHooks(hooks) {
+  overlayHooks = hooks;
+}
+
+// A finger drives this: no hover to reveal anything, and a keyboard that costs
+// half the screen the moment something is focused.
+const isTouch = () => window.matchMedia('(hover: none)').matches;
+
 export function toast(message, kind = '') {
   const root = document.getElementById('toasts');
   const el = document.createElement('div');
@@ -178,22 +191,32 @@ export function lightbox(src, label) {
   document.body.appendChild(wrap);
 
   const close = () => {
+    if (!wrap.isConnected) return;
     wrap.remove();
     document.removeEventListener('keydown', onKey);
+    overlayHooks.drop('lightbox');
   };
   const onKey = (e) => {
     if (e.key === 'Escape') close();
   };
   wrap.addEventListener('click', close);
   document.addEventListener('keydown', onKey);
-  wrap.querySelector('.lightbox-close').focus();
+  overlayHooks.push('lightbox', close);
+  // A phone has no Escape and needs no focus ring on the way in - it taps the
+  // picture to get out again.
+  if (!isTouch()) wrap.querySelector('.lightbox-close').focus();
 }
 
 let closeModalFn = null;
 
 // Opens a modal and returns its root element so the caller can wire up its
 // own controls. Only one modal is open at a time.
-export function modal({ title, body, footer = '', wide = false, onOpen }) {
+//
+// `autofocus` decides whether the first field is focused. On a desktop that is
+// what everybody expects; on a phone it throws the keyboard over half the
+// dialog before anything has been decided, so only the dialogs that exist to be
+// typed into ask for it there.
+export function modal({ title, body, footer = '', wide = false, autofocus, onOpen }) {
   closeModal();
 
   const root = document.getElementById('modal-root');
@@ -222,10 +245,14 @@ export function modal({ title, body, footer = '', wide = false, onOpen }) {
     document.removeEventListener('keydown', onKey);
     root.innerHTML = '';
     closeModalFn = null;
+    overlayHooks.drop('modal');
   };
+  overlayHooks.push('modal', closeModal);
 
   paintIcons(root);
-  const field = root.querySelector('input, textarea, select');
+  const field = (autofocus === undefined ? !isTouch() : autofocus)
+    ? root.querySelector('input, textarea, select')
+    : null;
   if (field) field.focus();
   if (onOpen) onOpen(root);
   return root;

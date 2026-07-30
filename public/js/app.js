@@ -7,7 +7,10 @@
 import { api } from './api.js';
 import { icon, paintIcons } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, stars, toast, modal, closeModal, confirmDialog, contextMenu, closeContextMenu, lightbox } from './ui.js';
+import {
+  esc, art, stars, toast, modal, closeModal, confirmDialog,
+  contextMenu, closeContextMenu, lightbox, setOverlayHooks,
+} from './ui.js';
 import * as views from './views.js';
 import * as player from './player.js';
 
@@ -33,6 +36,13 @@ let view = { tracks: [], playlistId: null, cleanup: null };
 const collapsedFolders = new Set(
   JSON.parse(localStorage.getItem('sonorus-folders-collapsed') || '[]')
 );
+
+// Two questions the whole app asks, and they are not the same one: `compact` is
+// the phone-shaped layout (drawer, fullscreen player, system back button),
+// `touch` is a finger driving it (no hover to reveal anything, no keyboard to
+// open unasked). A small window on a desktop is compact but not touch.
+const compact = window.matchMedia('(max-width: 900px)');
+const touch = window.matchMedia('(hover: none)');
 
 // ============================================================================
 // Routing
@@ -88,6 +98,10 @@ const ctx = {
 // arrows in the topbar grey out when they would do nothing.
 let historyIndex = 0;
 let historyDepth = 0;
+// Every entry the app writes carries a serial as well. It is the only way to
+// tell a back press from a forward one in `popstate`, which the overlays below
+// depend on.
+let entrySeq = 0;
 
 function initHistory() {
   const saved = window.history.state;
@@ -95,7 +109,8 @@ function initHistory() {
   // A reload lands in the middle of the stack with no way to learn what is
   // still ahead, so forward starts out greyed until something is pushed.
   historyDepth = historyIndex;
-  window.history.replaceState({ idx: historyIndex }, '');
+  entrySeq = saved && Number.isInteger(saved.seq) ? saved.seq : 0;
+  window.history.replaceState({ idx: historyIndex, seq: entrySeq, ov: 0 }, '');
 }
 
 function renderNavArrows() {
@@ -104,15 +119,67 @@ function renderNavArrows() {
 }
 
 function navigate(url, { replace = false } = {}) {
+  // A link inside an overlay leads to a page, so the overlay goes with it - and
+  // its history entry must not stay standing between the new page and the one
+  // before it. The page takes the entry's place instead of stacking on top.
+  const overlaid = overlays.length > 0;
+  closeOverlays();
+
   if (replace) {
-    window.history.replaceState({ idx: historyIndex }, '', url);
+    window.history.replaceState({ idx: historyIndex, seq: entrySeq, ov: 0 }, '', url);
   } else {
     historyIndex += 1;
     historyDepth = historyIndex;
-    window.history.pushState({ idx: historyIndex }, '', url);
+    entrySeq += 1;
+    const state = { idx: historyIndex, seq: entrySeq, ov: 0 };
+    if (overlaid) window.history.replaceState(state, '', url);
+    else window.history.pushState(state, '', url);
   }
   render();
 }
+
+// --- Overlays and the phone's back button -----------------------------------
+// On a phone "zurück" is a system button and it means "close what is on top of
+// the screen" long before it means "leave the app". So everything that lies
+// over the page - the fullscreen player, the sidebar drawer, the queue, a
+// dialog, a menu, the lightbox, the visualizer - pushes one history entry when
+// it opens, and a back press pops it.
+//
+// Two decisions worth knowing:
+//   - The entry carries the same `idx` as the page underneath it, so the topbar
+//     arrows (which count pages, not overlays) never notice it.
+//   - Closing an overlay from the UI deliberately leaves its entry behind
+//     instead of calling history.go(): that call is asynchronous and would race
+//     with a navigation happening in the same click - the track menu closes
+//     itself and then navigates. Those left-over entries do nothing visible, so
+//     `popstate` steps over them, which is what the serial is for.
+const overlays = [];
+
+function pushOverlay(name, close) {
+  // A desktop closes with Escape or a click next to it, and its history stays a
+  // list of pages.
+  if (!compact.matches) return;
+  overlays.push({ name, close });
+  entrySeq += 1;
+  window.history.pushState({ idx: historyIndex, seq: entrySeq, ov: overlays.length }, '');
+}
+
+// The overlay was closed by its own button, a backdrop or a swipe: only the
+// bookkeeping is dropped here, the history entry stays (see above).
+function forgetOverlay(name) {
+  const at = overlays.map((o) => o.name).lastIndexOf(name);
+  if (at >= 0) overlays.splice(at, 1);
+}
+
+// Closes everything above `depth`, newest first. Every close function shrugs it
+// off when its overlay is already gone, which is what makes this idempotent.
+function closeOverlays(depth = 0) {
+  while (overlays.length > depth) overlays.pop().close();
+}
+
+// The dialogs, menus and the lightbox live in ui.js and have no idea about the
+// history - this is where they are hung into it.
+setOverlayHooks({ push: pushOverlay, drop: forgetOverlay });
 
 async function render() {
   if (view.cleanup) {
@@ -158,19 +225,36 @@ async function render() {
 }
 
 window.addEventListener('popstate', (e) => {
-  if (e.state && Number.isInteger(e.state.idx)) historyIndex = e.state.idx;
-  render();
+  const state = e.state || {};
+  const seq = Number.isInteger(state.seq) ? state.seq : 0;
+  const backwards = seq < entrySeq;
+  entrySeq = seq;
+
+  const depth = state.ov || 0;
+  const closed = overlays.length > depth;
+  closeOverlays(depth);
+
+  const idx = Number.isInteger(state.idx) ? state.idx : 0;
+  if (idx !== historyIndex) {
+    historyIndex = idx;
+    render();
+    return;
+  }
+  // The page did not change and nothing closed: this entry belonged to an
+  // overlay that was closed by hand, so the press did nothing anybody can see.
+  // Take it as the press it was meant to be and go back for real.
+  if (backwards && !closed) window.history.back();
 });
 
-// Any anchor marked data-link navigates without a page load.
+// Any anchor marked data-link navigates without a page load. navigate() closes
+// the overlays, so following the interpret out of the fullscreen player takes
+// the fullscreen player with it.
 document.addEventListener('click', (e) => {
   const link = e.target.closest('a[data-link]');
   if (!link || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
   e.preventDefault();
   navigate(link.getAttribute('href'));
-  sidebar.classList.remove('open');
-  // Following a link out of the fullscreen player means going to that page.
-  expandPlayer(false);
+  closeSidebar();
 });
 
 // ============================================================================
@@ -1415,8 +1499,27 @@ document.querySelector('.volume').addEventListener(
   { passive: false }
 );
 
-el.queueBtn.addEventListener('click', () => el.queue.classList.toggle('open'));
-document.getElementById('queue-close').addEventListener('click', () => el.queue.classList.remove('open'));
+// The queue slides in over everything, so on a phone it is one of the things
+// the back button has to take away again.
+function openQueue() {
+  if (el.queue.classList.contains('open')) return;
+  el.queue.classList.add('open');
+  pushOverlay('queue', closeQueue);
+}
+
+function closeQueue() {
+  if (!el.queue.classList.contains('open')) return;
+  el.queue.classList.remove('open');
+  forgetOverlay('queue');
+}
+
+function toggleQueue() {
+  if (el.queue.classList.contains('open')) closeQueue();
+  else openQueue();
+}
+
+el.queueBtn.addEventListener('click', toggleQueue);
+document.getElementById('queue-close').addEventListener('click', closeQueue);
 el.visualBtn.addEventListener('click', openVisualizer);
 
 // --- The player as a screen of its own (phones) -----------------------------
@@ -1424,43 +1527,104 @@ el.visualBtn.addEventListener('click', openVisualizer);
 // same element full screen (.player.expanded in the stylesheet). Nothing is
 // duplicated - it is the bar with another layout - so every control in it keeps
 // the wiring it already has, and the app is still there once it is closed.
-const compact = window.matchMedia('(max-width: 900px)');
+//
+// It arrives and leaves as a sheet: `.sheet-out` is the closed position just
+// under the screen, and the transition between the two is the whole animation.
+// A finger on the artwork writes the offset straight onto the element instead
+// (through the CSSOM - the CSP forbids style attributes, not CSSOM writes), so
+// the sheet follows the drag; letting go clears it and the class takes over
+// again from wherever it was left.
+const SHEET_MS = 320;
 
-function expandPlayer(on) {
-  el.playerBar.classList.toggle('expanded', !!on && compact.matches && !!player.currentTrack());
+function expanded() {
+  return el.playerBar.classList.contains('expanded');
+}
+
+// Forces the layout so the next class change starts a transition from here
+// instead of being collapsed into one style recalculation with it.
+function reflow(node) {
+  void node.offsetHeight;
+}
+
+let sheetTimer = null;
+
+function openPlayer() {
+  if (expanded() || !compact.matches || !player.currentTrack()) return;
+  clearTimeout(sheetTimer);
+  el.playerBar.style.transform = '';
+  // `sheet-moving` has to come along for the first step: it switches the
+  // transition off, so the sheet is *placed* below the screen instead of
+  // starting to travel there. Without it the browser is already animating
+  // towards the closed position when the second step asks for the open one, and
+  // reversing a transition that has just started is a transition of nothing.
+  el.playerBar.classList.add('expanded', 'sheet-out', 'sheet-moving');
+  reflow(el.playerBar);
+  el.playerBar.classList.remove('sheet-out', 'sheet-moving');
+  pushOverlay('player', collapsePlayer);
+}
+
+function collapsePlayer() {
+  if (!expanded()) return;
+  forgetOverlay('player');
+  // Whatever the finger left behind is where the slide out starts from, so the
+  // transition has to be switched back on before the target is set.
+  el.playerBar.classList.remove('sheet-moving');
+  reflow(el.playerBar);
+  el.playerBar.style.transform = '';
+  el.playerBar.classList.add('sheet-out');
+  clearTimeout(sheetTimer);
+  sheetTimer = setTimeout(() => {
+    el.playerBar.classList.remove('expanded', 'sheet-out');
+  }, SHEET_MS);
 }
 
 el.now.addEventListener('click', (e) => {
   // A link still leads somewhere, and inside the full screen the artwork is
   // just artwork - the chevron is the way out.
-  if (e.target.closest('a[data-link]') || el.playerBar.classList.contains('expanded')) return;
-  expandPlayer(true);
+  if (e.target.closest('a[data-link]') || expanded()) return;
+  openPlayer();
 });
 
-el.collapseBtn.addEventListener('click', () => expandPlayer(false));
+el.collapseBtn.addEventListener('click', collapsePlayer);
 
-// Swiping the artwork away is what a phone reaches for before it looks for a
-// button. Only downwards, and only far enough that no tap can mean it.
+// Wiping the sheet away is what a phone reaches for before it looks for a
+// button, so it follows the finger and only lets go past a distance no tap can
+// reach. Not passive: the page must not scroll under the drag.
 const SWIPE_CLOSE = 90;
 let swipeFrom = null;
+let swipeTo = 0;
 
 el.now.addEventListener('touchstart', (e) => {
-  swipeFrom = el.playerBar.classList.contains('expanded') && e.touches.length === 1
-    ? e.touches[0].clientY
-    : null;
+  swipeFrom = expanded() && e.touches.length === 1 ? e.touches[0].clientY : null;
+  swipeTo = 0;
 }, { passive: true });
 
-el.now.addEventListener('touchend', (e) => {
+el.now.addEventListener('touchmove', (e) => {
   if (swipeFrom === null) return;
-  const travelled = e.changedTouches[0].clientY - swipeFrom;
+  swipeTo = Math.max(0, e.touches[0].clientY - swipeFrom);
+  if (!swipeTo) return;
+  e.preventDefault();
+  el.playerBar.classList.add('sheet-moving');
+  el.playerBar.style.transform = `translateY(${swipeTo}px)`;
+}, { passive: false });
+
+el.now.addEventListener('touchend', () => {
+  if (swipeFrom === null) return;
   swipeFrom = null;
-  if (travelled > SWIPE_CLOSE) expandPlayer(false);
+  if (swipeTo > SWIPE_CLOSE) return collapsePlayer();
+  // Not far enough: let it fall back into place instead of leaving it hanging.
+  el.playerBar.classList.remove('sheet-moving');
+  reflow(el.playerBar);
+  el.playerBar.style.transform = '';
 }, { passive: true });
 
 // A wide viewport has no fullscreen layout to fall back on, so drop the state
 // with it (turning the phone sideways is enough to get here).
 compact.addEventListener('change', (e) => {
-  if (!e.matches) expandPlayer(false);
+  if (!e.matches) {
+    collapsePlayer();
+    el.playerBar.classList.remove('expanded', 'sheet-out', 'sheet-moving');
+  }
 });
 
 el.nowArt.addEventListener('click', () => {
@@ -1797,15 +1961,19 @@ function openVisualizer() {
   visualizerCanvas = wrap.querySelector('canvas');
 
   const close = () => {
+    if (!wrap.isConnected) return;
     visualizerCanvas = null;
     wrap.remove();
     document.removeEventListener('keydown', onKey);
+    forgetOverlay('visualizer');
   };
   const onKey = (e) => {
     if (e.key === 'Escape') close();
   };
   wrap.querySelector('.visualizer-close').addEventListener('click', close);
   document.addEventListener('keydown', onKey);
+  pushOverlay('visualizer', close);
+  startFrames();
 }
 
 // ============================================================================
@@ -1833,10 +2001,26 @@ searchInput.addEventListener('input', () => {
 
 document.getElementById('nav-back').addEventListener('click', () => window.history.back());
 document.getElementById('nav-forward').addEventListener('click', () => window.history.forward());
-document.getElementById('menu-toggle').addEventListener('click', () => sidebar.classList.toggle('open'));
 // The drawer covers part of the screen, so tapping the rest of it is the way
-// out. The scrim only exists while it is open (see .sidebar-backdrop).
-document.getElementById('sidebar-backdrop').addEventListener('click', () => sidebar.classList.remove('open'));
+// out - and so is the phone's back button, which is why it is an overlay. The
+// scrim only exists while it is open (see .sidebar-backdrop).
+function openSidebar() {
+  if (sidebar.classList.contains('open')) return;
+  sidebar.classList.add('open');
+  pushOverlay('sidebar', closeSidebar);
+}
+
+function closeSidebar() {
+  if (!sidebar.classList.contains('open')) return;
+  sidebar.classList.remove('open');
+  forgetOverlay('sidebar');
+}
+
+document.getElementById('menu-toggle').addEventListener('click', () => {
+  if (sidebar.classList.contains('open')) closeSidebar();
+  else openSidebar();
+});
+document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
 
 // Theme switch
 function applyTheme(choice) {
@@ -1965,7 +2149,7 @@ document.addEventListener('keydown', (e) => {
       player.toggleMute();
       break;
     case 'q':
-      el.queue.classList.toggle('open');
+      toggleQueue();
       break;
     case 'v':
       openVisualizer();
