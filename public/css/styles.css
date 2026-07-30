@@ -231,7 +231,12 @@ textarea { resize: vertical; min-height: 70px; }
    App shell
    ========================================================================== */
 
-body.app { height: 100vh; overflow: hidden; }
+/* dvh, not vh: on a phone `100vh` is the tallest the viewport ever gets, so
+   with the address bar showing, the bottom of the app - the transport - sits
+   below the fold. The vh line stays as the fallback for anything that does not
+   know dvh yet. `overscroll-behavior` is what stops a scroll that has reached
+   the end of a list from turning into a pull-to-refresh of the whole app. */
+body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
 
 /* Deliberately not ".app": that class is also on <body>, and a shared rule
    would turn the body itself into the grid, making the audio element, the
@@ -241,6 +246,7 @@ body.app { height: 100vh; overflow: hidden; }
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) var(--player-h);
   height: 100vh;
+  height: 100dvh;
 }
 
 /* --- Sidebar -------------------------------------------------------------- */
@@ -258,7 +264,7 @@ body.app { height: 100vh; overflow: hidden; }
   display: flex; align-items: center; gap: 11px;
   padding: 16px 18px 14px;
 }
-.sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 20px; }
+.sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 20px; }
 
 .nav-group { margin-bottom: 22px; }
 .nav-group-head {
@@ -923,13 +929,15 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 }
 .queue.open { transform: translateX(0); }
 .queue-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 16px 12px; border-bottom: 1px solid var(--line); }
-.queue-list { flex: 1; overflow-y: auto; padding: 8px; }
+.queue-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 8px; }
 .queue-section { padding: 14px 8px 6px; }
 .queue-item {
   display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 10px;
   padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer;
 }
-.queue-item:hover { background: var(--surface-2); }
+@media (hover: hover) {
+  .queue-item:hover { background: var(--surface-2); }
+}
 .queue-item.playing { background: var(--accent-soft); }
 .queue-item.playing .queue-title { color: var(--accent); }
 .queue-pos { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-faint); text-align: right; }
@@ -999,13 +1007,15 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .modal-body > p:first-child { margin-top: 0; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 20px; }
 
-.picker-list { max-height: 46vh; overflow-y: auto; margin: 0 -6px; }
+.picker-list { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; margin: 0 -6px; }
 .picker-item {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 10px 12px; border-radius: var(--radius-sm);
   border: none; background: none; cursor: pointer; text-align: left; font-size: 0.92rem;
 }
-.picker-item:hover { background: var(--surface-2); }
+@media (hover: hover) {
+  .picker-item:hover { background: var(--surface-2); }
+}
 .picker-item .count { margin-left: auto; font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-faint); }
 
 .context-menu {
@@ -1073,6 +1083,7 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .badge.admin { background: var(--accent-soft); color: var(--accent); }
 .badge.you { background: var(--surface-2); color: var(--text-dim); }
 .badge.gone { background: var(--surface-2); color: var(--text-faint); }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
 
 /* Import notices: a persistent list of what the CSV import could not find */
 .issue-list { max-height: 460px; overflow-y: auto; margin: 0 -6px; }

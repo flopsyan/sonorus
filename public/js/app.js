@@ -1839,9 +1839,14 @@ function renderPlayer(s) {
   if (track) {
     el.nowArt.innerHTML = art(track.cover, track.album || track.title);
     el.nowTitle.textContent = track.title;
+    // The album is its own span: the strip along the bottom of a phone has room
+    // for the interpret and nothing else, and half an album title behind an
+    // ellipsis says less than leaving it out.
     el.nowArtist.innerHTML = track.artistId
       ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>${
-          track.albumId ? ` · <a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a>` : ''
+          track.albumId
+            ? `<span class="now-album"> · <a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a></span>`
+            : ''
         }`
       : esc(track.artist);
     el.nowStars.innerHTML = starButtons(track.stars, track.id);
@@ -2135,9 +2140,13 @@ function applyTheme(choice) {
   );
 }
 
-document.querySelectorAll('[data-theme-choice]').forEach((b) =>
-  b.addEventListener('click', () => applyTheme(b.dataset.themeChoice))
-);
+// Delegated, because the topbar switch is dropped on a narrow screen and the
+// one under Einstellungen - the only way to the theme from a phone - is drawn
+// by a view long after this runs.
+document.addEventListener('click', (e) => {
+  const choice = e.target.closest('[data-theme-choice]');
+  if (choice) applyTheme(choice.dataset.themeChoice);
+});
 
 // Account menu
 const avatarBtn = document.getElementById('avatar-btn');
@@ -2286,6 +2295,10 @@ async function boot() {
     savedTheme = null;
   }
   applyTheme(['light', 'dark', 'system'].includes(savedTheme) ? savedTheme : 'dark');
+
+  // The full placeholder is cut off after "Titel, Interpret, A" in the width a
+  // phone leaves the search field, and half a sentence reads like a fault.
+  if (compact.matches) searchInput.placeholder = 'Suchen';
 
   paintIcons(document);
   initHistory();

@@ -1190,6 +1190,25 @@ export async function settings(_params, ctx) {
       </div>
 
       <div class="panel">
+        <h2>Darstellung</h2>
+        <p class="panel-hint">Sonorus ist für dunkel gebaut; hell gibt es für den Tag.
+          Oben in der Leiste steht dieselbe Auswahl - aber nur auf einem breiten Bildschirm.</p>
+        <div class="setting-row">
+          <div class="setting-label">Erscheinungsbild</div>
+          ${themeSwitch()}
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Wiedergabe</h2>
+        <p class="panel-hint">Was Sonorus dem Handy für die Benachrichtigung mitgibt: Titel, Cover,
+          die Tasten für vor und zurück und die Position im Lied. Zeigt die Benachrichtigung trotzdem
+          nur Pause, liegt es am Browser - und "nicht verfügbar" heißt fast immer, dass die Seite
+          ohne HTTPS geöffnet wurde: die Medien-Steuerung gibt es nur über eine sichere Verbindung.</p>
+        ${mediaSessionRows()}
+      </div>
+
+      <div class="panel">
         <h2>Wiedergabe-Verlauf</h2>
         <p class="panel-hint">Grundlage für "Zuletzt gehört" und "Am häufigsten gehört". Nur deine eigenen Wiedergaben.</p>
         <div class="setting-row">
@@ -1243,6 +1262,51 @@ export async function settings(_params, ctx) {
       return wireSettings(root, ctx2);
     },
   };
+}
+
+// The same three buttons as in the topbar, for the screens the topbar drops
+// them on. `.seg-switch` and not `.theme-switch`: that class is what is hidden
+// below 760 px, which is exactly the case this exists for. The click is handled
+// by the delegated theme listener in app.js; the choice comes out of the same
+// storage key theme-init.js reads before the first paint.
+function themeSwitch() {
+  let choice = 'dark';
+  try {
+    const saved = localStorage.getItem('sonorus-theme');
+    if (['light', 'dark', 'system'].includes(saved)) choice = saved;
+  } catch {
+    // storage disabled - dark is the default anyway
+  }
+  const button = (value, label) =>
+    `<button type="button" data-theme-choice="${value}"${choice === value ? ' class="active"' : ''}>${label}</button>`;
+  return `<div class="seg-switch" role="group" aria-label="Erscheinungsbild">
+      ${button('system', 'Auto')}${button('light', 'Hell')}${button('dark', 'Dunkel')}
+    </div>`;
+}
+
+// What the browser lets Sonorus hand over for the notification on the lock
+// screen. Everything here is decided by the browser, not by the app, so it is
+// the one place that can answer "warum kann ich in der Benachrichtigung nur
+// pausieren" without guessing - a missing Media Session means the page is not
+// in a secure context, and a missing setPositionState means no progress bar.
+function mediaSessionRows() {
+  const session = 'mediaSession' in navigator ? navigator.mediaSession : null;
+  const rows = [
+    ['Medien-Steuerung (Media Session)', !!session],
+    ['Titel, Interpret und Cover', !!session && 'MediaMetadata' in window],
+    ['Tasten für vorheriger / nächster Titel', !!session && typeof session.setActionHandler === 'function'],
+    ['Fortschrittsleiste', !!session && typeof session.setPositionState === 'function'],
+    ['Sichere Verbindung (HTTPS)', window.isSecureContext],
+  ];
+
+  return rows
+    .map(
+      ([label, on]) => `<div class="setting-row">
+        <div class="setting-label">${esc(label)}</div>
+        <span class="badge ${on ? 'ok' : 'gone'}">${on ? 'verfügbar' : 'nicht verfügbar'}</span>
+      </div>`
+    )
+    .join('');
 }
 
 function userRows(users, me, isAdmin) {
