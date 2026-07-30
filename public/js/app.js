@@ -1640,37 +1640,61 @@ el.nowStars.addEventListener('click', (e) => {
 });
 
 // --- Seeking ----------------------------------------------------------------
+// One set of handlers for the mouse and the finger: pointer events with capture
+// keep the drag alive wherever it wanders off to, which a mouse solved with
+// listeners on `window` and a finger could not solve at all - a touchmove is
+// delivered to the element the touch started on, but the rail is 12 px tall and
+// the browser took the gesture for a scroll before it ever got there. The rail
+// says `touch-action: none` for exactly that reason.
+//
+// While the rail is held, the position is only drawn, not played: writing
+// audio.currentTime on every move makes the browser re-request the file over
+// and over and the drag stutters to a halt. The playhead follows on release.
+let scrub = null;
 
-let seeking = false;
-
-function seekFromEvent(e) {
+function seekFraction(e) {
   const rect = el.seek.getBoundingClientRect();
-  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-  player.seekTo(x / rect.width);
+  return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 }
 
-el.seek.addEventListener('mousedown', (e) => {
-  seeking = true;
-  el.seek.classList.add('dragging');
-  seekFromEvent(e);
-});
-window.addEventListener('mousemove', (e) => {
-  if (seeking) seekFromEvent(e);
-});
-window.addEventListener('mouseup', () => {
-  seeking = false;
-  el.seek.classList.remove('dragging');
-});
+// The transport as it looks at `fraction`, without touching the audio element.
+function paintSeek(fraction) {
+  const percent = fraction * 100;
+  el.seekFill.style.width = `${percent}%`;
+  el.seekKnob.style.left = `${percent}%`;
+  el.elapsed.textContent = fmt.duration(fraction * (player.state.duration || 0));
+}
 
-// A finger has no button to hold down, so touch drives the same rail directly.
-// Not passive: without preventDefault the page scrolls under the drag and the
-// browser fires a synthetic click on top of it afterwards.
-function seekFromTouch(e) {
+el.seek.addEventListener('pointerdown', (e) => {
+  if (!player.currentTrack()) return;
+  // Keeps the focus ring off a rail that was grabbed rather than tabbed to, and
+  // stops the browser from turning the press into a text selection.
   e.preventDefault();
-  seekFromEvent(e);
-}
-el.seek.addEventListener('touchstart', seekFromTouch, { passive: false });
-el.seek.addEventListener('touchmove', seekFromTouch, { passive: false });
+  el.seek.setPointerCapture(e.pointerId);
+  scrub = seekFraction(e);
+  el.seek.classList.add('dragging');
+  paintSeek(scrub);
+});
+
+el.seek.addEventListener('pointermove', (e) => {
+  if (scrub === null) return;
+  scrub = seekFraction(e);
+  paintSeek(scrub);
+});
+
+el.seek.addEventListener('pointerup', () => {
+  if (scrub === null) return;
+  const at = scrub;
+  scrub = null;
+  el.seek.classList.remove('dragging');
+  player.seekTo(at);
+});
+
+el.seek.addEventListener('pointercancel', () => {
+  scrub = null;
+  el.seek.classList.remove('dragging');
+  renderPlayer(player.state);
+});
 
 // Keyboard access for the rail: it is a slider, so arrows should move it.
 el.seek.addEventListener('keydown', (e) => {
@@ -1697,14 +1721,18 @@ let lastPlayerKey = '';
 
 function renderPlayer(s) {
   const track = player.currentTrack();
+  if (s.playing) startFrames();
 
-  // Always cheap: the transport position.
+  // Always cheap: the transport position. While the rail is being dragged the
+  // fill belongs to the finger, not to the playhead.
   const total = s.duration || 0;
   const percent = total ? Math.min(100, (s.currentTime / total) * 100) : 0;
-  el.seekFill.style.width = `${percent}%`;
-  el.seekKnob.style.left = `${percent}%`;
+  if (scrub === null) {
+    el.seekFill.style.width = `${percent}%`;
+    el.seekKnob.style.left = `${percent}%`;
+    el.elapsed.textContent = fmt.duration(s.currentTime);
+  }
   el.seekBuffer.style.width = total ? `${Math.min(100, (s.buffered / total) * 100)}%` : '0%';
-  el.elapsed.textContent = fmt.duration(s.currentTime);
   el.total.textContent = fmt.duration(total);
   el.seek.setAttribute('aria-valuenow', String(Math.round(percent)));
   el.seek.setAttribute('aria-valuetext', `${fmt.duration(s.currentTime)} von ${fmt.duration(total)}`);

@@ -749,6 +749,9 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   height: 12px; transform: translateY(-5px);
   cursor: pointer; padding: 0; border: none; background: none;
   display: flex; align-items: center;
+  /* The rail handles the gesture itself. Without this the browser claims a
+     drag that starts here as a scroll and the seek never gets it. */
+  touch-action: none;
 }
 .seek-track { position: relative; width: 100%; height: 3px; background: var(--line); }
 .seek-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); width: 0; }
@@ -759,9 +762,21 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   background: var(--accent); transform: translate(-50%, -50%) scale(0);
   transition: transform 0.13s ease; box-shadow: 0 0 0 3px var(--surface);
 }
-.seek-rail:hover .seek-track, .seek-rail:focus-visible .seek-track { height: 5px; }
-.seek-rail:hover .seek-knob, .seek-rail:focus-visible .seek-knob { transform: translate(-50%, -50%) scale(1); }
-.seek-rail.dragging .seek-knob { transform: translate(-50%, -50%) scale(1); }
+.seek-rail:focus-visible .seek-track { height: 5px; }
+.seek-rail:focus-visible .seek-knob { transform: translate(-50%, -50%) scale(1); }
+.seek-rail.dragging .seek-track { height: 5px; }
+.seek-rail.dragging .seek-knob { transform: translate(-50%, -50%) scale(1.3); }
+@media (hover: hover) {
+  .seek-rail:hover .seek-track { height: 5px; }
+  .seek-rail:hover .seek-knob { transform: translate(-50%, -50%) scale(1); }
+}
+/* A thumb needs a taller strip to find than the hairline a mouse aims at. The
+   knob stays hidden here: on the top edge of the bar it would be cut in half by
+   the edge of the screen at the start of a track. The full screen shows it (see
+   .player.expanded), where the rail sits inside the padding. */
+@media (hover: none) {
+  .seek-rail { height: 16px; transform: translateY(-7px); }
+}
 
 /* The head of the fullscreen player on a phone - the bar itself never shows it,
    see .player.expanded in the responsive section. */
