@@ -88,6 +88,8 @@ const APP_ROUTES = [
   '/artists',
   '/artists/:id',
   '/artists/:id/singles',
+  // The star playlists narrowed to one artist, one rating or a comma list
+  '/artists/:id/stars/:stars',
   '/albums',
   '/albums/:id',
   '/genres',

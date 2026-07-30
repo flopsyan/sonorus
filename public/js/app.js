@@ -56,6 +56,8 @@ const ROUTES = [
   [/^\/artists$/, views.artists],
   [/^\/artists\/(\d+)$/, views.artist, ['id']],
   [/^\/artists\/(\d+)\/singles$/, views.artistSingles, ['id']],
+  // The star playlists narrowed to one artist, combinable the same way.
+  [/^\/artists\/(\d+)\/stars\/([0-5](?:,[0-5])*)$/, views.artistStarred, ['id', 'stars']],
   [/^\/albums$/, views.albums],
   [/^\/albums\/(\d+)$/, views.album, ['id']],
   [/^\/genres$/, views.genres],
@@ -1262,10 +1264,17 @@ content.addEventListener('click', async (e) => {
   }
 
   // Combining star playlists or genres: each chip carries the selection it
-  // leads to. Replacing rather than pushing - a filter is not a place.
+  // leads to. Replacing rather than pushing - a filter is not a place. The row
+  // says which list is being filtered ("/stars", or the ratings of one artist),
+  // and coming from outside that list is a real navigation, so it pushes: from
+  // an artist page the back button has to lead back to it.
   const starChip = e.target.closest('[data-stars]');
   if (starChip) {
-    navigate(`/stars/${starChip.dataset.stars}`, { replace: true });
+    const row = starChip.closest('[data-star-base]');
+    const base = row ? row.dataset.starBase : '/stars';
+    navigate(`${base}/${starChip.dataset.stars}`, {
+      replace: window.location.pathname.startsWith(`${base}/`),
+    });
     return;
   }
 
@@ -1470,8 +1479,9 @@ async function rate(trackId, value) {
     });
     renderSidebar();
     // The star playlists are generated, so the list you are looking at changes -
-    // but the user did not navigate anywhere, so they stay where they were.
-    if (window.location.pathname.startsWith('/stars/')) render({ keep: true });
+    // but the user did not navigate anywhere, so they stay where they were. The
+    // same goes for the ratings of one artist, which are that list narrowed down.
+    if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
   } catch (err) {
     toast(err.message, 'err');
   }

@@ -175,6 +175,11 @@ dropping features.
 - **Several ratings at once.** Every star playlist has a row of switches above
   it, one per rating: switch on 4 and 5 and you get one combined list of both
   (`/stars/5,4`), best rated first. "Nicht bewertet" can join in too.
+- **Die Sterne eines Interpreten.** The artist page carries the same switches
+  under "Nach Bewertung", one per rating that artist actually has: one click
+  gives you only that artist's 5-star songs (`/artists/7/stars/5`), and they
+  combine the same way (`/artists/7/stars/5,4`). The list keeps the order of the
+  artist page - newest album first, then by track number.
 - Automatic views for recently added, recently played and most played tracks.
 
 ### Statistik

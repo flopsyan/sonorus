@@ -191,6 +191,11 @@ export async function artist(params) {
   const { artist: data } = await api.artist(params.id);
   const total = data.tracks.reduce((sum, t) => sum + t.duration, 0);
 
+  // The way into "nur die 5-Sterne-Songs von diesem Interpreten": one switch per
+  // rating this artist has, each one click away from its list, where they can be
+  // combined the same way the star playlists are.
+  const ratings = ratingsOf(data.tracks);
+
   // Songs lying directly in the artist folder are no album, so they get a
   // folder of their own next to the albums instead of inventing one.
   const singlesCard = data.singles.length
@@ -223,6 +228,14 @@ export async function artist(params) {
           ${icon('edit', 16)} Bearbeiten
         </button>`,
     })}
+      ${
+        ratings.length
+          ? `<section class="section">
+              <div class="section-head"><h2>Nach Bewertung</h2></div>
+              ${starPicker([], { base: `/artists/${data.id}/stars`, available: ratings })}
+            </section>`
+          : ''
+      }
       ${
         data.albums.length || singlesCard
           ? `<section class="section">
@@ -469,7 +482,12 @@ export function starSelectionLabel(values) {
 // the selection or takes it out again - that is the whole "mehrere Sterne auf
 // einmal". The last one standing cannot be switched off; an empty list would
 // have nothing to show.
-function starPicker(values) {
+//
+// `base` is the list the switches lead to, so the same picker drives the star
+// playlists and the ratings of a single artist; app.js reads it back off the
+// row. `available` narrows the row to the ratings that exist in this scope - a
+// selected one is always shown, so a hand-typed address keeps its switch.
+function starPicker(values, { base = '/stars', available = null } = {}) {
   const chip = (value, content, label) => {
     const on = values.includes(value);
     const rest = on ? values.filter((v) => v !== value) : [...values, value];
@@ -477,13 +495,23 @@ function starPicker(values) {
     return `<button type="button" class="chip${on ? ' active' : ''}" data-stars="${target}"
               aria-pressed="${on}" title="${esc(label)}">${content}</button>`;
   };
+  const show = (value) => !available || available.includes(value) || values.includes(value);
 
-  return `<div class="chip-row" role="group" aria-label="Bewertungen kombinieren">
+  return `<div class="chip-row" role="group" aria-label="Bewertungen kombinieren" data-star-base="${base}">
       ${[5, 4, 3, 2, 1]
+        .filter(show)
         .map((n) => chip(n, `<span class="num">${n}</span>${icon('star', 13)}`, `${n} ${n === 1 ? 'Stern' : 'Sterne'}`))
         .join('')}
-      ${chip(0, 'Nicht bewertet', 'Nicht bewertet')}
+      ${show(0) ? chip(0, 'Nicht bewertet', 'Nicht bewertet') : ''}
     </div>`;
+}
+
+// The ratings an artist actually has, best first, 0 for "Nicht bewertet". Taken
+// from the tracks the artist page already carries, so the switches cost no
+// second request - and a switch that would lead to an empty list is not drawn.
+function ratingsOf(tracks) {
+  const present = new Set(tracks.map((t) => t.stars || 0));
+  return [5, 4, 3, 2, 1, 0].filter((n) => present.has(n));
 }
 
 export async function starred(params) {
@@ -518,6 +546,44 @@ export async function starred(params) {
                   ? 'Jeder Song in deiner Bibliothek hat eine Bewertung. Neue Songs tauchen hier automatisch auf.'
                   : 'Bewerte einen Song über die Sterne in der Titelliste oder unten im Player. Diese Playlist füllt sich dann von selbst.'
             )
+      }`,
+  };
+}
+
+// The same idea narrowed to one artist, reached from the switches on that
+// artist's page: "5 und 4 Sterne von Metallica". The artist comes back whole
+// anyway - it is the very request the artist page makes - so the selection is
+// applied here instead of in a query of its own, which also keeps the order of
+// the artist page: newest album first, then disc and track number.
+//
+// Songs whose file is gone stay out of it, unlike in the star playlists: this is
+// a view of an artist, and the artist page does not show them either.
+export async function artistStarred(params) {
+  const values = [...new Set(String(params.stars).split(',').map(Number))].filter((n) => n >= 0 && n <= 5);
+  const { artist: data } = await api.artist(params.id);
+  const list = data.tracks.filter((t) => values.includes(t.stars || 0));
+  const label = starSelectionLabel(values);
+  const total = list.reduce((sum, t) => sum + t.duration, 0);
+
+  return {
+    title: `${data.name} · ${label}`,
+    tracks: list,
+    html: `${detailHead({
+      label: 'Bewertung',
+      title: label,
+      artHtml: mosaic(list, label),
+      meta: facts([
+        `<a href="/artists/${data.id}" data-link>${esc(data.name)}</a>`,
+        fmt.plural(list.length, 'Song', 'Songs'),
+        list.length ? fmt.durationLong(total) : '',
+      ]),
+      actions: list.length ? playActions('view') : '',
+    })}
+      ${starPicker(values, { base: `/artists/${data.id}/stars`, available: ratingsOf(data.tracks) })}
+      ${
+        list.length
+          ? trackList(list)
+          : empty('Nichts in dieser Auswahl', 'Nimm eine Bewertung dazu oder wieder heraus.')
       }`,
   };
 }
