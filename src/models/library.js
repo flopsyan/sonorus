@@ -321,19 +321,46 @@ export function listGenres() {
     .map((g) => ({ ...g, cover: g.cover ? `/covers/${g.cover}` : null }));
 }
 
-export function getGenre(id, userId) {
-  const genre = db.prepare('SELECT id, name FROM genres WHERE id = ?').get(id);
-  if (!genre) return null;
+// One list for a selection of genres, the same idea as the star playlists:
+// "Rock und Jazz" is one list, not two. A track that carries both is in it once
+// - which is why the genres are asked for as a set of track ids instead of
+// joined onto the track, where every extra genre would repeat the row.
+//
+// Returns null when any of the ids is unknown, so a made-up address stays a 404
+// instead of quietly showing a shorter selection.
+export function getGenres(ids, userId) {
+  // Validated integers, so inlining them keeps the statement to named
+  // parameters only - better-sqlite3 refuses the two styles mixed.
+  const wanted = [...new Set((Array.isArray(ids) ? ids : [ids]).map(Number))].filter(
+    (n) => Number.isInteger(n) && n > 0
+  );
+  if (!wanted.length) return null;
+
+  const genres = db
+    .prepare(`SELECT id, name FROM genres WHERE id IN (${wanted.join(',')}) ORDER BY name COLLATE NOCASE`)
+    .all();
+  if (genres.length !== wanted.length) return null;
+
   const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
-         JOIN track_genres tg ON tg.track_id = t.id
-        WHERE tg.genre_id = @id AND ${PRESENT}
+        WHERE t.id IN (SELECT tg.track_id FROM track_genres tg
+                        WHERE tg.genre_id IN (${wanted.join(',')}))
+          AND ${PRESENT}
         ORDER BY ar.name COLLATE NOCASE, al.title COLLATE NOCASE, t.disc_no, t.track_no`
     )
-    .all({ id, userId })
+    .all({ userId })
     .map(shapeTrack);
-  return { ...genre, tracks };
+
+  return {
+    ids: genres.map((g) => g.id),
+    // The single-genre case keeps the shape it always had, so everything that
+    // only wants a heading can go on reading `name`.
+    id: genres[0].id,
+    name: genres.map((g) => g.name).join(', '),
+    names: genres.map((g) => g.name),
+    tracks,
+  };
 }
 
 // --- Star playlists ---------------------------------------------------------

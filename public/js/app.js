@@ -59,7 +59,8 @@ const ROUTES = [
   [/^\/albums$/, views.albums],
   [/^\/albums\/(\d+)$/, views.album, ['id']],
   [/^\/genres$/, views.genres],
-  [/^\/genres\/(\d+)$/, views.genre, ['id']],
+  // Like the star playlists, several genres are one combined list.
+  [/^\/genres\/(\d+(?:,\d+)*)$/, views.genre, ['ids']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -1245,10 +1246,17 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
-  // Combining star playlists: each chip carries the selection it leads to.
+  // Combining star playlists or genres: each chip carries the selection it
+  // leads to. Replacing rather than pushing - a filter is not a place.
   const starChip = e.target.closest('[data-stars]');
   if (starChip) {
     navigate(`/stars/${starChip.dataset.stars}`, { replace: true });
+    return;
+  }
+
+  const genreChip = e.target.closest('[data-genres]');
+  if (genreChip) {
+    navigate(`/genres/${genreChip.dataset.genres}`, { replace: true });
     return;
   }
 

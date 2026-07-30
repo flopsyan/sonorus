@@ -17,7 +17,7 @@ import {
   listAlbums,
   getAlbum,
   listGenres,
-  getGenre,
+  getGenres,
   tracksByStarSelection,
   starCounts,
   recentlyAdded,
@@ -223,8 +223,10 @@ router.get('/genres', (req, res) => {
   res.json({ ok: true, genres: listGenres() });
 });
 
-router.get('/genres/:id', (req, res) => {
-  const genre = getGenre(id(req.params.id), req.user.id);
+// Several genres can be asked for at once ("1,4"), which gives one combined
+// list - the same as the star playlists do with several ratings.
+router.get('/genres/:ids', (req, res) => {
+  const genre = getGenres(String(req.params.ids).split(',').map((value) => id(value)), req.user.id);
   if (!genre) return fail(res, 'not_found', 404);
   res.json({ ok: true, genre });
 });

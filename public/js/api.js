@@ -60,7 +60,8 @@ export const api = {
   // Year and cover art of a single - an album track takes both from its album.
   updateTrack: (id, patch) => request('PATCH', `/api/tracks/${id}`, patch),
   genres: () => request('GET', '/api/genres'),
-  genre: (id) => request('GET', `/api/genres/${id}`),
+  // One id or a comma list of them - several genres are one combined list.
+  genre: (ids) => request('GET', `/api/genres/${ids}`),
   starred: (stars) => request('GET', `/api/stars/${stars}`),
   home: () => request('GET', '/api/home'),
   shuffle: (limit) => request('GET', `/api/shuffle${query({ limit })}`),

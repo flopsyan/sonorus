@@ -91,7 +91,8 @@ const APP_ROUTES = [
   '/albums',
   '/albums/:id',
   '/genres',
-  '/genres/:id',
+  // One id or a comma list of them, the same as /stars/:stars
+  '/genres/:ids',
   '/playlists/:id',
   '/stars/:stars',
   '/search',

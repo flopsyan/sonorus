@@ -702,18 +702,21 @@ body.app { height: 100vh; overflow: hidden; }
 .rate-picker .stars button { padding: 6px; }
 .rate-picker .stars button .icon { width: 30px; height: 30px; }
 
-/* Star playlists can be combined ("4 und 5 Sterne"), so the ratings the list is
-   made of are switches, not links: the amber ones are in, the others are out. */
-.star-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-.star-chip {
+/* Star playlists and genres can both be combined ("4 und 5 Sterne", "Rock und
+   Jazz"), so what the list is made of is a row of switches, not links: the
+   amber ones are in, the others are out. */
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.chip {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 12px; border-radius: 999px;
   border: 1px solid var(--line); background: var(--surface);
   color: var(--text-dim); font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
-.star-chip .icon { width: 13px; height: 13px; }
-.star-chip:hover { color: var(--text); border-color: var(--accent-line); }
-.star-chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.chip .icon { width: 13px; height: 13px; }
+@media (hover: hover) {
+  .chip:hover { color: var(--text); border-color: var(--accent-line); }
+}
+.chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 
 /* Drag to reorder inside a playlist */
 .track-row.dragging { opacity: 0.4; }

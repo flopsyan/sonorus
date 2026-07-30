@@ -403,19 +403,47 @@ export async function genres() {
   };
 }
 
+// The genres this list is made of, each one a switch - the same idea as the
+// ratings above the star playlists: tapping one takes it into the selection or
+// out of it again, and the last one standing cannot be switched off because an
+// empty selection has nothing to show.
+function genrePicker(all, selected) {
+  return `<div class="chip-row" role="group" aria-label="Genres kombinieren">
+      ${all
+        .map((g) => {
+          const on = selected.includes(g.id);
+          const rest = on ? selected.filter((id) => id !== g.id) : [...selected, g.id];
+          const target = (rest.length ? rest : [g.id]).sort((a, b) => a - b).join(',');
+          return `<button type="button" class="chip${on ? ' active' : ''}" data-genres="${target}"
+                    aria-pressed="${on}">${esc(g.name)}</button>`;
+        })
+        .join('')}
+    </div>`;
+}
+
 export async function genre(params) {
-  const { genre: data } = await api.genre(params.id);
+  const ids = [...new Set(String(params.ids).split(',').map(Number))].filter((n) => n > 0);
+  // Two requests on purpose: the selection is one list, and the switches above
+  // it need every genre there is, not only the ones that are on.
+  const [{ genre: data }, { genres: all }] = await Promise.all([api.genre(ids.join(',')), api.genres()]);
   const total = data.tracks.reduce((sum, t) => sum + t.duration, 0);
+  const label = joinAnd(data.names);
+
   return {
-    title: data.name,
+    title: label,
     tracks: data.tracks,
     html: `${pageHead(
-      'Genre',
-      data.name,
+      data.names.length > 1 ? 'Genres' : 'Genre',
+      label,
       facts([fmt.plural(data.tracks.length, 'Song', 'Songs'), fmt.durationLong(total)]),
-      playActions('view')
+      data.tracks.length ? playActions('view') : ''
     )}
-      ${trackList(data.tracks)}`,
+      ${all.length > 1 ? genrePicker(all, data.ids) : ''}
+      ${
+        data.tracks.length
+          ? trackList(data.tracks)
+          : empty('Nichts in dieser Auswahl', 'Nimm ein Genre dazu oder wieder heraus.')
+      }`,
   };
 }
 
@@ -446,11 +474,11 @@ function starPicker(values) {
     const on = values.includes(value);
     const rest = on ? values.filter((v) => v !== value) : [...values, value];
     const target = (rest.length ? rest : [value]).sort((a, b) => b - a).join(',');
-    return `<button type="button" class="star-chip${on ? ' active' : ''}" data-stars="${target}"
+    return `<button type="button" class="chip${on ? ' active' : ''}" data-stars="${target}"
               aria-pressed="${on}" title="${esc(label)}">${content}</button>`;
   };
 
-  return `<div class="star-filter" role="group" aria-label="Bewertungen kombinieren">
+  return `<div class="chip-row" role="group" aria-label="Bewertungen kombinieren">
       ${[5, 4, 3, 2, 1]
         .map((n) => chip(n, `<span class="num">${n}</span>${icon('star', 13)}`, `${n} ${n === 1 ? 'Stern' : 'Sterne'}`))
         .join('')}
