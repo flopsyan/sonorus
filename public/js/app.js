@@ -1747,9 +1747,24 @@ function drawBars(canvasCtx, width, height, data, barCount, mirrored) {
   canvasCtx.globalAlpha = 1;
 }
 
+// The loop only runs while there is something to draw. Below 760 px the level
+// meter is not on the screen at all (the right-hand controls are dropped), and
+// with nothing playing there are no levels either - so a phone used to spend
+// every frame of its battery clearing a canvas nobody could see.
+let frameHandle = null;
+
+function startFrames() {
+  if (frameHandle === null) frameHandle = requestAnimationFrame(frame);
+}
+
 function frame() {
+  frameHandle = null;
+  // offsetParent is null for a display: none element, which is exactly what the
+  // narrow layout does to the meter.
+  const onScreen = el.meter.offsetParent !== null;
   const data = player.state.playing ? player.levels() : null;
-  drawBars(meterCtx, el.meter.width, el.meter.height, data, 18, false);
+
+  if (onScreen) drawBars(meterCtx, el.meter.width, el.meter.height, data, 18, false);
 
   if (visualizerCanvas) {
     const c = visualizerCanvas;
@@ -1759,9 +1774,12 @@ function frame() {
     }
     drawBars(c.getContext('2d'), c.width, c.height, data, 64, true);
   }
-  requestAnimationFrame(frame);
+
+  // The frame after playback stopped has already cleared both canvases, so this
+  // is the one that may park the loop. renderPlayer starts it again.
+  if (data && (onScreen || visualizerCanvas)) startFrames();
 }
-requestAnimationFrame(frame);
+startFrames();
 
 function openVisualizer() {
   const track = player.currentTrack();
