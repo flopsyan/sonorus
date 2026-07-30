@@ -31,6 +31,10 @@ belong to the account that created them.
 - **Cover groß ansehen** - clicking the artwork on an album or artist page opens
   it at full size; click anywhere or press Escape to close it again.
 - **Genres** - everything grouped by genre (multi-genre tags supported).
+- **Several genres at once.** A genre page has a row of switches above it, one
+  per genre: switch on Rock and Jazz as well and you get one combined list of
+  both (`/genres/1,4`), every song in it once. Same idea as the star playlists
+  further down.
 - **The folder structure is the library.** Artist, album, track number and title
   come from the layout, not from the file tags:
 
@@ -107,10 +111,33 @@ belong to the account that created them.
 - A live level meter in the transport and a fullscreen **Visualisierung**, both
   driven by the actual audio through a Web Audio analyser.
 - Media Session support, so the lock screen and hardware media keys show the
-  current track and work as expected.
+  current track and work as expected: the card with cover art, previous and
+  next, and the progress bar the notification draws from the reported position.
+  Whether the notification then shows all of it is the browser's decision - the
+  Wiedergabe panel under Einstellungen says what it accepted, and "nicht
+  verfügbar" there almost always means the page was opened over plain HTTP,
+  where the Media Session API does not exist.
 - The queue, volume and the shuffle/repeat modes survive a reload. Volume,
   shuffle and repeat are stored on the account, so they follow you to another
   device; the queue itself stays in the browser you built it in.
+
+### On a phone
+
+The whole app is one layout; below 900 px it rearranges itself rather than
+dropping features.
+
+- **The transport opens as a full screen.** Tap what is playing and the bar
+  becomes a screen with big artwork, the stars and a seek bar a thumb can hit.
+  It arrives and leaves as a sheet, and a wipe down over the artwork follows the
+  finger.
+- **The back button closes what lies over the page** - the full screen, the
+  drawer, the queue, a dialog, a menu - before it leaves the app.
+- **Holding a track opens its menu**, the same one the "..." button opens, as a
+  sheet from the bottom edge. A tap on the row plays it.
+- **Rating** happens in the full screen player or through "Bewerten …" in that
+  menu; the star column has no room in a narrow track list.
+- The seek bar can be dragged, the theme is picked under Einstellungen (the
+  topbar has no room for it), and nothing keeps a hover state after a tap.
 
 ### Keyboard shortcuts
 
