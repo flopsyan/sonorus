@@ -79,7 +79,19 @@
    specificity, leaving "hidden" elements visible. */
 [hidden] { display: none !important; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Android draws its own grey flash over anything tapped, on top of whatever
+     the element already shows for a press. One answer per press is enough. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* No waiting to see whether a second tap follows and means "zoom" - there is
+   nothing here to zoom into, and that wait is what makes a web app feel a
+   moment slower than an app. */
+button, a, input, select, textarea, .card, .track-row.item, .queue-item {
+  touch-action: manipulation;
+}
 
 body {
   margin: 0;
@@ -178,13 +190,9 @@ textarea { resize: vertical; min-height: 70px; }
   border: 1px solid transparent; cursor: pointer; white-space: nowrap;
 }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-primary:hover { background: var(--accent-hi); }
 .btn-ghost { background: var(--surface-2); border-color: var(--line); color: var(--text); }
-.btn-ghost:hover { background: var(--surface-3); }
 .btn-quiet { background: transparent; color: var(--text-dim); }
-.btn-quiet:hover { background: var(--surface-2); color: var(--text); }
 .btn-danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
-.btn-danger:hover { background: var(--danger); color: var(--bg); }
 .btn-block { width: 100%; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 6px 11px; font-size: 0.82rem; }
@@ -196,12 +204,24 @@ textarea { resize: vertical; min-height: 70px; }
   width: 34px; height: 34px; border-radius: var(--radius-sm);
   border: none; background: transparent; color: var(--text-dim); cursor: pointer;
 }
-.icon-btn:hover { background: var(--surface-2); color: var(--text); }
 .icon-btn:disabled { color: var(--text-faint); opacity: 0.5; cursor: default; }
-.icon-btn:disabled:hover { background: transparent; color: var(--text-faint); }
 .icon-btn.is-on { color: var(--accent); }
-.icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
 .icon-btn-sm { width: 28px; height: 28px; }
+
+/* Hover belongs to a pointer, and only to a pointer. A phone keeps :hover on
+   the last thing it touched until something else is touched, so every one of
+   these tints would stay behind on the button that was just used - which is
+   exactly the "Buttons sind danach immer noch grau hinterlegt". What a tap gets
+   instead is the :active block at the end of this file. */
+@media (hover: hover) {
+  .btn-primary:hover { background: var(--accent-hi); }
+  .btn-ghost:hover { background: var(--surface-3); }
+  .btn-quiet:hover { background: var(--surface-2); color: var(--text); }
+  .btn-danger:hover { background: var(--danger); color: var(--bg); }
+  .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  .icon-btn:disabled:hover { background: transparent; color: var(--text-faint); }
+  .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+}
 
 .flash { padding: 11px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 0.89rem; }
 .flash.err { background: var(--danger-soft); color: var(--danger); }
@@ -251,7 +271,9 @@ body.app { height: 100vh; overflow: hidden; }
   color: var(--text-dim); font-size: 0.92rem; font-weight: 500;
   cursor: pointer; width: 100%; border: none; background: none; text-align: left;
 }
-.nav-item:hover { background: var(--surface-2); color: var(--text); }
+@media (hover: hover) {
+  .nav-item:hover { background: var(--surface-2); color: var(--text); }
+}
 .nav-item.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
 /* The amber lamp marks where you are - the one place colour is used in the nav */
 .nav-item.active::before {
@@ -338,7 +360,9 @@ body.app { height: 100vh; overflow: hidden; }
   font-size: 0.78rem; font-weight: 600; padding: 4px 11px;
   border-radius: 999px; cursor: pointer;
 }
-.theme-switch button:hover, .seg-switch button:hover { color: var(--text); }
+@media (hover: hover) {
+  .theme-switch button:hover, .seg-switch button:hover { color: var(--text); }
+}
 .theme-switch button.active, .seg-switch button.active { background: var(--surface-3); color: var(--text); }
 
 .avatar { display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
@@ -364,13 +388,18 @@ body.app { height: 100vh; overflow: hidden; }
   width: 100%; padding: 8px 10px; border-radius: var(--radius-xs);
   font-size: 0.9rem; text-align: left; border: none; background: none; cursor: pointer;
 }
-.dropdown-item:hover { background: var(--surface-2); }
 .dropdown-item.danger { color: var(--danger); }
-.dropdown-item.danger:hover { background: var(--danger-soft); }
+@media (hover: hover) {
+  .dropdown-item:hover { background: var(--surface-2); }
+  .dropdown-item.danger:hover { background: var(--danger-soft); }
+}
 .dropdown-sep { height: 1px; background: var(--line); margin: 5px 0; }
 .dropdown form { margin: 0; }
 
-.content { flex: 1; min-height: 0; overflow-y: auto; padding: 26px 26px 40px; }
+/* `contain` keeps a scroll that has hit the end of the list inside the list:
+   without it the gesture carries on into the page behind and Chrome answers a
+   pull at the top with a reload of the whole app. */
+.content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 26px 26px 40px; }
 .content-inner { max-width: 1280px; margin: 0 auto; }
 
 /* --- Page heads ----------------------------------------------------------- */
@@ -460,13 +489,16 @@ body.app { height: 100vh; overflow: hidden; }
   background: linear-gradient(180deg, var(--accent), var(--accent-soft));
   transition: height 0.25s ease;
 }
-.chart-col:hover .chart-bar { background: var(--accent-hi); }
+@media (hover: hover) {
+  .chart-col:hover .chart-bar { background: var(--accent-hi); }
+  .chart-col:hover .chart-value { color: var(--accent); }
+  .top-row:hover { background: var(--surface); }
+}
 /* The value lines keep their height when they are empty, so every bar in the
    row still stands on the same baseline. */
 .chart-value, .chart-plays { flex: none; line-height: 1.2; min-height: 1.2em; white-space: nowrap; }
 .chart-value { font-size: 0.64rem; color: var(--text-dim); }
 .chart-plays { font-size: 0.6rem; color: var(--text-faint); }
-.chart-col:hover .chart-value { color: var(--accent); }
 /* Nothing was played: a neutral tick instead of a glowing sliver of amber. */
 .chart-col.quiet .chart-bar { background: var(--surface-2); }
 .chart-key {
@@ -490,7 +522,6 @@ body.app { height: 100vh; overflow: hidden; }
   align-items: center; gap: 12px;
   padding: 7px 10px; border-radius: var(--radius-sm);
 }
-.top-row:hover { background: var(--surface); }
 .top-rank { font-size: 0.8rem; color: var(--text-faint); text-align: right; }
 .top-art { width: 40px; height: 40px; border-radius: var(--radius-xs); overflow: hidden; background: var(--surface-2); }
 .top-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -547,7 +578,16 @@ body.app { height: 100vh; overflow: hidden; }
   transition: opacity 0.18s ease, transform 0.18s ease;
   box-shadow: var(--shadow-md);
 }
-.card:hover .card-play, .card-play:focus-visible { opacity: 1; transform: translateY(0); }
+.card-play:focus-visible { opacity: 1; transform: translateY(0); }
+@media (hover: hover) {
+  .card:hover .card-play { opacity: 1; transform: translateY(0); }
+}
+/* Nothing to hover over, so the button is simply there - without this rule the
+   play button on an album, a genre or the singles folder could not be reached
+   from a phone at all. */
+@media (hover: none) {
+  .card-play { opacity: 1; transform: none; }
+}
 
 /* Placeholder artwork: the initial over a tinted panel, no stock icon */
 .art-fallback {
@@ -579,7 +619,6 @@ body.app { height: 100vh; overflow: hidden; }
 }
 .track-head > * { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); }
 .th-sort { background: none; border: none; padding: 0; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 5px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
-.th-sort:hover { color: var(--text-dim); }
 .th-sort.active { color: var(--accent); }
 .sort-caret { font-size: 0.6rem; }
 
@@ -587,17 +626,28 @@ body.app { height: 100vh; overflow: hidden; }
    and its title attribute says where the file used to be. */
 .track-row.item.missing { opacity: 0.5; }
 .track-row.item.missing .track-title { text-decoration: line-through; text-decoration-color: var(--text-faint); }
-.track-row.item.missing:hover { background: var(--surface); opacity: 0.75; }
 
-.track-row.item:hover { background: var(--surface); }
 .track-row.item.playing { background: var(--accent-soft); }
 .track-row.item.playing .track-title { color: var(--accent); }
+/* A list of a few thousand songs is a list the browser may skip most of: only
+   what is near the viewport is laid out and painted, and the placeholder height
+   is a row, so the scrollbar does not jump while it scrolls. */
+.track-row.item { content-visibility: auto; contain-intrinsic-size: auto 46px; }
 
 .track-index { font-family: var(--font-mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--text-faint); text-align: right; }
-.track-row.item:hover .track-index .num-label { display: none; }
 .track-index .play-hint { display: none; color: var(--text); }
-.track-row.item:hover .track-index .play-hint { display: block; }
 .track-index button { background: none; border: none; padding: 0; cursor: pointer; display: grid; place-items: center; width: 100%; }
+
+/* Under a pointer the row answers to being pointed at, and the running number
+   turns into the play symbol. A finger gets neither - it taps the row itself,
+   see the touch block further down. */
+@media (hover: hover) {
+  .track-row.item:hover { background: var(--surface); }
+  .track-row.item.missing:hover { background: var(--surface); opacity: 0.75; }
+  .track-row.item:hover .track-index .num-label { display: none; }
+  .track-row.item:hover .track-index .play-hint { display: block; }
+  .th-sort:hover { color: var(--text-dim); }
+}
 
 .track-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .track-art { width: 38px; height: 38px; border-radius: var(--radius-xs); overflow: hidden; background: var(--surface-2); flex: none; }
@@ -606,15 +656,17 @@ body.app { height: 100vh; overflow: hidden; }
 .track-text { min-width: 0; display: flex; flex-direction: column; }
 .track-title { font-size: 0.91rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-artist { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.track-artist a:hover { color: var(--text); text-decoration: underline; }
 
 .track-cell { font-size: 0.84rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-cell.col-year { font-size: 0.82rem; }
-.track-cell a:hover { color: var(--text); text-decoration: underline; }
 .track-time { font-family: var(--font-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--text-dim); text-align: right; }
 
 .track-row .row-menu { opacity: 0; }
-.track-row.item:hover .row-menu, .row-menu:focus-visible { opacity: 1; }
+.row-menu:focus-visible { opacity: 1; }
+@media (hover: hover) {
+  .track-artist a:hover, .track-cell a:hover { color: var(--text); text-decoration: underline; }
+  .track-row.item:hover .row-menu { opacity: 1; }
+}
 
 /* Now-playing indicator: three bars moving like a level meter */
 .eq { display: flex; align-items: flex-end; gap: 2px; height: 13px; justify-content: center; }
@@ -636,10 +688,12 @@ body.app { height: 100vh; overflow: hidden; }
 }
 .stars button .icon { width: 15px; height: 15px; }
 .stars button.on { color: var(--accent); }
-.stars:not(.readonly):hover button { color: var(--text-faint); }
-.stars:not(.readonly) button:hover,
-.stars:not(.readonly) button:hover ~ button { color: var(--accent-hi); }
 .stars.readonly button { cursor: default; pointer-events: none; }
+@media (hover: hover) {
+  .stars:not(.readonly):hover button { color: var(--text-faint); }
+  .stars:not(.readonly) button:hover,
+  .stars:not(.readonly) button:hover ~ button { color: var(--accent-hi); }
+}
 
 /* The dialog behind "Bewerten …" in a track's menu: the same widget, at a size
    a thumb can hit. It exists because the rating column is dropped from the
@@ -682,7 +736,9 @@ body.app { height: 100vh; overflow: hidden; }
 /* The artwork opens at full size, so the tile is a button. It is a flex item
    and therefore already a block, but a button says nothing about that itself. */
 button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
-button.detail-art:hover { box-shadow: var(--shadow-lg); }
+@media (hover: hover) {
+  button.detail-art:hover { box-shadow: var(--shadow-lg); }
+}
 .detail-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .detail-art .art-fallback { font-size: 3.2rem; }
 .detail-text { flex: 1; min-width: 240px; }
@@ -795,7 +851,9 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
 .now-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .now-title { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .now-artist { font-size: 0.81rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.now-artist a:hover { color: var(--text); text-decoration: underline; }
+@media (hover: hover) {
+  .now-artist a:hover { color: var(--text); text-decoration: underline; }
+}
 .now .stars { margin-top: 3px; }
 .now .stars button .icon { width: 13px; height: 13px; }
 
@@ -809,7 +867,9 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   border: none; cursor: pointer; display: grid; place-items: center;
   flex: none;
 }
-.play-btn:hover { background: var(--accent-hi); }
+@media (hover: hover) {
+  .play-btn:hover { background: var(--accent-hi); }
+}
 .counter {
   display: flex; align-items: center; gap: 9px;
   font-family: var(--font-mono); font-size: 0.75rem;
@@ -1017,7 +1077,9 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
   padding: 9px 12px; border-radius: var(--radius-sm);
 }
-.issue:hover { background: var(--surface-2); }
+@media (hover: hover) {
+  .issue:hover { background: var(--surface-2); }
+}
 .issue-text { min-width: 0; }
 .issue-title { font-size: 0.89rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .issue-sub { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1039,7 +1101,10 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   padding: 26px; text-align: center; color: var(--text-dim);
   font-size: 0.89rem; cursor: pointer;
 }
-.drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.drop-zone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+@media (hover: hover) {
+  .drop-zone:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+}
 
 .import-summary { display: flex; gap: 22px; flex-wrap: wrap; margin: 16px 0; }
 .import-stat { display: flex; flex-direction: column; gap: 3px; }
@@ -1203,11 +1268,59 @@ button.detail-art:hover { box-shadow: var(--shadow-lg); }
   .player.expanded ~ .queue { bottom: 0; z-index: 65; }
 }
 
-/* Without a pointer there is no hover to reveal anything, and the row menu is
-   where a phone reaches a track's actions - the rating among them. */
+/* ============================================================================
+   Touch
+   ========================================================================== */
+/* Everything a finger needs and a pointer does not: nothing is revealed by
+   hovering, a press has to answer for itself, and a target has to be big enough
+   to hit without aiming. */
+
 @media (hover: none) {
+  /* The row menu is where a phone reaches a track's actions - the rating among
+     them - and it was invisible until hovered. */
   .track-row .row-menu { opacity: 1; }
+
+  /* A row is tapped, not pointed at, so it needs the height of a target and no
+     text selection under the long press that opens its menu. */
+  .track-row.item { min-height: 56px; user-select: none; -webkit-user-select: none; }
+  /* The row's job here is to play. The interpret under the title is a link two
+     lines high in a row that is one tap wide, so it swallowed taps meant for
+     the song - it stops being a target and the row's menu keeps the way to the
+     interpret ("Zum Interpreten"). */
+  .track-row.item .track-artist a { pointer-events: none; }
+  .track-row.item .row-menu { width: 34px; height: 34px; }
+  .nav-item { padding: 11px 10px; }
+  .picker-item, .dropdown-item { padding: 13px 12px; }
+  .chip { padding: 9px 14px; }
+
+  /* The press itself is the feedback. Kept short and small on purpose - it has
+     to be over before the next screen arrives. */
+  .btn:active, .icon-btn:active, .play-btn:active, .card-play:active, .avatar-btn:active {
+    transform: scale(0.94);
+  }
+  .btn, .icon-btn, .play-btn, .card-play, .avatar-btn { transition: transform 0.08s ease; }
+  .track-row.item:active, .queue-item:active, .picker-item:active,
+  .dropdown-item:active, .nav-item:active, .issue:active, .top-row:active {
+    background: var(--surface-2);
+  }
+  .card:active .card-art { opacity: 0.72; }
 }
+
+/* A menu with nothing to anchor it to: it comes up from the bottom edge over a
+   scrim, full width, with rows a thumb can hit - the same items, laid out for
+   the hand instead of for the pointer. */
+.context-menu.sheet {
+  left: 0; right: 0; bottom: 0; top: auto;
+  min-width: 0; width: 100%;
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-left: none; border-right: none; border-bottom: none;
+  padding: 8px 8px calc(8px + var(--safe-bottom));
+  animation: sheet-up 0.22s var(--sheet-ease);
+}
+.context-menu.sheet .dropdown-item { padding: 14px 14px; font-size: 0.95rem; }
+.sheet-scrim { position: fixed; inset: 0; z-index: 149; background: rgba(8, 6, 11, 0.5); }
+
+@keyframes sheet-up { from { transform: translateY(100%); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }

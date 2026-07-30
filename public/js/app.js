@@ -1054,10 +1054,13 @@ function rateDialog(track) {
   });
 }
 
-// A small single-field dialog, used for every "give this a name" case.
+// A small single-field dialog, used for every "give this a name" case. The one
+// kind of dialog that exists to be typed into, so this one asks for the field
+// (and the phone's keyboard with it) even on a touch screen.
 function promptText({ title, label, value = '', confirmLabel = 'Anlegen', onSubmit }) {
   modal({
     title,
+    autofocus: true,
     body: `<form id="prompt-form">
         <div class="field">
           <label for="prompt-input">${esc(label)}</label>
@@ -1164,6 +1167,12 @@ async function tracksFor(el) {
 }
 
 content.addEventListener('click', async (e) => {
+  // The tap that ended a long press has already opened the track's menu.
+  if (pressHandled) {
+    pressHandled = false;
+    return;
+  }
+
   // Star rating
   const star = e.target.closest('[data-rate]');
   if (star) {
@@ -1172,11 +1181,18 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
-  // Play a specific row
-  const rowPlay = e.target.closest('[data-play-index]');
+  // Play a specific row. On a touch screen the whole row is that button: the
+  // number column is 30 px wide, and the play symbol in it only appears under a
+  // pointer that a phone does not have.
+  const rowPlay =
+    e.target.closest('[data-play-index]') ||
+    (touch.matches && !e.target.closest('a, button')
+      ? e.target.closest('.track-row.item:not(.missing)')
+      : null);
   if (rowPlay) {
-    const index = Number(rowPlay.dataset.playIndex);
+    const index = Number(rowPlay.dataset.playIndex ?? rowPlay.dataset.index);
     const track = view.tracks[index];
+    if (!track) return;
     if (player.currentTrack() && player.currentTrack().id === track.id) {
       player.toggle();
     } else {
@@ -1320,6 +1336,50 @@ content.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   openTrackMenu(e.clientX, e.clientY, Number(row.dataset.trackId), row.dataset.itemId);
 });
+
+// A finger has no right mouse button, so holding a row is what opens its menu.
+// Done here rather than left to the browser's own long press: what that fires
+// depends on whether it thinks there is text to select, and the menu carries
+// everything a track can do - the rating among it.
+const LONG_PRESS = 480;
+const PRESS_SLOP = 12;
+let pressTimer = null;
+let pressFrom = null;
+let pressHandled = false;
+
+function endPress() {
+  clearTimeout(pressTimer);
+  pressTimer = null;
+}
+
+content.addEventListener('touchstart', (e) => {
+  endPress();
+  if (e.touches.length !== 1) return;
+  const row = e.target.closest('.track-row.item');
+  if (!row || e.target.closest('a, button')) return;
+
+  const touchPoint = e.touches[0];
+  pressFrom = { x: touchPoint.clientX, y: touchPoint.clientY };
+  pressHandled = false;
+  pressTimer = setTimeout(() => {
+    pressTimer = null;
+    pressHandled = true;
+    // A short buzz is the only confirmation a phone can give that the press was
+    // long enough - without it the menu just appears out of nowhere.
+    if (navigator.vibrate) navigator.vibrate(12);
+    openTrackMenu(pressFrom.x, pressFrom.y, Number(row.dataset.trackId), row.dataset.itemId);
+  }, LONG_PRESS);
+}, { passive: true });
+
+content.addEventListener('touchmove', (e) => {
+  if (!pressTimer) return;
+  const touchPoint = e.touches[0];
+  if (Math.abs(touchPoint.clientX - pressFrom.x) > PRESS_SLOP
+    || Math.abs(touchPoint.clientY - pressFrom.y) > PRESS_SLOP) endPress();
+}, { passive: true });
+
+content.addEventListener('touchend', endPress, { passive: true });
+content.addEventListener('touchcancel', endPress, { passive: true });
 
 function openTrackMenu(x, y, trackId, itemId) {
   const track = view.tracks.find((t) => t.id === trackId);

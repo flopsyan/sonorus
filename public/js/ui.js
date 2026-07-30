@@ -293,11 +293,22 @@ let openMenu = null;
 
 // A context menu anchored to the pointer. `items` is a list of
 // { label, icon, danger, onSelect } - a null entry draws a separator.
+//
+// Without a pointer there is nothing to anchor it to, and a menu of 210 px in
+// the middle of a phone screen is a menu for a mouse: on a touch screen it
+// comes up from the bottom edge instead, full width, over a scrim.
 export function contextMenu(x, y, items) {
   closeContextMenu();
 
+  const sheet = isTouch();
+  const scrim = sheet ? document.createElement('div') : null;
+  if (scrim) {
+    scrim.className = 'sheet-scrim';
+    document.body.appendChild(scrim);
+  }
+
   const menu = document.createElement('div');
-  menu.className = 'context-menu';
+  menu.className = `context-menu${sheet ? ' sheet' : ''}`;
   menu.innerHTML = items
     .map((item, i) =>
       item === null
@@ -309,38 +320,59 @@ export function contextMenu(x, y, items) {
     .join('');
   document.body.appendChild(menu);
 
-  // Keep the menu inside the viewport.
-  const rect = menu.getBoundingClientRect();
-  const left = Math.min(x, window.innerWidth - rect.width - 8);
-  const top = Math.min(y, window.innerHeight - rect.height - 8);
-  menu.style.left = `${Math.max(8, left)}px`;
-  menu.style.top = `${Math.max(8, top)}px`;
+  // Keep the menu inside the viewport. The sheet has no pointer to follow: the
+  // stylesheet pins it to the bottom edge.
+  if (!sheet) {
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - rect.width - 8);
+    const top = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+  }
 
+  const openedAt = performance.now();
   menu.addEventListener('click', (e) => {
     const button = e.target.closest('[data-item]');
     if (!button) return;
+    // The press that opened the sheet is still on its way: a long press ends in
+    // a synthetic click, and by then the sheet can be standing under the finger
+    // that asked for it. Ignoring the first moment is what keeps that click
+    // from picking an entry nobody aimed at - a little longer than the sheet
+    // takes to arrive, and far shorter than a deliberate second tap.
+    if (sheet && performance.now() - openedAt < 260) return;
     const item = items[Number(button.dataset.item)];
     closeContextMenu();
     if (item && item.onSelect) item.onSelect();
   });
 
+  // pointerdown, not mousedown: on a touch screen the mouse events are
+  // synthesised when the finger *lifts*, so the release of the long press that
+  // opened this menu would close it again right away.
   const onAway = (e) => {
     if (!menu.contains(e.target)) closeContextMenu();
   };
   const onKey = (e) => {
     if (e.key === 'Escape') closeContextMenu();
   };
+  // The scrim needs no handler of its own: a tap on it is a pointerdown outside
+  // the menu, which is what `onAway` already answers. Giving it a click handler
+  // instead is what closed the menu the moment the long press let go - the
+  // browser sends that click to whatever lies under the finger afterwards, and
+  // by then the scrim does.
   setTimeout(() => {
-    document.addEventListener('mousedown', onAway);
+    document.addEventListener('pointerdown', onAway);
     document.addEventListener('keydown', onKey);
   }, 0);
 
   openMenu = () => {
-    document.removeEventListener('mousedown', onAway);
+    document.removeEventListener('pointerdown', onAway);
     document.removeEventListener('keydown', onKey);
     menu.remove();
+    if (scrim) scrim.remove();
     openMenu = null;
+    overlayHooks.drop('menu');
   };
+  overlayHooks.push('menu', closeContextMenu);
 }
 
 export function closeContextMenu() {
