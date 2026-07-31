@@ -42,7 +42,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'dates-1';
+const SCANNER_VERSION = 'disc-prefix-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -137,7 +137,11 @@ const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
 // "01 - Titel", "01 Titel", "1-01 Titel". Only used inside an album folder, so
 // a single called "1979.flac" keeps its name.
 function splitTrackNumber(base) {
-  const withDisc = base.match(/^(\d{1,2})\s*[-_.]\s*(\d{1,3})\s*[-._)]?\s+(.+)$/);
+  // A disc prefix is written tight ("1-01 Titel"), and that is the only thing
+  // that tells it apart from a track number followed by a title that starts
+  // with a number: "02 - 400 Lux" is track 2 of "400 Lux", not disc 2 of
+  // track 400. So no space is allowed around the separator here.
+  const withDisc = base.match(/^(\d{1,2})[-_.](\d{1,3})\s*[-._)]?\s+(.+)$/);
   if (withDisc) {
     return { discNo: Number(withDisc[1]), trackNo: Number(withDisc[2]), title: withDisc[3].trim() };
   }
