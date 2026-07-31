@@ -175,9 +175,14 @@ export async function restore(prefs) {
       const { tracks } = await api.tracksByIds(stored.ids);
       if (tracks.length) {
         state.queue = tracks;
-        // Tracks can disappear between sessions, so rebuild the order from the
-        // ids that actually came back.
-        const validOrder = (stored.order || []).filter((i) => i >= 0 && i < tracks.length);
+        // Tracks can disappear between sessions, and the answer only carries
+        // the ones that are still there. The stored order is positions in the
+        // old list, so a single missing track shifts every position behind it
+        // onto a different song - it is only usable when everything came back.
+        const complete = tracks.length === stored.ids.length;
+        const validOrder = complete
+          ? (stored.order || []).filter((i) => i >= 0 && i < tracks.length)
+          : [];
         state.order = validOrder.length === tracks.length ? validOrder : tracks.map((_, i) => i);
         state.pos = Math.min(Math.max(stored.pos ?? 0, 0), state.order.length - 1);
         state.source = stored.source || '';
@@ -329,11 +334,18 @@ export function next(manual = false) {
     state.pos += 1;
   } else if (state.repeat === 'all' || manual) {
     // Wrapping while shuffled deals a fresh order, so a repeated queue does not
-    // play the same random sequence forever.
+    // play the same random sequence forever. Dealt from the order, not from the
+    // queue: `queue` still holds everything ever added, so rebuilding from it
+    // would bring tracks back that were taken out of the queue.
     if (state.shuffle) {
-      const indices = state.queue.map((_, i) => i);
-      shuffleInPlace(indices);
-      state.order = indices;
+      const last = state.order[state.pos];
+      const dealt = shuffleInPlace([...state.order]);
+      // A new round must not open with the track that just finished.
+      if (dealt.length > 1 && dealt[0] === last) {
+        const swap = 1 + Math.floor(Math.random() * (dealt.length - 1));
+        [dealt[0], dealt[swap]] = [dealt[swap], dealt[0]];
+      }
+      state.order = dealt;
     }
     state.pos = 0;
   } else {
@@ -348,11 +360,14 @@ export function next(manual = false) {
 // it. The second press then falls inside this window and goes back for real.
 const RESTART_AFTER = 3;
 
-// Back either starts the track over or goes back to the one that played before
-// - and "before" comes from `history`, never from `pos - 1`. Stepping down the
-// play order is what made this feel broken in shuffle: the queue re-deals its
-// order when it wraps, so the track that played before is anywhere but one
-// position back, and the restart rule then silently swallowed the press.
+// Back either starts the track over or goes back to the one that played before,
+// and what "before" means depends on the mode. Shuffled it comes from
+// `history`: the queue re-deals its order when it wraps, so the track that
+// played is anywhere but one position back. Without shuffle the play order *is*
+// the order on screen, so "before" is one step down it - reading the history
+// there is what made switching shuffle off feel broken, because the list played
+// in its normal order again while "back" still walked the random path from
+// before and, once its entries ran out, landed on the track that run started on.
 export function previous() {
   if (!state.order.length) return;
 
@@ -362,8 +377,8 @@ export function previous() {
     return;
   }
 
-  const target = popHistory();
-  if (target === null) {
+  const target = state.shuffle ? popHistory() : state.pos - 1;
+  if (target === null || target < 0) {
     // Nothing played before this one: start it over.
     resetListening();
     audio.currentTime = 0;
@@ -408,9 +423,10 @@ export function enqueue(tracks, source = '') {
   // should never start playing on its own.
   if (!state.queue.length) {
     state.queue = list;
-    state.order = list.map((_, i) => i);
-    state.pos = 0;
     state.source = source;
+    // Through buildOrder, so a queue filled while shuffle is on is dealt
+    // shuffled - the toggle is lit and the queue panel says "gemischt".
+    buildOrder(0);
     load(currentTrack(), false);
     save();
     emit();
@@ -490,10 +506,17 @@ export function setShuffle(on) {
       state.order = [current, ...rest];
       state.pos = 0;
     } else {
-      state.order = state.queue.map((_, i) => i);
+      // Back to the order the tracks were added in - sorted from what is in the
+      // play order, because `queue` still holds everything ever added and
+      // rebuilding from it would put removed tracks back into the queue.
+      state.order = [...state.order].sort((a, b) => a - b);
       state.pos = state.order.indexOf(current);
     }
   }
+  // The history is the record of the shuffled walk. Sequential playback does
+  // not read it, and a later shuffle must not carry on the path of an earlier
+  // one - the tracks in between were played in a completely different order.
+  if (!state.shuffle) history = [];
   save();
   savePrefs();
   emit();
