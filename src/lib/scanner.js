@@ -42,7 +42,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'disc-prefix-1';
+const SCANNER_VERSION = 'escaped-dot-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -134,6 +134,15 @@ const UNKNOWN_ARTIST = 'Unbekannter Interpret';
 // A folder inside an album that only groups one disc of it ("CD1", "Disc 2").
 const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
 
+// A name starting with a dot is hidden and never walked (see collectFiles), so
+// an album like "...Baby One More Time" would never be scanned. Escaping that
+// dot with a backslash - "\...Baby One More Time" - takes the hiding away on
+// the filesystem; the backslash is not part of the name and is dropped here, so
+// the library shows the title the way it is meant to read.
+function unhide(name) {
+  return name.startsWith('\\.') ? name.slice(1) : name;
+}
+
 // "01 - Titel", "01 Titel", "1-01 Titel". Only used inside an album folder, so
 // a single called "1979.flac" keeps its name.
 function splitTrackNumber(base) {
@@ -154,15 +163,15 @@ function splitTrackNumber(base) {
 // the artist folder that is not an album folder is a single.
 function describeFile(filePath) {
   const parts = path.relative(musicDir, filePath).split(path.sep);
-  const base = path.basename(filePath, path.extname(filePath)).trim();
+  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
 
-  const artist = parts.length > 1 ? parts[0].trim() : UNKNOWN_ARTIST;
-  const album = parts.length > 2 ? parts[1].trim() : '';
+  const artist = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_ARTIST;
+  const album = parts.length > 2 ? unhide(parts[1].trim()) : '';
   if (!album) return { artist, album: '', title: base, trackNo: null, discNo: null };
 
   const parsed = splitTrackNumber(base);
   // A disc folder carries the disc number the file name usually leaves out.
-  const dirName = parts[parts.length - 2];
+  const dirName = unhide(parts[parts.length - 2]);
   const discDir = dirName === album ? null : DISC_DIR.exec(dirName);
   return {
     artist,

@@ -52,6 +52,13 @@ belong to the account that created them.
   (`01 - Titel`, `01 Titel`, `1-01 Titel` for disc 1). Files lying loose in an
   artist folder are singles: they belong to no album and are not counted as one.
   A `CD1` / `Disc 2` folder inside an album only supplies the disc number.
+- **A name may start with a dot - escape it with a backslash.** Anything whose
+  name begins with a dot is hidden and is not scanned, which would lose an album
+  like `...Baby One More Time`. Name the folder (or the file) `\...Baby One More
+  Time` instead: the backslash takes the hiding away, and Sonorus drops it again,
+  so the library shows `...Baby One More Time`. Works for artist folders, album
+  folders and file names alike. A name still starting with a real dot stays
+  hidden on purpose - that is how you keep a folder out of the library.
 - What a folder name cannot say is still read from the file (ID3v1/ID3v2, Vorbis
   comments, MP4 atoms, APE): release date, genre, duration, format and the
   embedded cover art. An album with no embedded artwork in any of its files picks
