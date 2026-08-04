@@ -11,6 +11,11 @@
 // The page reads the history **one period at a time**: pick how wide a period
 // is (a day, a week, a month, a year, or everything) and which one, and the
 // chart, the readout and the three top lists all answer for that period.
+//
+// "Meistgehört" is **time listened**, not times started: the top lists rank by
+// seconds and fall back to the play count only to break a tie. A twenty-minute
+// suite heard twice is more listening than a three-minute song heard five
+// times, and ranking by the count said the opposite.
 
 import db from '../db.js';
 
@@ -140,7 +145,7 @@ function topTracks(userId, tz, range, period, limit) {
          LEFT JOIN albums  al ON al.id = t.album_id
         WHERE ${where}
         GROUP BY t.id
-        ORDER BY plays DESC, seconds DESC
+        ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
     .all({ ...params, limit, ...(params.period ? { tz } : {}) })
@@ -158,7 +163,7 @@ function topArtists(userId, tz, range, period, limit) {
          JOIN artists ar ON ar.id = t.artist_id
         WHERE ${where}
         GROUP BY ar.id
-        ORDER BY plays DESC, seconds DESC
+        ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
     .all({ ...params, limit, ...(params.period ? { tz } : {}) })
@@ -175,7 +180,7 @@ function topAlbums(userId, tz, range, period, limit) {
          LEFT JOIN artists ar ON ar.id = al.artist_id
         WHERE ${where}
         GROUP BY al.id
-        ORDER BY plays DESC, seconds DESC
+        ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
     .all({ ...params, limit, ...(params.period ? { tz } : {}) })

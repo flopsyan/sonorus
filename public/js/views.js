@@ -987,9 +987,14 @@ function chart(rows) {
     .join('')}</div>`;
 }
 
+// "Meistgehört" is measured in time listened, not in times started: two runs
+// through a 20-minute suite are more listening than five runs through a
+// three-minute song, and the row that stands for more time says so. The play
+// count stays on the row - it is worth knowing - but it neither decides the
+// order nor draws the bar.
 function topList(title, rows, href) {
   if (!rows.length) return '';
-  const peak = Math.max(...rows.map((r) => r.plays), 1);
+  const peak = Math.max(...rows.map((r) => r.seconds), 1);
   return `<section class="top-list">
       <div class="section-head"><h2>${esc(title)}</h2></div>
       ${rows
@@ -1001,7 +1006,7 @@ function topList(title, rows, href) {
               <span class="top-title">${esc(r.title)}</span>
               <span class="top-sub">${esc(r.artist || fmt.plural(r.tracks || 0, 'Song', 'Songs'))}</span>
             </span>
-            <span class="top-meter"><span class="chart-bar" data-bar="${Math.round((r.plays / peak) * 100)}"></span></span>
+            <span class="top-meter"><span class="chart-bar" data-bar="${Math.round((r.seconds / peak) * 100)}"></span></span>
             <span class="top-count num">${fmt.number(r.plays)}×</span>
             <span class="top-time num">${esc(fmt.durationRack(r.seconds))}</span>
           </a>`
