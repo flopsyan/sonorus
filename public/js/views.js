@@ -445,12 +445,15 @@ export async function genre(params) {
   return {
     title: label,
     tracks: data.tracks,
-    html: `${pageHead(
-      data.names.length > 1 ? 'Genres' : 'Genre',
-      label,
-      facts([fmt.plural(data.tracks.length, 'Song', 'Songs'), fmt.durationLong(total)]),
-      data.tracks.length ? playActions('view') : ''
-    )}
+    // The same head an album gets: a genre is a collection you put on, so it
+    // is introduced like one, with the artwork of the records it is made of.
+    html: `${detailHead({
+      label: data.names.length > 1 ? 'Genres' : 'Genre',
+      title: label,
+      artHtml: mosaic(data.tracks, label),
+      meta: facts([fmt.plural(data.tracks.length, 'Song', 'Songs'), fmt.durationLong(total)]),
+      actions: data.tracks.length ? playActions('view') : '',
+    })}
       ${all.length > 1 ? genrePicker(all, data.ids) : ''}
       ${
         data.tracks.length
@@ -524,12 +527,15 @@ export async function starred(params) {
   return {
     title: label,
     tracks: list,
-    html: `${pageHead(
-      'Automatische Playlist',
-      label,
-      facts([fmt.plural(list.length, 'Song', 'Songs'), list.length ? fmt.durationLong(total) : '']),
-      list.length ? playActions('view') : ''
-    )}
+    // A star playlist is a playlist and now looks like one: the covers of the
+    // first four albums in it, next to what the selection adds up to.
+    html: `${detailHead({
+      label: 'Automatische Playlist',
+      title: label,
+      artHtml: mosaic(list, label),
+      meta: facts([fmt.plural(list.length, 'Song', 'Songs'), list.length ? fmt.durationLong(total) : '']),
+      actions: list.length ? playActions('view') : '',
+    })}
       ${starPicker(values)}
       ${
         list.length

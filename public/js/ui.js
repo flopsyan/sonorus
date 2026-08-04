@@ -20,12 +20,26 @@ export function art(src, label, alt = '') {
   return `<span class="art-fallback" aria-hidden="true">${esc(initial)}</span>`;
 }
 
-// A 2x2 mosaic of the first covers, used when a playlist has no artwork of its
-// own. Falls back to a single cover, then to the typographic panel.
+// A 2x2 mosaic of the first four covers, used wherever a collection has no
+// artwork of its own: a playlist, a star playlist, a genre.
+//
+// It counts *albums*, not songs. Four songs off one record would otherwise
+// show the same cover four times, which says nothing about what is in the
+// list - so a record only ever contributes its first track, and a single,
+// which belongs to no album, stands for itself.
+//
+// Below four albums it falls back to the first cover alone, the way the genre
+// cards have always looked, and without any cover at all to the typographic
+// panel.
 export function mosaic(tracks, label) {
   const covers = [];
+  const seen = new Set();
   for (const track of tracks || []) {
-    if (track.cover && !covers.includes(track.cover)) covers.push(track.cover);
+    if (!track.cover) continue;
+    const album = track.albumId ? `album-${track.albumId}` : `track-${track.id}`;
+    if (seen.has(album)) continue;
+    seen.add(album);
+    covers.push(track.cover);
     if (covers.length === 4) break;
   }
   if (!covers.length) return art(null, label);
