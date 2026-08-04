@@ -902,7 +902,9 @@ async function editAlbumDialog(albumId) {
     return toast(err.message, 'err');
   }
 
-  const genres = [...new Set(album.tracks.flatMap((t) => t.genres))].join(', ');
+  // The album's own list once it has one, the union of its songs' before that -
+  // the server decides which, so both clients show the same thing.
+  const genres = album.genres.join(', ');
   // undefined = leave the cover alone, null = remove it, object = a new one.
   let cover;
 
@@ -919,7 +921,8 @@ async function editAlbumDialog(albumId) {
         <div class="field">
           <label for="al-genres">Genres</label>
           <input type="text" id="al-genres" value="${esc(genres)}" placeholder="Rock, Indie Pop" />
-          <p class="panel-hint">Mehrere durch Komma trennen. Gilt für alle Songs des Albums.</p>
+          <p class="panel-hint">Mehrere durch Komma trennen. Gilt für alle Songs des Albums, auch für
+            später hinzugefügte.</p>
         </div>
         ${EDIT_NOTE}
       </form>`,

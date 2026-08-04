@@ -103,6 +103,12 @@ belong to the account that created them.
   field is locked, so a later scan does not put the file's version back. Title,
   artist and track number are not editable: they come from the folder structure,
   which the next scan reads again.
+  - **The edit belongs to the album, not to the songs that are in it today.**
+    Rename a file, retag it, add a new one to the folder - the album's date,
+    genres and cover still apply, and a song that joins later gets them the same
+    way. That is the difference to editing a file's tags: nothing you do to the
+    files can take the edit back. Only the album's own **folder name** can, since
+    a renamed folder is a different album as far as Sonorus is concerned.
 - **Singles bearbeiten** - a single belongs to no album, so nothing else can
   carry its release date, its genres or its cover art: the list under "Singles"
   has a Jahr column, and "Single bearbeiten" in the track's context menu sets all

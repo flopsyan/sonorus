@@ -15,7 +15,10 @@
 //   music/Various/<Album>/01 - Interpret - Titel.flac
 //
 // Only what the folders cannot say is still read from the file: release date,
-// genre, duration, format and the embedded cover art.
+// genre, duration, format and the embedded cover art. Of those, release date and
+// genre are read from the file only while nobody has said better: an album that
+// was edited by hand hands its own down to every song in it, the ones it gains
+// later included.
 //
 // The music folder is read-only. Everything the scanner produces (rows, cover
 // art) lives in the data directory, so a rescan can always rebuild the library
@@ -97,7 +100,8 @@ function artistId(name) {
 }
 
 const selectAlbum = db.prepare(
-  'SELECT id, release_date, cover FROM albums WHERE title = ? AND artist_id IS ?'
+  `SELECT id, year, release_date, year_locked, genres_locked
+     FROM albums WHERE title = ? AND artist_id IS ?`
 );
 const insertAlbum = db.prepare(
   'INSERT INTO albums (title, artist_id, year, release_date) VALUES (?, ?, ?, ?)'
@@ -110,16 +114,26 @@ const touchAlbumDate = db.prepare(
     WHERE id = @id AND year_locked = 0
       AND length(release_date) < length(@date) AND instr(@date, release_date) = 1`
 );
+const albumGenreNames = db.prepare(
+  `SELECT g.name FROM album_genres ag JOIN genres g ON g.id = ag.genre_id
+    WHERE ag.album_id = ? ORDER BY g.name COLLATE NOCASE`
+);
 
-function albumId(title, aId, date) {
+// The album row this file belongs to, created on first sight. Returned whole
+// rather than as an id, because what the caller writes into the track depends on
+// what the user has decided about the album.
+function albumRow(title, aId, date) {
   const clean = String(title || '').trim();
   if (!clean) return null;
   const found = selectAlbum.get(clean, aId);
   if (found) {
-    if (date) touchAlbumDate.run({ id: found.id, date, year: yearOf(date) });
-    return found.id;
+    // A hand-set date is never touched, so the row read above still describes
+    // the album afterwards - which is what the caller reads its date back from.
+    if (date && !found.year_locked) touchAlbumDate.run({ id: found.id, date, year: yearOf(date) });
+    return found;
   }
-  return Number(insertAlbum.run(clean, aId, yearOf(date), date).lastInsertRowid);
+  const id = Number(insertAlbum.run(clean, aId, yearOf(date), date).lastInsertRowid);
+  return { id, year: yearOf(date), release_date: date, year_locked: 0, genres_locked: 0 };
 }
 
 const selectGenre = db.prepare('SELECT id FROM genres WHERE name = ?');
@@ -397,11 +411,22 @@ async function indexFile(filePath, stat, force) {
   const place = describeFile(filePath);
   const date = releaseDate(common);
   const aId = artistId(place.artist);
-  const alId = place.album ? albumId(place.album, aId, date) : null;
+  const album = place.album ? albumRow(place.album, aId, date) : null;
+  const alId = album ? album.id : null;
 
   // A date the user typed in by hand on a single stays - the file's would
   // otherwise win it back on the next scan.
   const yearLocked = !!(existing && existing.year_locked);
+
+  // An album that was edited by hand decides the date and the genres of every
+  // song in it, this one included - whether it has been in the album all along
+  // or is arriving now under a new name. The lock is the condition and not the
+  // value behind it: a date or a genre list the user deliberately emptied has to
+  // clear the song too, and would otherwise fall back to the file.
+  const albumDate = !!(album && album.year_locked);
+  const albumGenres = album && album.genres_locked
+    ? albumGenreNames.all(album.id).map((row) => row.name)
+    : null;
 
   const row = {
     path: filePath,
@@ -413,8 +438,8 @@ async function indexFile(filePath, stat, force) {
     album_id: alId,
     track_no: place.trackNo,
     disc_no: place.discNo,
-    year: yearLocked ? existing.year : yearOf(date),
-    release_date: yearLocked ? existing.release_date : date,
+    year: albumDate ? album.year : yearLocked ? existing.year : yearOf(date),
+    release_date: albumDate ? album.release_date : yearLocked ? existing.release_date : date,
     duration: format.duration || 0,
     bitrate: format.bitrate ? Math.round(format.bitrate) : null,
     codec: String(format.codec || format.container || ''),
@@ -423,7 +448,7 @@ async function indexFile(filePath, stat, force) {
     // which is also why a track moving into an album loses the lock with it.
     cover: alId ? '' : (existing && existing.cover) || '',
     missing_at: '',
-    genres_locked: (existing && existing.genres_locked) || 0,
+    genres_locked: albumGenres ? 1 : (existing && existing.genres_locked) || 0,
     year_locked: yearLocked ? 1 : 0,
     cover_locked: alId ? 0 : (existing && existing.cover_locked) || 0,
     size: stat.size,
@@ -437,9 +462,11 @@ async function indexFile(filePath, stat, force) {
 
   const trackId = writeTrack(
     row,
-    Array.isArray(common.genre) ? common.genre : [],
+    albumGenres || (Array.isArray(common.genre) ? common.genre : []),
     existing && existing.id,
-    !!(existing && existing.genres_locked)
+    // The album's list is written every time, so its songs cannot drift apart.
+    // Only a single keeps a list of its own untouched.
+    !albumGenres && !!(existing && existing.genres_locked)
   );
 
   if (existing) state.updated += 1;
@@ -487,6 +514,10 @@ const retireTracks = db.transaction((ids) => {
 
 // Removes the artists, albums and genres that no track references any more.
 // Playlist entries and ratings pointing at a deleted track cascade away with it.
+//
+// The albums go first, so an album that is gone takes its own genre list with it
+// (album_genres cascades) before the genres are counted - and a list that is
+// still standing keeps its genres, which the songs of that album carry anyway.
 const prune = db.transaction(() => {
   db.exec(`
     DELETE FROM albums
@@ -495,7 +526,8 @@ const prune = db.transaction(() => {
      WHERE id NOT IN (SELECT artist_id FROM tracks WHERE artist_id IS NOT NULL)
        AND id NOT IN (SELECT artist_id FROM albums WHERE artist_id IS NOT NULL);
     DELETE FROM genres
-     WHERE id NOT IN (SELECT genre_id FROM track_genres);
+     WHERE id NOT IN (SELECT genre_id FROM track_genres)
+       AND id NOT IN (SELECT genre_id FROM album_genres);
   `);
 });
 

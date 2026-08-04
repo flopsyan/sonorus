@@ -293,7 +293,7 @@ export function getAlbum(id, userId) {
   const album = db
     .prepare(
       `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
-              al.artist_id AS artistId, ar.name AS artist,
+              al.artist_id AS artistId, ar.name AS artist, al.genres_locked AS genresLocked,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
          LEFT JOIN artists ar ON ar.id = al.artist_id
@@ -313,7 +313,21 @@ export function getAlbum(id, userId) {
     .all({ id, userId })
     .map(shapeTrack);
 
-  return { ...shapeAlbum(album), tracks };
+  // What the edit dialog has to show. Once the album carries a genre list of its
+  // own that list is the answer, empty included - the user emptied it. Before
+  // that there is nothing to show but what the files say, and offering the union
+  // of them is what keeps opening the dialog and saving from wiping them.
+  const genres = album.genresLocked
+    ? db
+        .prepare(
+          `SELECT g.name FROM album_genres ag JOIN genres g ON g.id = ag.genre_id
+            WHERE ag.album_id = @id ORDER BY g.name COLLATE NOCASE`
+        )
+        .all({ id })
+        .map((row) => row.name)
+    : [...new Set(tracks.flatMap((t) => t.genres))];
+
+  return { ...shapeAlbum(album), genres, tracks };
 }
 
 // --- Genres -----------------------------------------------------------------

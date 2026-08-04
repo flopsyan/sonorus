@@ -75,6 +75,9 @@ db.exec(`
     -- year_locked covers both.
     year_locked  INTEGER NOT NULL DEFAULT 0,
     cover_locked INTEGER NOT NULL DEFAULT 0,
+    -- The genres of this album were set by hand. What they are is in
+    -- album_genres; this says the album decides them and not the files.
+    genres_locked INTEGER NOT NULL DEFAULT 0,
     UNIQUE (title, artist_id)
   );
 
@@ -132,6 +135,17 @@ db.exec(`
     PRIMARY KEY (track_id, genre_id)
   );
   CREATE INDEX IF NOT EXISTS idx_track_genres_genre ON track_genres(genre_id);
+
+  -- The genre list a user set on an album. track_genres stays the single source
+  -- for the Genres view - this is where the *decision* lives, so a song that is
+  -- renamed, retagged or newly added takes the album's list instead of falling
+  -- back to whatever its own file happens to say.
+  CREATE TABLE IF NOT EXISTS album_genres (
+    album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    genre_id INTEGER NOT NULL REFERENCES genres(id) ON DELETE CASCADE,
+    PRIMARY KEY (album_id, genre_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_album_genres_genre ON album_genres(genre_id);
 `);
 
 // --- Per-account data -------------------------------------------------------
@@ -242,6 +256,65 @@ addColumn('tracks', 'release_date', "TEXT NOT NULL DEFAULT ''");
 // user dragged it into.
 addColumn('playlists', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('playlists', 'position', 'INTEGER NOT NULL DEFAULT 0');
+
+// The album decides the genres of its songs, not the other way round.
+addColumn('albums', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
+
+// --- One-off data migrations ------------------------------------------------
+// Unlike the columns above, these rewrite rows, so they must not run twice. The
+// key in `meta` is what makes that so.
+function once(key, run) {
+  if (db.prepare('SELECT 1 FROM meta WHERE key = ?').get(key)) return;
+  db.transaction(run)();
+  db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
+    key,
+    new Date().toISOString()
+  );
+}
+
+// An album edit used to be written into its tracks and nowhere else, so the
+// album itself did not know it had been edited: a song that was renamed or
+// added afterwards was a fresh row, and a fresh row takes the file's genres and
+// the file's date. Both are the album's from now on, so what is already in the
+// library is lifted onto the album here and pushed back down over every song of
+// it - including the ones that had already fallen back to their file.
+once('album_owns_genres_and_date', () => {
+  db.exec(`
+    -- 1. What the hand-edited tracks carry is what the album was set to.
+    INSERT OR IGNORE INTO album_genres (album_id, genre_id)
+      SELECT t.album_id, tg.genre_id
+        FROM tracks t JOIN track_genres tg ON tg.track_id = t.id
+       WHERE t.album_id IS NOT NULL AND t.genres_locked = 1;
+
+    -- 2. An edited song is proof its album was edited - also when the user
+    --    emptied the list, which leaves nothing for the step above to find.
+    UPDATE albums SET genres_locked = 1
+     WHERE id IN (SELECT album_id FROM tracks
+                   WHERE album_id IS NOT NULL AND genres_locked = 1);
+
+    -- 3. Every song of such an album takes that list, the ones that had lost it
+    --    included. That is the reset itself, undone.
+    DELETE FROM track_genres
+     WHERE track_id IN (SELECT id FROM tracks
+                         WHERE album_id IN (SELECT id FROM albums WHERE genres_locked = 1));
+    INSERT OR IGNORE INTO track_genres (track_id, genre_id)
+      SELECT t.id, ag.genre_id FROM tracks t JOIN album_genres ag ON ag.album_id = t.album_id;
+    UPDATE tracks SET genres_locked = 1
+     WHERE album_id IN (SELECT id FROM albums WHERE genres_locked = 1);
+
+    -- 4. The date the same way. It was never written to the songs at all, so
+    --    sorting "Alle Songs" by year still went by the file.
+    UPDATE tracks
+       SET year         = (SELECT al.year         FROM albums al WHERE al.id = tracks.album_id),
+           release_date = (SELECT al.release_date FROM albums al WHERE al.id = tracks.album_id)
+     WHERE album_id IN (SELECT id FROM albums WHERE year_locked = 1);
+
+    -- 5. A genre the replaced tags were the last to use has no place left.
+    DELETE FROM genres
+     WHERE id NOT IN (SELECT genre_id FROM track_genres)
+       AND id NOT IN (SELECT genre_id FROM album_genres);
+  `);
+});
 
 export function getMeta(key) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);

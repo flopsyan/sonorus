@@ -11,6 +11,13 @@
 // here would only last until the next scan reads the folder names again. The
 // profile picture of an artist is the one thing that comes from nowhere else at
 // all, so it needs no lock: no scan ever writes it.
+//
+// An album edit is a fact about the *album*, never about the songs that are in
+// it at the moment. It is stored on the album row (date, cover) and in
+// `album_genres`, and written down onto its songs from there - by the edit and,
+// for every song the album gains later, by the scanner. Storing it on the songs
+// alone is what used to make it fall apart: a renamed file is a new row, and a
+// new row would take the file's genres and the file's date back.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -92,32 +99,68 @@ async function dropCoverFile(name) {
   }
 }
 
-// Genres are stored per track, never on the album - `track_genres` stays the
-// single source for the Genres view. So an album edit writes the same list to
-// every track of the album, and a single edit to the one track it is about.
-const setGenres = db.transaction((trackIds, genres) => {
+// Genre names to genre ids, creating what the library does not know yet.
+function genreIds(names) {
   const findGenre = db.prepare('SELECT id FROM genres WHERE name = ?');
   const addGenre = db.prepare('INSERT INTO genres (name) VALUES (?)');
-  const clear = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
-  const link = db.prepare('INSERT OR IGNORE INTO track_genres (track_id, genre_id) VALUES (?, ?)');
-  const lock = db.prepare('UPDATE tracks SET genres_locked = 1 WHERE id = ?');
-
-  const ids = genres.map((name) => {
+  return names.map((name) => {
     const found = findGenre.get(name);
     return found ? found.id : Number(addGenre.run(name).lastInsertRowid);
   });
+}
+
+// A genre nobody points at any more has no place in the sidebar. An album's own
+// list counts as pointing at it, or saving an album whose songs are all gone
+// would take its genres away behind its back.
+function dropOrphanGenres() {
+  db.exec(`DELETE FROM genres
+            WHERE id NOT IN (SELECT genre_id FROM track_genres)
+              AND id NOT IN (SELECT genre_id FROM album_genres)`);
+}
+
+// `track_genres` stays the single source for the Genres view, so every genre
+// edit ends up here - it only differs in which tracks it writes to.
+const writeTrackGenres = db.transaction((trackIds, ids) => {
+  const clear = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
+  const link = db.prepare('INSERT OR IGNORE INTO track_genres (track_id, genre_id) VALUES (?, ?)');
+  const lock = db.prepare('UPDATE tracks SET genres_locked = 1 WHERE id = ?');
 
   for (const trackId of trackIds) {
     clear.run(trackId);
     for (const genreId of ids) link.run(trackId, genreId);
     lock.run(trackId);
   }
+});
 
-  // A genre nobody uses any more should not stay in the sidebar.
-  db.exec('DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM track_genres)');
+// The genres of a single, which has no album to take them from.
+const setTrackGenres = db.transaction((trackIds, genres) => {
+  writeTrackGenres(trackIds, genreIds(genres));
+  dropOrphanGenres();
 });
 
 const albumTrackIds = db.prepare('SELECT id FROM tracks WHERE album_id = ?');
+
+// The genres of an album belong to the album, not to the songs that happen to
+// be in it right now. They are stored on it and written down onto every song it
+// has; the scanner does the same for every song it gains later, which is what
+// makes an edit outlive a rename or a new file.
+const setAlbumGenres = db.transaction((albumId, genres) => {
+  const ids = genreIds(genres);
+  db.prepare('DELETE FROM album_genres WHERE album_id = ?').run(albumId);
+  const link = db.prepare('INSERT OR IGNORE INTO album_genres (album_id, genre_id) VALUES (?, ?)');
+  for (const genreId of ids) link.run(albumId, genreId);
+  db.prepare('UPDATE albums SET genres_locked = 1 WHERE id = ?').run(albumId);
+
+  writeTrackGenres(albumTrackIds.all(albumId).map((row) => row.id), ids);
+  dropOrphanGenres();
+});
+
+// The date of an album is the date of its songs. Written down onto them so a
+// track list and the album page can never say two different years - the scanner
+// keeps doing it for every song the album gains later.
+const applyAlbumDate = db.prepare(
+  'UPDATE tracks SET year = @year, release_date = @date WHERE album_id = @id'
+);
 
 // Applies the parts of `patch` that are present. Every field is optional, so
 // the dialog can send only what changed.
@@ -131,13 +174,11 @@ export async function updateAlbum(albumId, patch) {
     db.prepare(
       'UPDATE albums SET year = ?, release_date = ?, year_locked = 1 WHERE id = ?'
     ).run(parsed.year, parsed.date, album.id);
+    applyAlbumDate.run({ id: album.id, date: parsed.date, year: parsed.year });
   }
 
   if ('genres' in patch) {
-    setGenres(
-      albumTrackIds.all(album.id).map((row) => row.id),
-      parseGenres(patch.genres)
-    );
+    setAlbumGenres(album.id, parseGenres(patch.genres));
   }
 
   if ('cover' in patch) {
@@ -174,7 +215,7 @@ export async function updateSingle(trackId, patch) {
   }
 
   if ('genres' in patch) {
-    setGenres([track.id], parseGenres(patch.genres));
+    setTrackGenres([track.id], parseGenres(patch.genres));
   }
 
   if ('cover' in patch) {
