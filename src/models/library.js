@@ -7,6 +7,12 @@
 import db from '../db.js';
 import { normalize, loosen, primaryArtist } from '../lib/normalize.js';
 
+// Who made this one song. Normally the artist folder it lies in - but a track
+// on a compilation ("Various") carries its own interpret, read off the file
+// name by the scanner, and then that one is the answer. Empty everywhere else,
+// so the expression costs nothing for an ordinary library.
+const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name)";
+
 // One shared projection so every endpoint returns tracks in the same shape.
 // The genre subquery uses the (track_id, genre_id) primary key, the rating
 // subquery the (user_id, track_id) one. Exported because playlists.js selects
@@ -15,7 +21,7 @@ export const TRACK_FIELDS = `
   t.id, t.title, t.track_no AS trackNo, t.disc_no AS discNo, t.year,
   t.release_date AS releaseDate,
   t.duration, t.bitrate, t.codec, t.lossless, t.added_at AS addedAt,
-  t.artist_id AS artistId, ar.name AS artist,
+  t.artist_id AS artistId, ${TRACK_ARTIST} AS artist, t.track_artist AS trackArtist,
   t.album_id AS albumId, al.title AS album,
   COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
   (SELECT group_concat(g.name, ', ')
@@ -62,7 +68,11 @@ export function shapeTrack(row) {
     id: row.id,
     title: row.title,
     artist: row.artist || 'Unbekannter Interpret',
-    artistId: row.artistId,
+    // A song on a compilation names an interpret that has no page of its own:
+    // the folder it lies in is "Various", and a link under the name would lead
+    // there rather than to the interpret it reads as. So it stays plain text,
+    // and the album is the way back to where the song belongs.
+    artistId: row.trackArtist ? null : row.artistId,
     album: row.album || '',
     albumId: row.albumId,
     cover: row.cover ? `/covers/${row.cover}` : null,
@@ -86,7 +96,9 @@ export function shapeTrack(row) {
 // up in the SQL text.
 const SORTS = {
   title: 't.title COLLATE NOCASE',
-  artist: 'ar.name COLLATE NOCASE',
+  // The interpret the row prints, so a compilation sorts by its songs' artists
+  // and not by "Various" six hundred times.
+  artist: `${TRACK_ARTIST} COLLATE NOCASE`,
   album: 'al.title COLLATE NOCASE',
   duration: 't.duration',
   year: TRACK_DATE,
@@ -100,8 +112,11 @@ export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit 
   const direction = String(dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
   const search = String(q || '').trim();
 
+  // Both artist columns are searched: "Various" finds the whole compilation,
+  // the name of one of its interpreten finds their songs on it.
   const where = search
-    ? `WHERE ${PRESENT} AND (t.title LIKE @like OR ar.name LIKE @like OR al.title LIKE @like)`
+    ? `WHERE ${PRESENT} AND (t.title LIKE @like OR ar.name LIKE @like
+         OR t.track_artist LIKE @like OR al.title LIKE @like)`
     : `WHERE ${PRESENT}`;
   const page = limit ? `LIMIT @limit OFFSET @offset` : '';
 
@@ -123,7 +138,8 @@ export function countTracks({ q = '' } = {}) {
   return db
     .prepare(
       `SELECT COUNT(*) AS c ${TRACK_FROM}
-        WHERE ${PRESENT} AND (t.title LIKE @like OR ar.name LIKE @like OR al.title LIKE @like)`
+        WHERE ${PRESENT} AND (t.title LIKE @like OR ar.name LIKE @like
+          OR t.track_artist LIKE @like OR al.title LIKE @like)`
     )
     .get({ like: `%${search}%` }).c;
 }
@@ -347,7 +363,7 @@ export function getGenres(ids, userId) {
         WHERE t.id IN (SELECT tg.track_id FROM track_genres tg
                         WHERE tg.genre_id IN (${wanted.join(',')}))
           AND ${PRESENT}
-        ORDER BY ar.name COLLATE NOCASE, al.title COLLATE NOCASE, t.disc_no, t.track_no`
+        ORDER BY ${TRACK_ARTIST} COLLATE NOCASE, al.title COLLATE NOCASE, t.disc_no, t.track_no`
     )
     .all({ userId })
     .map(shapeTrack);
@@ -404,7 +420,7 @@ export function unratedTracks(userId) {
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
         WHERE ${UNRATED}
-        ORDER BY ar.name COLLATE NOCASE, al.title COLLATE NOCASE,
+        ORDER BY ${TRACK_ARTIST} COLLATE NOCASE, al.title COLLATE NOCASE,
                  t.disc_no, t.track_no, t.title COLLATE NOCASE`
     )
     .all({ userId })

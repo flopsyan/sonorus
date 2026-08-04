@@ -8,6 +8,12 @@
 //   music/<Interpret>/<Album>/01 - Titel.flac   album track
 //   music/<Interpret>/Titel.flac                single, belongs to no album
 //
+// One artist folder is read differently, and only that one: under "Various" an
+// album is a compilation where every song has an interpret of its own, so the
+// file name carries it between the track number and the title:
+//
+//   music/Various/<Album>/01 - Interpret - Titel.flac
+//
 // Only what the folders cannot say is still read from the file: release date,
 // genre, duration, format and the embedded cover art.
 //
@@ -42,7 +48,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'escaped-dot-1';
+const SCANNER_VERSION = 'various-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -131,6 +137,11 @@ function genreId(name) {
 
 const UNKNOWN_ARTIST = 'Unbekannter Interpret';
 
+// The one artist folder that is read differently: its albums are compilations,
+// so the interpret is per song and not per folder. Compared in lower case,
+// because artists.name is UNIQUE COLLATE NOCASE and "various" is that folder.
+const VARIOUS = 'various';
+
 // A folder inside an album that only groups one disc of it ("CD1", "Disc 2").
 const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
 
@@ -159,6 +170,21 @@ function splitTrackNumber(base) {
   return { discNo: null, trackNo: Number(m[1]), title: m[2].trim() || base };
 }
 
+// What is left of a track name on a compilation once the number is gone:
+// "Lovejoy - Privately Owned Spiral Galaxy". The *first* separator splits it,
+// so the interpret is one segment and the title keeps every dash it has of its
+// own - which is the way round that matters, because a title with a dash in it
+// is ordinary and an interpret with one is not.
+//
+// The separator has to be a dash with space on both sides. A hyphenated name
+// ("Jay-Z") would otherwise be cut in half, and a file that says nothing about
+// an interpret simply keeps its whole title.
+function splitTrackArtist(title) {
+  const m = title.match(/^(.+?)\s+-\s+(.+)$/);
+  if (!m) return { trackArtist: '', title };
+  return { trackArtist: m[1].trim(), title: m[2].trim() };
+}
+
 // Reads artist, album, track number and title off the path. Everything below
 // the artist folder that is not an album folder is a single.
 function describeFile(filePath) {
@@ -167,16 +193,23 @@ function describeFile(filePath) {
 
   const artist = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_ARTIST;
   const album = parts.length > 2 ? unhide(parts[1].trim()) : '';
-  if (!album) return { artist, album: '', title: base, trackNo: null, discNo: null };
+  if (!album) return { artist, trackArtist: '', album: '', title: base, trackNo: null, discNo: null };
 
   const parsed = splitTrackNumber(base);
+  // Only under "Various" does the rest of the name start with an interpret.
+  // Everywhere else a dash in a title is just part of the title, so nothing is
+  // taken off it - the whole point of restricting this to the one folder.
+  const named = artist.toLowerCase() === VARIOUS
+    ? splitTrackArtist(parsed.title)
+    : { trackArtist: '', title: parsed.title };
   // A disc folder carries the disc number the file name usually leaves out.
   const dirName = unhide(parts[parts.length - 2]);
   const discDir = dirName === album ? null : DISC_DIR.exec(dirName);
   return {
     artist,
+    trackArtist: named.trackArtist,
     album,
-    title: parsed.title,
+    title: named.title,
     trackNo: parsed.trackNo,
     discNo: discDir ? Number(discDir[1]) : parsed.discNo,
   };
@@ -300,15 +333,18 @@ const selectTrackByPath = db.prepare(
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
-  INSERT INTO tracks (path, title, artist_id, album_id, track_no, disc_no, year, release_date,
-                      duration, bitrate, codec, lossless, cover, missing_at, genres_locked,
-                      year_locked, cover_locked, size, mtime, norm_title, loose_title, norm_artist)
-  VALUES (@path, @title, @artist_id, @album_id, @track_no, @disc_no, @year, @release_date,
-          @duration, @bitrate, @codec, @lossless, @cover, @missing_at, @genres_locked,
-          @year_locked, @cover_locked, @size, @mtime, @norm_title, @loose_title, @norm_artist)
+  INSERT INTO tracks (path, title, artist_id, track_artist, album_id, track_no, disc_no, year,
+                      release_date, duration, bitrate, codec, lossless, cover, missing_at,
+                      genres_locked, year_locked, cover_locked, size, mtime, norm_title,
+                      loose_title, norm_artist)
+  VALUES (@path, @title, @artist_id, @track_artist, @album_id, @track_no, @disc_no, @year,
+          @release_date, @duration, @bitrate, @codec, @lossless, @cover, @missing_at,
+          @genres_locked, @year_locked, @cover_locked, @size, @mtime, @norm_title,
+          @loose_title, @norm_artist)
 `);
 const updateTrack = db.prepare(`
-  UPDATE tracks SET title = @title, artist_id = @artist_id, album_id = @album_id,
+  UPDATE tracks SET title = @title, artist_id = @artist_id, track_artist = @track_artist,
+                    album_id = @album_id,
                     track_no = @track_no, disc_no = @disc_no, year = @year,
                     release_date = @release_date, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
@@ -371,6 +407,9 @@ async function indexFile(filePath, stat, force) {
     path: filePath,
     title: place.title,
     artist_id: aId,
+    // Only a compilation fills this: the album still belongs to "Various", the
+    // song says who made it. Empty means "the artist folder is the answer".
+    track_artist: place.trackArtist,
     album_id: alId,
     track_no: place.trackNo,
     disc_no: place.discNo,
@@ -391,7 +430,9 @@ async function indexFile(filePath, stat, force) {
     mtime: Math.floor(stat.mtimeMs),
     norm_title: normalize(place.title),
     loose_title: loosen(place.title),
-    norm_artist: primaryArtist(place.artist),
+    // A CSV export names the artist of the *song*, so on a compilation that is
+    // what an import has to match against - not the "Various" folder.
+    norm_artist: primaryArtist(place.trackArtist || place.artist),
   };
 
   const trackId = writeTrack(

@@ -88,6 +88,11 @@ db.exec(`
     path        TEXT NOT NULL UNIQUE,
     title       TEXT NOT NULL,
     artist_id   INTEGER REFERENCES artists(id) ON DELETE SET NULL,
+    -- The interpret of this one song, when it is not the artist folder it lies
+    -- in. Only ever filled under "Various", where every track of an album has
+    -- an interpret of its own and the file name carries it. Empty everywhere
+    -- else, which is what makes artist_id the answer for the whole library.
+    track_artist TEXT NOT NULL DEFAULT '',
     album_id    INTEGER REFERENCES albums(id) ON DELETE SET NULL,
     track_no    INTEGER,
     disc_no     INTEGER,
@@ -225,6 +230,9 @@ addColumn('tracks', 'year_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('tracks', 'cover_locked', 'INTEGER NOT NULL DEFAULT 0');
 // The profile picture of an artist, which comes from nowhere but a hand edit.
 addColumn('artists', 'cover', "TEXT NOT NULL DEFAULT ''");
+// The interpret of a single song on a compilation. Filled by the next scan,
+// which re-reads every file after the scanner version bump.
+addColumn('tracks', 'track_artist', "TEXT NOT NULL DEFAULT ''");
 // The full release date next to the year. Filled by the next scan, which
 // re-reads every file after the scanner version bump.
 addColumn('albums', 'release_date', "TEXT NOT NULL DEFAULT ''");

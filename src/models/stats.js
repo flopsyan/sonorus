@@ -128,7 +128,11 @@ function topTracks(userId, tz, range, period, limit) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
-      `SELECT t.id, t.title, ar.name AS artist, al.title AS album,
+      // The interpret of the song, which on a compilation is not the folder it
+      // lies in. The top *artists* below deliberately keep grouping by the
+      // folder: the album belongs to "Various", and that is what was listened to.
+      `SELECT t.id, t.title, COALESCE(NULLIF(t.track_artist, ''), ar.name) AS artist,
+              al.title AS album,
               t.album_id AS albumId, t.artist_id AS artistId,
               COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
               COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
