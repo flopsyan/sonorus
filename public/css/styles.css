@@ -1184,13 +1184,20 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
   /* The transport keeps its height and adds whatever the phone's gesture bar
      covers, so the play button never ends up under it. */
   :root { --player-h: calc(76px + var(--safe-bottom)); }
-  .track-row { grid-template-columns: 30px minmax(0, 1fr) 58px 32px; }
-  .track-row .col-album, .track-row .col-year, .track-row .col-stars { display: none; }
-  .player { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 0 12px var(--safe-bottom); }
-  .player-right { display: none; }
-  .transport .counter { display: none; }
+  /* The album and the year go, the rating stays: it is what the star playlists
+     are built from, and a window at half a screen has room for it. What gives
+     way instead is the title, which cuts off with an ellipsis and says its full
+     name on hover (see the truncation handler in app.js). */
+  .track-row { grid-template-columns: 30px minmax(0, 1fr) 92px 58px 32px; }
+  .track-row .col-album, .track-row .col-year { display: none; }
+  /* Three columns again, and the outer two equal: that is the whole reason the
+     transport sits in the middle of the bar instead of being pushed to one
+     side by however long the title next to it happens to be. */
+  .player { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; padding: 0 12px var(--safe-bottom); }
+  /* The slider is the one control here that can give way; the buttons keep
+     their size, so mute, the visualizer and the queue stay reachable. */
+  .volume-slider { width: 64px; }
   .now-art { width: 46px; height: 46px; }
-  .now .stars { display: none; }
   /* The bar has room for the interpret, not for the album behind it. */
   .player:not(.expanded) .now-album { display: none; }
   /* Six numbers over a full screen before the library starts: the readout says
@@ -1215,6 +1222,33 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
      next to it says the same thing. */
   .top-row { grid-template-columns: 22px 36px minmax(0, 1fr) 46px; gap: 10px; }
   .top-meter, .top-time { display: none; }
+}
+
+/* The level meter is the widest thing in the bar and the one that says the
+   least; the fullscreen visualizer shows the same signal with room for it. */
+@media (max-width: 900px) {
+  .meter { display: none; }
+}
+
+/* Below this the volume slider has nowhere left to shrink to. The mute button
+   stays, and the mouse wheel over it still changes the volume.
+   The rating and the plus go with it: from here on the title next to them has
+   less width than the two controls need, and both are still a tap away - in
+   the row's own menu, and on a phone in the full screen. */
+@media (max-width: 640px) {
+  .volume-slider { display: none; }
+  .now .now-actions { display: none; }
+}
+
+/* A real phone. Here the bar cannot be a transport and a panel at the same
+   time, and it does not have to be: tapping what is playing opens the full
+   screen, which has room for the rating, the counter and the rest. */
+@media (max-width: 560px) {
+  .track-row { grid-template-columns: 30px minmax(0, 1fr) 58px 32px; }
+  .track-row .col-stars { display: none; }
+  .player { grid-template-columns: minmax(0, 1fr) auto; }
+  .player-right { display: none; }
+  .transport .counter { display: none; }
 }
 
 /* --- The transport as a screen of its own (phones only) -------------------- */

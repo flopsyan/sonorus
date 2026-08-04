@@ -125,7 +125,7 @@ export function trackList(tracks, options = {}) {
         <span class="track-main">
           <span class="track-art">${art(track.cover, track.album || track.title)}</span>
           <span class="track-text">
-            <span class="track-title">${esc(track.title)}${
+            <span class="track-title" data-clip>${esc(track.title)}${
               gone ? ' <span class="badge gone">fehlt</span>' : ''
             }</span>
             <span class="track-artist">${

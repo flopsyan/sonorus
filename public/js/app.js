@@ -1487,6 +1487,30 @@ async function rate(trackId, value) {
   }
 }
 
+// --- Names that had to be cut off -------------------------------------------
+
+// A title too long for its column ends in an ellipsis, and hovering it says
+// what it really is. Only then, though: a tooltip on a name that is fully
+// readable is noise, and every row would carry one.
+//
+// Whether it was cut off can only be measured, and the measurement is done on
+// the way in rather than while rendering. Two reasons, both load-bearing: a
+// `.track-row.item` is `content-visibility: auto`, so most rows of a long list
+// have no layout at all until they come near the viewport and asking for their
+// width would throw that whole optimisation away - and the answer changes with
+// every resize, so anything decided once would be wrong by the next drag of the
+// window edge. Under the pointer a row is laid out by definition.
+document.addEventListener('pointerover', (e) => {
+  const clip = e.target.closest && e.target.closest('[data-clip]');
+  // A missing file explains itself on the row already, and a title on the span
+  // inside it would win over that far more useful message.
+  if (!clip || clip.closest('[data-missing]')) return;
+  // A pixel of slack: sub-pixel text metrics make scrollWidth exceed
+  // clientWidth by a fraction on strings that fit exactly.
+  if (clip.scrollWidth > clip.clientWidth + 1) clip.setAttribute('title', clip.textContent.trim());
+  else clip.removeAttribute('title');
+});
+
 // --- Drag and drop inside a playlist ---------------------------------------
 
 let dragIndex = null;
