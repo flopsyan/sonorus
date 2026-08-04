@@ -31,6 +31,11 @@ belong to the account that created them.
 - **Cover groß ansehen** - clicking the artwork on an album or artist page opens
   it at full size; click anywhere or press Escape to close it again.
 - **Genres** - everything grouped by genre (multi-genre tags supported).
+- **A collection is introduced like an album.** A playlist, a star playlist and
+  a genre carry the same head as an album page: the artwork left of the name,
+  what it adds up to, and the play buttons. Without artwork of its own the tile
+  is a 2x2 mosaic of the covers of the first four albums in it - fewer than four
+  and it shows the first cover alone.
 - **Several genres at once.** A genre page has a row of switches above it, one
   per genre: switch on Rock and Jazz as well and you get one combined list of
   both (`/genres/1,4`), every song in it once. Same idea as the star playlists
@@ -52,6 +57,24 @@ belong to the account that created them.
   (`01 - Titel`, `01 Titel`, `1-01 Titel` for disc 1). Files lying loose in an
   artist folder are singles: they belong to no album and are not counted as one.
   A `CD1` / `Disc 2` folder inside an album only supplies the disc number.
+- **Compilations go under `Various`.** That one artist folder is read
+  differently: an album in it is a sampler where every song has an interpret of
+  its own, and the file name says which, between the track number and the title.
+
+  ```
+  music/
+    Various/
+      Crywank Covers/
+        01 - Lovejoy - Privately Owned Spiral Galaxy.flac
+  ```
+
+  The album stays under Various, the song shows "Lovejoy". Only the **first**
+  ` - ` after the number splits, so a title keeps every dash of its own
+  (`02 - Crywank - James Is Dead - Long Live James` is "James Is Dead - Long
+  Live James" by Crywank), and a hyphen without spaces around it stays part of
+  the name (`Jay-Z`). A file naming no interpret belongs to Various like any
+  other track. Everywhere else a dash in a title is just a dash - this exists
+  for that one folder name and nowhere else.
 - **A name may start with a dot - escape it with a backslash.** Anything whose
   name begins with a dot is hidden and is not scanned, which would lose an album
   like `...Baby One More Time`. Name the folder (or the file) `\...Baby One More
@@ -113,6 +136,9 @@ belong to the account that created them.
 - The seek bar is the top edge of the transport: full width, grab it anywhere.
 - Shuffle and repeat (off / repeat all / repeat one).
 - Volume slider with mute. The mouse wheel over it works too: up is louder.
+- **Zu Playlist hinzufügen** - a plus next to the stars of what is playing puts
+  the running song on one of your playlists. Playlists only: the rating sits
+  right next to it, and the track's own menu carries everything else.
 - **Aktuelle Wiedergabeliste** - the live queue in a side panel, showing the
   real upcoming order even while shuffle is on; drag to reorder, click to jump.
 - A live level meter in the transport and a fullscreen **Visualisierung**, both
@@ -142,7 +168,10 @@ dropping features.
 - **Holding a track opens its menu**, the same one the "..." button opens, as a
   sheet from the bottom edge. A tap on the row plays it.
 - **Rating** happens in the full screen player or through "Bewerten …" in that
-  menu; the star column has no room in a narrow track list.
+  menu; below 560 px the star column has no room in the track list. Above that
+  it stays - a window at half a screen keeps the rating, the time counter and
+  the controls on the right of the bar, and the title cuts off instead. A title
+  that had to be cut off says its full name on hover.
 - The seek bar can be dragged, the theme is picked under Einstellungen (the
   topbar has no room for it), and nothing keeps a hover state after a tap.
 

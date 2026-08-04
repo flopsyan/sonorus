@@ -1231,6 +1231,8 @@ export async function settings(_params, ctx) {
         <p class="panel-hint">Sonorus liest den eingehängten Ordner nur - deine Dateien werden nie verändert.
           Die Zuordnung kommt aus der Ordnerstruktur: <code>Interpret / Album / 01 - Titel.flac</code>.
           Dateien, die direkt im Ordner eines Interpreten liegen, zählen als Single.
+          Im Ordner <code>Various</code> steht der Interpret im Dateinamen:
+          <code>Various / Album / 01 - Interpret - Titel.flac</code>.
           Datum, Genre und Cover kommen weiterhin aus der Datei selbst.</p>
         ${scanBlock(status.scan, status.lastScan)}
       </div>
