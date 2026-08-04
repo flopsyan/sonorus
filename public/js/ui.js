@@ -20,31 +20,40 @@ export function art(src, label, alt = '') {
   return `<span class="art-fallback" aria-hidden="true">${esc(initial)}</span>`;
 }
 
-// A 2x2 mosaic of the first four covers, used wherever a collection has no
-// artwork of its own: a playlist, a star playlist, a genre.
+// A 2x2 mosaic of four covers, used wherever a collection has no artwork of its
+// own: a playlist, a star playlist, a genre.
 //
-// It counts *albums*, not songs. Four songs off one record would otherwise
-// show the same cover four times, which says nothing about what is in the
-// list - so a record only ever contributes its first track, and a single,
-// which belongs to no album, stands for itself.
-//
-// Below four albums it falls back to the first cover alone, the way the genre
-// cards have always looked, and without any cover at all to the typographic
-// panel.
+// Below four it falls back to the first cover alone, the way the genre cards
+// have always looked, and without any cover at all to the typographic panel.
+export function coverMosaic(covers, label) {
+  const list = (covers || []).slice(0, 4);
+  if (!list.length) return art(null, label);
+  if (list.length < 4) return `<span class="mosaic single">${art(list[0], label)}</span>`;
+  return `<span class="mosaic">${list.map((c) => art(c, label)).join('')}</span>`;
+}
+
+// The same artwork for a collection that is at hand as its track list.
 export function mosaic(tracks, label) {
+  return coverMosaic(albumCovers(tracks), label);
+}
+
+// The cover of each of the first four records in a track list, in the order the
+// list has them. It counts *albums*, not songs: four songs off one record would
+// otherwise show the same cover four times, which says nothing about what is in
+// the list - so a record only ever contributes its first track, and a single,
+// which belongs to no album, stands for itself.
+function albumCovers(tracks) {
   const covers = [];
   const seen = new Set();
   for (const track of tracks || []) {
     if (!track.cover) continue;
-    const album = track.albumId ? `album-${track.albumId}` : `track-${track.id}`;
-    if (seen.has(album)) continue;
-    seen.add(album);
+    const record = track.albumId ? `album-${track.albumId}` : `track-${track.id}`;
+    if (seen.has(record)) continue;
+    seen.add(record);
     covers.push(track.cover);
     if (covers.length === 4) break;
   }
-  if (!covers.length) return art(null, label);
-  if (covers.length < 4) return `<span class="mosaic single">${art(covers[0], label)}</span>`;
-  return `<span class="mosaic">${covers.map((c) => art(c, label)).join('')}</span>`;
+  return covers;
 }
 
 // Five star buttons. Rendered 5..1 so CSS can light up "this one and lower"
@@ -156,10 +165,12 @@ export function trackList(tracks, options = {}) {
 
 // --- Cards ------------------------------------------------------------------
 
-export function card({ href, cover, title, sub, round = false, playAction }) {
+// `covers` is the collection case: a card for something that has no artwork of
+// its own carries the covers of what is in it, the same mosaic as its page.
+export function card({ href, cover, covers, title, sub, round = false, playAction }) {
   return `<a class="card${round ? ' round' : ''}" href="${esc(href)}" data-link>
       <span class="card-art">
-        ${art(cover, title)}
+        ${covers ? coverMosaic(covers, title) : art(cover, title)}
         ${playAction ? `<button type="button" class="card-play" ${playAction} aria-label="${esc(title)} abspielen">${icon('play', 17)}</button>` : ''}
       </span>
       <span class="card-title">${esc(title)}</span>

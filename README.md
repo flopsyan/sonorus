@@ -30,16 +30,20 @@ belong to the account that created them.
   Alle Songs.
 - **Cover groß ansehen** - clicking the artwork on an album or artist page opens
   it at full size; click anywhere or press Escape to close it again.
-- **Genres** - everything grouped by genre (multi-genre tags supported).
+- **Genres** - everything grouped by genre (multi-genre tags supported). Every
+  card in the grid carries the same artwork as the page it leads to, singles
+  included: a genre made of loose files takes its covers from the files.
 - **A collection is introduced like an album.** A playlist, a star playlist and
   a genre carry the same head as an album page: the artwork left of the name,
   what it adds up to, and the play buttons. Without artwork of its own the tile
-  is a 2x2 mosaic of the covers of the first four albums in it - fewer than four
-  and it shows the first cover alone.
+  is a 2x2 mosaic of the covers of the first four records in it - fewer than
+  four and it shows the first cover alone.
 - **Several genres at once.** A genre page has a row of switches above it, one
   per genre: switch on Rock and Jazz as well and you get one combined list of
   both (`/genres/1,4`), every song in it once. Same idea as the star playlists
-  further down.
+  further down. A library with a hundred genres makes a very tall row, so it is
+  capped at three lines and folds open on demand - and whatever is switched on
+  is drawn first, so the current selection is never the part that is hidden.
 - **The folder structure is the library.** Artist, album, track number and title
   come from the layout, not from the file tags:
 

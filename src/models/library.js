@@ -318,14 +318,50 @@ export function getAlbum(id, userId) {
 
 // --- Genres -----------------------------------------------------------------
 
+// The artwork of every genre: up to four covers, in the order the genre's own
+// track list has them, so a card in the grid and the head of the page it leads
+// to show the same picture.
+//
+// Two things it does that the single-cover subquery before it did not, and both
+// are the reason a genre could come up blank:
+//   - it takes the cover of a **single** too (`t.cover`), not only an album's.
+//     A genre made of loose files had no album to ask, so it had nothing.
+//   - it counts *records*, not songs: four tracks off one album would fill all
+//     four tiles with the same picture. `COALESCE(t.album_id, -t.id)` is that
+//     bucket - ids are positive on both tables, so the negated track id can
+//     never collide with an album - and a single stands for itself.
+const GENRE_COVERS = `
+  WITH per_record AS (
+    SELECT tg.genre_id AS genreId,
+           COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
+           ${TRACK_ARTIST} AS artist, al.title AS album,
+           ROW_NUMBER() OVER (PARTITION BY tg.genre_id, COALESCE(t.album_id, -t.id)
+                              ORDER BY t.disc_no, t.track_no, t.id) AS inRecord
+      FROM track_genres tg
+      JOIN tracks t ON t.id = tg.track_id AND ${PRESENT}
+      LEFT JOIN artists ar ON ar.id = t.artist_id
+      LEFT JOIN albums al ON al.id = t.album_id
+     WHERE COALESCE(NULLIF(al.cover, ''), t.cover) <> ''
+  )
+  SELECT genreId, cover FROM (
+    SELECT genreId, cover,
+           ROW_NUMBER() OVER (PARTITION BY genreId
+                              ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE) AS pos
+      FROM per_record WHERE inRecord = 1
+  ) WHERE pos <= 4
+   ORDER BY genreId, pos
+`;
+
 export function listGenres() {
+  const covers = new Map();
+  for (const row of db.prepare(GENRE_COVERS).all()) {
+    if (!covers.has(row.genreId)) covers.set(row.genreId, []);
+    covers.get(row.genreId).push(`/covers/${row.cover}`);
+  }
+
   return db
     .prepare(
-      `SELECT g.id, g.name, COUNT(t.id) AS trackCount,
-              (SELECT al.cover FROM track_genres t2
-                 JOIN tracks tr ON tr.id = t2.track_id
-                 JOIN albums al ON al.id = tr.album_id
-                WHERE t2.genre_id = g.id AND al.cover <> '' LIMIT 1) AS cover
+      `SELECT g.id, g.name, COUNT(t.id) AS trackCount
          FROM genres g
          LEFT JOIN track_genres tg ON tg.genre_id = g.id
          LEFT JOIN tracks t ON t.id = tg.track_id AND ${PRESENT}
@@ -334,7 +370,12 @@ export function listGenres() {
         ORDER BY g.name COLLATE NOCASE ASC`
     )
     .all()
-    .map((g) => ({ ...g, cover: g.cover ? `/covers/${g.cover}` : null }));
+    .map((g) => {
+      const list = covers.get(g.id) || [];
+      // `cover` is the first of them, kept because the server and the phone app
+      // are deployed apart: an APK that has not been rebuilt yet still reads it.
+      return { ...g, covers: list, cover: list[0] || null };
+    });
 }
 
 // One list for a selection of genres, the same idea as the star playlists:

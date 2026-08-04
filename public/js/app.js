@@ -1300,6 +1300,18 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
+  // Folding the genre switches open. Nothing is fetched and nothing navigates,
+  // so the class is the whole change - views.js only has to be told, because the
+  // next switch that is clicked rebuilds the view and has to draw it open again.
+  const chipsToggle = e.target.closest('[data-chips-toggle]');
+  if (chipsToggle) {
+    const open = chipsToggle.closest('.chip-picker').classList.toggle('open');
+    chipsToggle.setAttribute('aria-expanded', String(open));
+    chipsToggle.textContent = open ? chipsToggle.dataset.less : chipsToggle.dataset.more;
+    views.setChipsOpen(open);
+    return;
+  }
+
   // Sortable column headers on "Alle Songs". The sort is remembered on the
   // account, so the current one may come from there instead of from the URL -
   // reading it back from the URL alone would break the asc/desc toggle.
