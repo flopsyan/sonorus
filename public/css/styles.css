@@ -870,8 +870,16 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 @media (hover: hover) {
   .now-artist a:hover { color: var(--text); text-decoration: underline; }
 }
-.now .stars { margin-top: 3px; }
+/* The rating of what is playing, and next to it the one thing you may want to
+   do with a song you just heard: put it on a list. Deliberately nothing else -
+   everything further lives in the track's own menu. */
+.now-actions { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
 .now .stars button .icon { width: 13px; height: 13px; }
+.now-add { width: 22px; height: 22px; border-radius: var(--radius-xs); color: var(--text-faint); }
+.now-add .icon { width: 15px; height: 15px; }
+@media (hover: hover) {
+  .now-add:hover { color: var(--accent); background: var(--accent-soft); }
+}
 
 /* Centre: transport + counter */
 .transport { display: flex; flex-direction: column; align-items: center; gap: 3px; }
@@ -1290,10 +1298,13 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
   .player.expanded .now-title { font-size: 1.35rem; white-space: normal; }
   .player.expanded .now-artist { font-size: 0.95rem; white-space: normal; }
   /* Where a phone hands out stars: the track list has no room for the column,
-     and this is the screen a listener rates from anyway. */
-  .player.expanded .now .stars { display: flex; justify-content: center; margin-top: 8px; }
+     and this is the screen a listener rates from anyway. The plus next to them
+     rides along, for the same reason - this is where a song is judged. */
+  .player.expanded .now .now-actions { display: flex; justify-content: center; gap: 16px; margin-top: 10px; }
   .player.expanded .now .stars button { padding: 5px; }
   .player.expanded .now .stars button .icon { width: 26px; height: 26px; }
+  .player.expanded .now-add { width: 40px; height: 40px; border-radius: var(--radius-sm); }
+  .player.expanded .now-add .icon { width: 24px; height: 24px; }
 
   /* Out of the top edge and into the layout, at a height a thumb can hit. */
   .player.expanded .seek-rail {

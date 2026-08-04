@@ -64,9 +64,16 @@
     <div class="now">
       <button type="button" class="now-art" id="now-art" aria-label="Album öffnen"></button>
       <div class="now-text">
-        <span class="now-title" id="now-title">Nichts ausgewählt</span>
+        <!-- data-clip: says its full name on hover, but only when it really had
+             to be cut off - see the truncation handler in app.js. -->
+        <span class="now-title" id="now-title" data-clip>Nichts ausgewählt</span>
         <span class="now-artist" id="now-artist">Wähle einen Titel aus der Bibliothek</span>
-        <div class="stars" id="now-stars" role="group" aria-label="Bewertung"></div>
+        <div class="now-actions">
+          <div class="stars" id="now-stars" role="group" aria-label="Bewertung"></div>
+          <button type="button" class="icon-btn now-add" id="now-add" hidden
+                  aria-label="Zu Playlist hinzufügen" title="Zu Playlist hinzufügen"
+                  data-icon="plus" data-icon-size="15"></button>
+        </div>
       </div>
     </div>
 

@@ -1124,7 +1124,11 @@ function promptPlaylist(trackIds) {
 }
 
 // "Zu Playlist hinzufügen": pick an existing list, or create one on the spot.
-function addToPlaylistDialog(trackIds) {
+//
+// `create` is what the plus in the player switches off. There the dialog is
+// meant to be one decision - which list - and an entry that opens a second
+// dialog on top of it is one step more than that button promises.
+function addToPlaylistDialog(trackIds, { create = true } = {}) {
   const all = [
     ...shell.playlists.folders.flatMap((f) => f.playlists.map((p) => ({ ...p, folder: f.name }))),
     ...shell.playlists.loose.map((p) => ({ ...p, folder: '' })),
@@ -1132,10 +1136,19 @@ function addToPlaylistDialog(trackIds) {
 
   modal({
     title: `${fmt.plural(trackIds.length, 'Song', 'Songs')} hinzufügen`,
-    body: `<button type="button" class="picker-item" data-create>
-        ${icon('plus-circle', 17)}<span>Neue Playlist …</span>
-      </button>
-      ${all.length ? '<div class="dropdown-sep"></div>' : ''}
+    body: `${
+        create
+          ? `<button type="button" class="picker-item" data-create>
+              ${icon('plus-circle', 17)}<span>Neue Playlist …</span>
+            </button>
+            ${all.length ? '<div class="dropdown-sep"></div>' : ''}`
+          : ''
+      }
+      ${
+        all.length
+          ? ''
+          : '<p class="panel-hint">Du hast noch keine Playlist. Leg eine über das Menü eines Songs an.</p>'
+      }
       <div class="picker-list">${all
         .map(
           (p) => `<button type="button" class="picker-item" data-playlist="${p.id}">
@@ -1146,10 +1159,13 @@ function addToPlaylistDialog(trackIds) {
         )
         .join('')}</div>`,
     onOpen(root) {
-      root.querySelector('[data-create]').addEventListener('click', () => {
-        closeModal();
-        promptPlaylist(trackIds);
-      });
+      const createBtn = root.querySelector('[data-create]');
+      if (createBtn) {
+        createBtn.addEventListener('click', () => {
+          closeModal();
+          promptPlaylist(trackIds);
+        });
+      }
       root.querySelectorAll('[data-playlist]').forEach((b) =>
         b.addEventListener('click', async () => {
           const id = Number(b.dataset.playlist);
@@ -1587,6 +1603,7 @@ const el = {
   nowTitle: document.getElementById('now-title'),
   nowArtist: document.getElementById('now-artist'),
   nowStars: document.getElementById('now-stars'),
+  nowAdd: document.getElementById('now-add'),
   queue: document.getElementById('queue'),
   queueList: document.getElementById('queue-list'),
   queueSource: document.getElementById('queue-source'),
@@ -1604,6 +1621,14 @@ el.shuffleBtn.addEventListener('click', () => player.setShuffle(!player.state.sh
 el.repeatBtn.addEventListener('click', () => player.cycleRepeat());
 el.muteBtn.addEventListener('click', () => player.toggleMute());
 el.volume.addEventListener('input', () => player.setVolume(Number(el.volume.value) / 100));
+
+// The plus next to the stars: the one thing worth doing with a song while it is
+// playing. Playlists only - a rating is what the stars right next to it are
+// for, and offering both would say the same thing twice.
+el.nowAdd.addEventListener('click', () => {
+  const track = player.currentTrack();
+  if (track) addToPlaylistDialog([track.id], { create: false });
+});
 
 // The wheel over the volume control changes it, the way a streaming client
 // does: up is louder. Not passive - the page must not scroll underneath it.
@@ -1900,11 +1925,13 @@ function renderPlayer(s) {
         }`
       : esc(track.artist);
     el.nowStars.innerHTML = starButtons(track.stars, track.id);
+    el.nowAdd.hidden = false;
   } else {
     el.nowArt.innerHTML = '';
     el.nowTitle.textContent = 'Nichts ausgewählt';
     el.nowArtist.textContent = 'Wähle einen Titel aus der Bibliothek';
     el.nowStars.innerHTML = '';
+    el.nowAdd.hidden = true;
   }
 
   markPlayingRow();
