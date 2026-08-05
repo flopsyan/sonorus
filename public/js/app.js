@@ -1622,6 +1622,11 @@ const el = {
   queue: document.getElementById('queue'),
   queueList: document.getElementById('queue-list'),
   queueSource: document.getElementById('queue-source'),
+  lyricsBtn: document.getElementById('btn-lyrics'),
+  lyrics: document.getElementById('lyrics'),
+  lyricsBody: document.getElementById('lyrics-body'),
+  lyricsTitle: document.getElementById('lyrics-title'),
+  nowLine: document.getElementById('now-line'),
   meter: document.getElementById('meter'),
   playerBar: document.querySelector('.player'),
   now: document.querySelector('.now'),
@@ -1661,6 +1666,8 @@ document.querySelector('.volume').addEventListener(
 // the back button has to take away again.
 function openQueue() {
   if (el.queue.classList.contains('open')) return;
+  // The lyrics panel sits in the same place; two of them would stack.
+  closeLyrics();
   el.queue.classList.add('open');
   pushOverlay('queue', closeQueue);
 }
@@ -1895,6 +1902,10 @@ function renderPlayer(s) {
   el.seek.setAttribute('aria-valuenow', String(Math.round(percent)));
   el.seek.setAttribute('aria-valuetext', `${fmt.duration(s.currentTime)} von ${fmt.duration(total)}`);
 
+  // Also cheap, and it has to run at this rate: which line is being sung is a
+  // question about the playhead. It returns immediately unless the line changed.
+  paintLyricPosition(scrub === null ? s.currentTime : scrub * total);
+
   const key = [
     track ? track.id : 0,
     track ? track.stars : 0,
@@ -1925,6 +1936,10 @@ function renderPlayer(s) {
   if (document.activeElement !== el.volume) el.volume.value = String(Math.round(s.volume * 100));
 
   el.nowSource.textContent = s.source || 'Warteschlange';
+
+  // A new track means new words. Cheap when it is the same one.
+  loadLyrics(track);
+  el.lyricsBtn.disabled = !track;
 
   if (track) {
     el.nowArt.innerHTML = art(track.cover, track.album || track.title);
@@ -2064,6 +2079,185 @@ el.queueList.addEventListener('drop', (e) => {
   player.moveInQueue(queueDrag, target);
   queueDrag = null;
 });
+
+// ============================================================================
+// Lyrics
+// ============================================================================
+// The words come out of the audio file itself - Sonorus looks nothing up
+// anywhere - so a song either carries them or it does not. `hasLyrics` on the
+// track says which, and the text is fetched one song at a time: a projection
+// that every list in the app selects has no business carrying a text block.
+//
+// Whether the lyric can follow the song is a second question, and the file
+// answers that too: `lines` comes back with a second per entry when it knows
+// when each one is sung, and empty when it only knows the words.
+
+// What is known about the track that is playing. `lines` empty with `text` set
+// means "there, but not timed"; `loading` is the gap between asking and knowing.
+const lyricState = { trackId: null, text: '', lines: [], loading: false, at: -1 };
+
+// Counts the fetches, so a slow answer for the previous track cannot land on
+// top of the current one - the same guard the router uses.
+let lyricSeq = 0;
+
+// Reading ahead has to win over following along, or the panel drags the text
+// back under the finger every second. `autoScrollUntil` is what tells the two
+// apart: a smooth scroll fires `scroll` for a few hundred ms after it was
+// asked for, and those events are the app's own, not the user's.
+const SCROLL_PAUSE = 5000;
+const AUTO_SCROLL_MS = 900;
+let scrolledAt = 0;
+let autoScrollUntil = 0;
+
+function lyricsOpen() {
+  return el.lyrics.classList.contains('open');
+}
+
+// Fetches the lyrics of `track`, unless they are the ones already held.
+function loadLyrics(track) {
+  const id = track ? track.id : null;
+  if (lyricState.trackId === id) return;
+
+  Object.assign(lyricState, { trackId: id, text: '', lines: [], loading: false, at: -1 });
+  renderLyrics();
+  if (!track || !track.hasLyrics) return;
+
+  lyricState.loading = true;
+  const seq = (lyricSeq += 1);
+  renderLyrics();
+  api
+    .lyrics(track.id)
+    .then(({ lyrics }) => {
+      if (seq !== lyricSeq) return;
+      Object.assign(lyricState, { text: lyrics.text, lines: lyrics.lines || [], loading: false });
+      renderLyrics();
+      paintLyricPosition(player.state.currentTime, true);
+    })
+    .catch(() => {
+      if (seq !== lyricSeq) return;
+      lyricState.loading = false;
+      renderLyrics();
+    });
+}
+
+function renderLyrics() {
+  const track = player.currentTrack();
+  el.lyricsTitle.textContent = track ? track.title : 'Nichts ausgewählt';
+
+  const note = (message) => `<div class="empty small"><p>${esc(message)}</p></div>`;
+  if (!track) {
+    el.lyricsBody.innerHTML = note('Spiele einen Song ab, um seinen Text zu sehen.');
+  } else if (lyricState.loading) {
+    el.lyricsBody.innerHTML = '<div class="loading">Wird geladen …</div>';
+  } else if (lyricState.lines.length) {
+    // Timed: every line is its own element, because one of them is highlighted
+    // and scrolled to on every step of the playhead.
+    el.lyricsBody.innerHTML = `<div class="lyric-lines">${lyricState.lines
+      .map(
+        (line, i) =>
+          `<p class="lyric-line${line.text ? '' : ' is-gap'}" data-line="${i}">${esc(line.text)}</p>`
+      )
+      .join('')}</div>`;
+  } else if (lyricState.text) {
+    el.lyricsBody.innerHTML = `<div class="lyric-lines is-plain">${lyricState.text
+      .split(/\r?\n/)
+      .map((line) => `<p class="lyric-line${line.trim() ? '' : ' is-gap'}">${esc(line)}</p>`)
+      .join('')}</div>`;
+  } else {
+    el.lyricsBody.innerHTML = note(
+      'In dieser Datei steckt kein Songtext. Sonorus liest nur, was die Datei selbst mitbringt.'
+    );
+  }
+  lyricState.at = -1;
+  paintLyricPosition(player.state.currentTime, true);
+}
+
+// The line being sung at `time`, or -1 before the first one. The list is sorted,
+// so the walk stops at the first line that is still ahead.
+function lineAt(time) {
+  let at = -1;
+  for (let i = 0; i < lyricState.lines.length; i += 1) {
+    if (lyricState.lines[i].time > time) break;
+    at = i;
+  }
+  return at;
+}
+
+// Called on every timeupdate, so it does nothing at all unless the line
+// actually changed.
+function paintLyricPosition(time, force = false) {
+  if (!lyricState.lines.length) {
+    if (force) setNowLine('');
+    return;
+  }
+  const at = lineAt(time);
+  if (at === lyricState.at && !force) return;
+  lyricState.at = at;
+
+  setNowLine(at >= 0 ? lyricState.lines[at].text : '');
+
+  const lines = el.lyricsBody.querySelectorAll('.lyric-line');
+  lines.forEach((line, i) => {
+    line.classList.toggle('is-now', i === at);
+    line.classList.toggle('is-past', i < at);
+  });
+
+  // Only follow along while the panel is actually open and nobody is reading
+  // somewhere else in it.
+  if (!lyricsOpen() || at < 0 || Date.now() - scrolledAt < SCROLL_PAUSE) return;
+  const current = lines[at];
+  if (!current) return;
+  autoScrollUntil = Date.now() + AUTO_SCROLL_MS;
+  el.lyricsBody.scrollTo({
+    top: current.offsetTop - el.lyricsBody.clientHeight / 2 + current.offsetHeight / 2,
+    behavior: 'smooth',
+  });
+}
+
+// The one line the fullscreen player on a phone shows between the artwork and
+// the title. `is-on` rather than `hidden`, because the display rule that brings
+// it back in the full screen would win over the attribute.
+function setNowLine(text) {
+  el.nowLine.textContent = text;
+  el.nowLine.classList.toggle('is-on', !!text);
+}
+
+el.lyricsBody.addEventListener('scroll', () => {
+  if (Date.now() < autoScrollUntil) return;
+  scrolledAt = Date.now();
+}, { passive: true });
+
+function openLyrics() {
+  if (lyricsOpen()) return;
+  // Two panels in the same place would stack; the queue is the one that gives.
+  closeQueue();
+  el.lyrics.classList.add('open');
+  el.lyricsBtn.setAttribute('aria-pressed', 'true');
+  scrolledAt = 0;
+  paintLyricPosition(player.state.currentTime, true);
+  pushOverlay('lyrics', closeLyrics);
+}
+
+function closeLyrics() {
+  if (!lyricsOpen()) return;
+  el.lyrics.classList.remove('open');
+  el.lyricsBtn.setAttribute('aria-pressed', 'false');
+  forgetOverlay('lyrics');
+}
+
+function toggleLyrics() {
+  if (lyricsOpen()) closeLyrics();
+  else openLyrics();
+}
+
+el.lyricsBtn.addEventListener('click', toggleLyrics);
+el.nowLine.addEventListener('click', (e) => {
+  // Inside the full screen the line sits on top of the artwork's gesture area,
+  // so the tap must not travel on and reopen anything underneath.
+  e.stopPropagation();
+  openLyrics();
+});
+document.getElementById('lyrics-close').addEventListener('click', closeLyrics);
 
 // ============================================================================
 // Level meter and visualizer

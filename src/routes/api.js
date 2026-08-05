@@ -10,6 +10,7 @@ import {
   listTracks,
   countTracks,
   getTrack,
+  getLyrics,
   trackPath,
   tracksByIds,
   listArtists,
@@ -154,6 +155,16 @@ router.get('/tracks/:id', (req, res) => {
   const track = getTrack(id(req.params.id), req.user.id);
   if (!track) return fail(res, 'not_found', 404);
   res.json({ ok: true, track });
+});
+
+// The words of one song, asked for separately: a text block has no business in
+// the track projection every list in the app selects. `lines` carries a second
+// per entry when the file said when each one is sung, and is empty otherwise -
+// which is what tells a lyric that can follow the song from one that cannot.
+router.get('/tracks/:id/lyrics', (req, res) => {
+  const lyrics = getLyrics(id(req.params.id));
+  if (!lyrics) return fail(res, 'not_found', 404);
+  res.json({ ok: true, lyrics });
 });
 
 // A track can be edited where it has nobody to take the value from: release

@@ -28,6 +28,10 @@ export const TRACK_FIELDS = `
      FROM track_genres tg JOIN genres g ON g.id = tg.genre_id
     WHERE tg.track_id = t.id) AS genres,
   (SELECT r.stars FROM ratings r WHERE r.track_id = t.id AND r.user_id = @userId) AS stars,
+  -- Whether there are lyrics at all, never the lyrics themselves: a projection
+  -- every list in the app selects has no business carrying a text block per
+  -- row. The words come from GET /api/tracks/:id/lyrics, one song at a time.
+  (t.lyrics <> '') AS hasLyrics,
   t.missing_at AS missingAt, t.path AS path
 `;
 
@@ -88,6 +92,9 @@ export function shapeTrack(row) {
     lossless: !!row.lossless,
     genres: row.genres ? row.genres.split(', ') : [],
     stars: row.stars || 0,
+    // Enough to decide whether the lyrics button is worth showing, without
+    // putting a text block into every row of every list.
+    hasLyrics: !!row.hasLyrics,
     addedAt: row.addedAt,
   };
 }
@@ -149,6 +156,26 @@ export function getTrack(id, userId) {
     .prepare(`SELECT ${TRACK_FIELDS} ${TRACK_FROM} WHERE t.id = @id`)
     .get({ id, userId });
   return shapeTrack(row);
+}
+
+// The words of one song, and when each line is sung if the file said so.
+// Returns null for a track that does not exist; a track without lyrics answers
+// with empty ones, which is a different thing and the client draws it as such.
+export function getLyrics(id) {
+  const row = db.prepare('SELECT lyrics, lyrics_sync FROM tracks WHERE id = ?').get(id);
+  if (!row) return null;
+  // A line list that cannot be read back is treated as "not timed" rather than
+  // as an error - the plain text below it is still worth showing.
+  let lines = [];
+  if (row.lyrics_sync) {
+    try {
+      const parsed = JSON.parse(row.lyrics_sync);
+      if (Array.isArray(parsed)) lines = parsed;
+    } catch {
+      lines = [];
+    }
+  }
+  return { text: row.lyrics || '', lines, synced: lines.length > 0 };
 }
 
 // Path on disk, for streaming. Kept separate from the projection so a file

@@ -22,6 +22,8 @@ const STROKE = {
   'volume-low': '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>',
   'volume-mute': '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
   queue: '<path d="M4 6h11M4 12h11M4 18h7"/><path d="m17 12.5 5 3-5 3z"/>',
+  // The lyrics: a sheet with lines of unequal length, the way a lyric is set.
+  lyrics: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   'plus-circle': '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="m6 7 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M9 7V4h6v3"/>',

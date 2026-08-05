@@ -63,6 +63,9 @@ export const api = {
   // One id or a comma list of them - several genres are one combined list.
   genre: (ids) => request('GET', `/api/genres/${ids}`),
   starred: (stars) => request('GET', `/api/stars/${stars}`),
+  // The words of one song, asked for separately: they are far too big to ride
+  // along in every track of every list.
+  lyrics: (id) => request('GET', `/api/tracks/${id}/lyrics`),
   home: () => request('GET', '/api/home'),
   shuffle: (limit) => request('GET', `/api/shuffle${query({ limit })}`),
   search: (q) => request('GET', `/api/search${query({ q })}`),

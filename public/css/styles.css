@@ -989,6 +989,53 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .queue-item.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
 
 /* ============================================================================
+   Lyrics
+   ========================================================================== */
+
+/* The panel is the queue panel: same place, same slide, same way out. It is the
+   same kind of thing - a side panel about the track that is playing - and the
+   two are mutually exclusive, so they can share the geometry outright. */
+.lyrics-panel { z-index: 46; }
+.lyrics-body {
+  /* offsetTop of a line is read against this box to centre it, so the box has
+     to be the positioning context. */
+  position: relative;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  padding: 16px 20px 40vh;
+}
+/* The tail of padding above is deliberate: without it the last lines can never
+   reach the middle of the panel, and the text stops following along right where
+   a song usually says the thing you looked it up for. */
+
+.lyric-lines { display: flex; flex-direction: column; gap: 2px; }
+.lyric-line {
+  margin: 0; padding: 5px 0;
+  font-size: 1rem; line-height: 1.45; font-weight: 550;
+  color: var(--text-faint);
+  transition: color 0.2s ease;
+}
+/* An empty line is an instrumental gap. It keeps the timing honest but must not
+   take a whole row of a phone screen. */
+.lyric-line.is-gap { padding: 0; height: 8px; }
+/* A line already sung stays readable - it is the context for the one that is
+   running - while everything still ahead is quieter. */
+.lyric-line.is-past { color: var(--text-dim); }
+.lyric-line.is-now { color: var(--accent); font-size: 1.12rem; }
+/* Without timestamps nothing is highlighted, so the whole text reads at once
+   instead of sitting there greyed out waiting for a cue that never comes. */
+.lyric-lines.is-plain .lyric-line { color: var(--text); font-weight: 400; }
+
+/* The line being sung, between the artwork and the title of the fullscreen
+   player. Not part of the bar - there is no room, and it is a phone feature. */
+.now-line {
+  display: none;
+  border: none; background: none; padding: 0;
+  color: var(--accent); text-align: center; cursor: pointer;
+  font-size: 1.05rem; line-height: 1.4; font-weight: 600;
+  font-family: inherit;
+}
+
+/* ============================================================================
    Lightbox - artwork at full size
    ========================================================================== */
 
@@ -1319,6 +1366,14 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
     border-radius: var(--radius); box-shadow: var(--shadow-lg);
   }
   .player.expanded .now-art .art-fallback { font-size: 3.2rem; }
+  /* The gap between the artwork and the title is where the line being sung
+     goes - the one bit of the lyric a phone has room for without leaving the
+     player. `.is-on` and not `hidden`: a display rule beats the attribute, and
+     a song without a timed lyric must not reserve the space. */
+  .player.expanded .now-line.is-on {
+    display: block; width: 100%; flex: none;
+    max-height: 4.2em; overflow: hidden;
+  }
   .player.expanded .now-text { width: 100%; align-items: center; gap: 4px; }
   .player.expanded .now-title { font-size: 1.35rem; white-space: normal; }
   .player.expanded .now-artist { font-size: 0.95rem; white-space: normal; }

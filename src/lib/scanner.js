@@ -35,6 +35,7 @@ import { parseFile } from 'music-metadata';
 import db, { coversDir, musicDir, getMeta, setMeta } from '../db.js';
 import { normalize, loosen, primaryArtist } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
+import { extractLyrics } from './lyrics.js';
 import { resolveIssuesForUser } from '../models/issues.js';
 
 // Extensions music-metadata can read tags from. Whether a browser can play a
@@ -51,7 +52,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'various-1';
+const SCANNER_VERSION = 'lyrics-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -348,11 +349,13 @@ const selectTrackByPath = db.prepare(
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, track_artist, album_id, track_no, disc_no, year,
-                      release_date, duration, bitrate, codec, lossless, cover, missing_at,
+                      release_date, duration, bitrate, codec, lossless, cover, lyrics,
+                      lyrics_sync, missing_at,
                       genres_locked, year_locked, cover_locked, size, mtime, norm_title,
                       loose_title, norm_artist)
   VALUES (@path, @title, @artist_id, @track_artist, @album_id, @track_no, @disc_no, @year,
-          @release_date, @duration, @bitrate, @codec, @lossless, @cover, @missing_at,
+          @release_date, @duration, @bitrate, @codec, @lossless, @cover, @lyrics,
+          @lyrics_sync, @missing_at,
           @genres_locked, @year_locked, @cover_locked, @size, @mtime, @norm_title,
           @loose_title, @norm_artist)
 `);
@@ -362,6 +365,7 @@ const updateTrack = db.prepare(`
                     track_no = @track_no, disc_no = @disc_no, year = @year,
                     release_date = @release_date, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
+                    lyrics = @lyrics, lyrics_sync = @lyrics_sync,
                     missing_at = @missing_at, genres_locked = @genres_locked,
                     year_locked = @year_locked, cover_locked = @cover_locked,
                     size = @size, mtime = @mtime,
@@ -410,6 +414,7 @@ async function indexFile(filePath, stat, force) {
   // fills in what a folder name cannot say.
   const place = describeFile(filePath);
   const date = releaseDate(common);
+  const lyrics = extractLyrics(common);
   const aId = artistId(place.artist);
   const album = place.album ? albumRow(place.album, aId, date) : null;
   const alId = album ? album.id : null;
@@ -447,6 +452,10 @@ async function indexFile(filePath, stat, force) {
     // Only singles carry their own artwork; an album track shows its album's,
     // which is also why a track moving into an album loses the lock with it.
     cover: alId ? '' : (existing && existing.cover) || '',
+    // What the file itself sings. There is nowhere else to get it from, so an
+    // untagged song simply has none.
+    lyrics: lyrics.text,
+    lyrics_sync: lyrics.lines.length ? JSON.stringify(lyrics.lines) : '',
     missing_at: '',
     genres_locked: albumGenres ? 1 : (existing && existing.genres_locked) || 0,
     year_locked: yearLocked ? 1 : 0,

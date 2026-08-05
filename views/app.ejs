@@ -63,6 +63,11 @@
 
     <div class="now">
       <button type="button" class="now-art" id="now-art" aria-label="Album öffnen"></button>
+      <!-- The line being sung right now. Only the full screen on a phone has
+           room for it, so the bar hides it - see .now-line in the stylesheet.
+           A button, because tapping the line is the shortest way to the rest
+           of the text. -->
+      <button type="button" class="now-line" id="now-line" aria-label="Songtext öffnen"></button>
       <div class="now-text">
         <!-- data-clip: says its full name on hover, but only when it really had
              to be cut off - see the truncation handler in app.js. -->
@@ -99,6 +104,7 @@
         <button type="button" class="icon-btn" id="btn-mute" aria-label="Stumm schalten" data-icon="volume-high"></button>
         <input type="range" class="volume-slider" id="volume" min="0" max="100" value="100" aria-label="Lautstärke" />
       </div>
+      <button type="button" class="icon-btn" id="btn-lyrics" aria-label="Songtext" aria-pressed="false" data-icon="lyrics"></button>
       <button type="button" class="icon-btn" id="btn-queue" aria-label="Wiedergabeliste" data-icon="queue"></button>
     </div>
   </footer>
@@ -112,6 +118,20 @@
       <button type="button" class="icon-btn" id="queue-close" aria-label="Schließen" data-icon="x"></button>
     </div>
     <div class="queue-list" id="queue-list"></div>
+  </aside>
+
+  <!-- The lyrics of what is playing. Built like the queue panel on purpose: it
+       is the same kind of thing - a side panel about the current track - so it
+       gets the same slide-in, the same width and the same way out. -->
+  <aside class="queue lyrics-panel" id="lyrics" aria-label="Songtext">
+    <div class="queue-head">
+      <div>
+        <span class="rack-label">Songtext</span>
+        <h2 id="lyrics-title">Nichts ausgewählt</h2>
+      </div>
+      <button type="button" class="icon-btn" id="lyrics-close" aria-label="Schließen" data-icon="x"></button>
+    </div>
+    <div class="lyrics-body" id="lyrics-body"></div>
   </aside>
 </div>
 

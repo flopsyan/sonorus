@@ -107,6 +107,12 @@ db.exec(`
     codec       TEXT NOT NULL DEFAULT '',
     lossless    INTEGER NOT NULL DEFAULT 0,
     cover       TEXT NOT NULL DEFAULT '',
+    -- The lyrics embedded in the file, as plain text. Empty when it carries
+    -- none; Sonorus never looks them up anywhere else.
+    lyrics      TEXT NOT NULL DEFAULT '',
+    -- The same lyrics with a timestamp per line, as JSON, when the file says
+    -- when each one is sung. Empty means "there, but not timed".
+    lyrics_sync TEXT NOT NULL DEFAULT '',
     -- Set when the file is gone but the row has to stay: a rating, a playlist
     -- entry or a play refers to it. Empty means the file is there.
     missing_at  TEXT NOT NULL DEFAULT '',
@@ -247,6 +253,10 @@ addColumn('artists', 'cover', "TEXT NOT NULL DEFAULT ''");
 // The interpret of a single song on a compilation. Filled by the next scan,
 // which re-reads every file after the scanner version bump.
 addColumn('tracks', 'track_artist', "TEXT NOT NULL DEFAULT ''");
+// The lyrics the file carries, plain and timed. Same story: they stay empty
+// until a scan runs, because only the file knows them.
+addColumn('tracks', 'lyrics', "TEXT NOT NULL DEFAULT ''");
+addColumn('tracks', 'lyrics_sync', "TEXT NOT NULL DEFAULT ''");
 // The full release date next to the year. Filled by the next scan, which
 // re-reads every file after the scanner version bump.
 addColumn('albums', 'release_date', "TEXT NOT NULL DEFAULT ''");
