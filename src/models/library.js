@@ -114,6 +114,74 @@ export function shapeTrack(row) {
   };
 }
 
+// --- Searching --------------------------------------------------------------
+//
+// Sonorus searches one thing, not three. "Fame Bowie Americans" is a perfectly
+// ordinary way to name one song, and it used to find nothing at all: every word
+// had to hit the same field, so a query could say a title *or* an interpret
+// *or* an album and never a combination of them.
+//
+// So a query is cut into words and **every word has to match somewhere**. Which
+// field a word lands in is free, and that is the whole trick - the words spread
+// themselves over title, interpret and album by themselves.
+
+// A query longer than this is a mistake, and every word costs one LIKE per row.
+const MAX_WORDS = 8;
+
+function searchWords(q) {
+  return String(q || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, MAX_WORDS);
+}
+
+// "every word is found in one of these fields", as a WHERE fragment and the
+// parameters it binds. Null for an empty query, so a caller can tell "no filter"
+// from "a filter that matches nothing".
+function allWordsIn(fields, list) {
+  if (!list.length) return null;
+  const params = {};
+  const where = list
+    .map((word, i) => {
+      params[`w${i}`] = `%${word}%`;
+      return `(${fields.map((f) => `${f} LIKE @w${i}`).join(' OR ')})`;
+    })
+    .join(' AND ');
+  return { where, params };
+}
+
+// What decides the order of the results, and the reason there is a score at
+// all: searching "Fame" has to put the songs *called* Fame above the ones that
+// only sit on an album called "The Fame Monster".
+//
+// The whole query matching the main field beats its words matching it one by
+// one, and a word in the main field beats the same word beside it. `others` is
+// a list of [fields, weight] - a set of fields because the interpret of a song
+// lives in two columns.
+function scoreOf(main, others, list) {
+  const parts = [
+    `CASE WHEN ${main} LIKE @qExact THEN 1000
+          WHEN ${main} LIKE @qStart THEN 400
+          WHEN ${main} LIKE @qLike  THEN 200 ELSE 0 END`,
+  ];
+  list.forEach((_, i) => {
+    parts.push(`CASE WHEN ${main} LIKE @w${i} THEN 40 ELSE 0 END`);
+    for (const [fields, weight] of others) {
+      parts.push(
+        `CASE WHEN ${fields.map((f) => `${f} LIKE @w${i}`).join(' OR ')} THEN ${weight} ELSE 0 END`
+      );
+    }
+  });
+  return parts.map((p) => `(${p})`).join(' + ');
+}
+
+// The three forms of the whole query the score compares against.
+function queryParams(q) {
+  const whole = String(q || '').trim();
+  return { qExact: whole, qStart: `${whole}%`, qLike: `%${whole}%` };
+}
+
 // Sort keys the "Alle Songs" table offers. Whitelisted, because the value ends
 // up in the SQL text.
 const SORTS = {
@@ -129,17 +197,17 @@ const SORTS = {
   genre: 'genres',
 };
 
+// The fields a song is looked for in. Both artist columns are there: "Various"
+// finds the whole compilation, the name of one of its interpreten finds their
+// songs on it.
+const TRACK_SEARCH_FIELDS = ['t.title', 'ar.name', 't.track_artist', 'al.title'];
+
 export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit = 0, offset = 0 } = {}) {
   const order = SORTS[sort] || SORTS.title;
   const direction = String(dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
-  const search = String(q || '').trim();
+  const search = allWordsIn(TRACK_SEARCH_FIELDS, searchWords(q));
 
-  // Both artist columns are searched: "Various" finds the whole compilation,
-  // the name of one of its interpreten finds their songs on it.
-  const where = search
-    ? `WHERE ${PRESENT} AND (t.title LIKE @like OR ar.name LIKE @like
-         OR t.track_artist LIKE @like OR al.title LIKE @like)`
-    : `WHERE ${PRESENT}`;
+  const where = search ? `WHERE ${PRESENT} AND ${search.where}` : `WHERE ${PRESENT}`;
   const page = limit ? `LIMIT @limit OFFSET @offset` : '';
 
   // NULLS LAST for every sort, so untagged tracks never head the list.
@@ -149,21 +217,17 @@ export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit 
         ORDER BY (${order}) IS NULL, ${order} ${direction}, t.title COLLATE NOCASE ASC
         ${page}`
     )
-    .all({ userId, like: `%${search}%`, limit, offset });
+    .all({ userId, ...(search ? search.params : {}), limit, offset });
 
   return rows.map(shapeTrack);
 }
 
 export function countTracks({ q = '' } = {}) {
-  const search = String(q || '').trim();
+  const search = allWordsIn(TRACK_SEARCH_FIELDS, searchWords(q));
   if (!search) return db.prepare(`SELECT COUNT(*) AS c FROM tracks t WHERE ${PRESENT}`).get().c;
   return db
-    .prepare(
-      `SELECT COUNT(*) AS c ${TRACK_FROM}
-        WHERE ${PRESENT} AND (t.title LIKE @like OR ar.name LIKE @like
-          OR t.track_artist LIKE @like OR al.title LIKE @like)`
-    )
-    .get({ like: `%${search}%` }).c;
+    .prepare(`SELECT COUNT(*) AS c ${TRACK_FROM} WHERE ${PRESENT} AND ${search.where}`)
+    .get(search.params).c;
 }
 
 export function getTrack(id, userId) {
@@ -216,30 +280,43 @@ export function tracksByIds(ids, userId) {
 
 // --- Artists ----------------------------------------------------------------
 
+// The picture the user picked wins; without one the artist borrows the artwork
+// of their newest album, and failing that of one of their singles.
+const ARTIST_COVER = `COALESCE(
+    NULLIF(ar.cover, ''),
+    (SELECT al.cover FROM albums al
+      WHERE al.artist_id = ar.id AND al.cover <> ''
+      ORDER BY al.year DESC LIMIT 1),
+    (SELECT t2.cover FROM tracks t2
+      WHERE t2.artist_id = ar.id AND t2.cover <> '' LIMIT 1)
+  )`;
+
+const ARTIST_ROW = `
+  ar.id, ar.name,
+  COUNT(DISTINCT t.id)       AS trackCount,
+  COUNT(DISTINCT t.album_id) AS albumCount,
+  ${ARTIST_COVER} AS cover
+`;
+
+const ARTIST_FROM = `
+  FROM artists ar
+  LEFT JOIN tracks t ON t.artist_id = ar.id AND ${PRESENT}
+`;
+
+const shapeArtistRow = (a) => ({ ...a, cover: a.cover ? `/covers/${a.cover}` : null });
+
 export function listArtists({ q = '' } = {}) {
-  const search = String(q || '').trim();
+  const search = allWordsIn(['ar.name'], searchWords(q));
   return db
     .prepare(
-      `SELECT ar.id, ar.name,
-              COUNT(DISTINCT t.id)       AS trackCount,
-              COUNT(DISTINCT t.album_id) AS albumCount,
-              COALESCE(
-                NULLIF(ar.cover, ''),
-                (SELECT al.cover FROM albums al
-                  WHERE al.artist_id = ar.id AND al.cover <> ''
-                  ORDER BY al.year DESC LIMIT 1),
-                (SELECT t2.cover FROM tracks t2
-                  WHERE t2.artist_id = ar.id AND t2.cover <> '' LIMIT 1)
-              ) AS cover
-         FROM artists ar
-         LEFT JOIN tracks t ON t.artist_id = ar.id AND ${PRESENT}
-        ${search ? 'WHERE ar.name LIKE @like' : ''}
+      `SELECT ${ARTIST_ROW} ${ARTIST_FROM}
+        ${search ? `WHERE ${search.where}` : ''}
         GROUP BY ar.id
        HAVING trackCount > 0
         ORDER BY ar.name COLLATE NOCASE ASC`
     )
-    .all({ like: `%${search}%` })
-    .map((a) => ({ ...a, cover: a.cover ? `/covers/${a.cover}` : null }));
+    .all(search ? search.params : {})
+    .map(shapeArtistRow);
 }
 
 export function getArtist(id, userId) {
@@ -322,25 +399,36 @@ const ALBUM_SORTS = {
   tracks: 'trackCount',
 };
 
+const ALBUM_ROW = `
+  al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
+  al.artist_id AS artistId, ar.name AS artist,
+  COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
+`;
+
+const ALBUM_FROM = `
+  FROM albums al
+  LEFT JOIN artists ar ON ar.id = al.artist_id
+  LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT}
+`;
+
+// An album is looked for under its own title and under its artist's name, so
+// "Bowie Young Americans" is one query and not two.
+const ALBUM_SEARCH_FIELDS = ['al.title', 'ar.name'];
+
 export function listAlbums({ q = '', sort = 'title', dir = 'asc' } = {}) {
   const order = ALBUM_SORTS[sort] || ALBUM_SORTS.title;
   const direction = String(dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
-  const search = String(q || '').trim();
+  const search = allWordsIn(ALBUM_SEARCH_FIELDS, searchWords(q));
 
   return db
     .prepare(
-      `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
-              al.artist_id AS artistId, ar.name AS artist,
-              COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
-         FROM albums al
-         LEFT JOIN artists ar ON ar.id = al.artist_id
-         LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT}
-        ${search ? 'WHERE al.title LIKE @like OR ar.name LIKE @like' : ''}
+      `SELECT ${ALBUM_ROW} ${ALBUM_FROM}
+        ${search ? `WHERE ${search.where}` : ''}
         GROUP BY al.id
        HAVING trackCount > 0
         ORDER BY (${order}) IS NULL, ${order} ${direction}, al.title COLLATE NOCASE ASC`
     )
-    .all({ like: `%${search}%` })
+    .all(search ? search.params : {})
     .map(shapeAlbum);
 }
 
@@ -629,6 +717,67 @@ export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
     )
     .all({ userId, limit })
     .map(shapeTrack);
+}
+
+// --- The search page --------------------------------------------------------
+
+// One query, three answers, and each of them ranked - see the notes at
+// `searchWords` for why the words are spread over the fields the way they are.
+//
+// The three sections do not all look in the same places, and that is
+// deliberate: a *song* may be named by its title, its interpret and its album
+// together, an *album* by its title and its artist, an *artist* only by their
+// name. So "Fame Bowie Americans" finds the song and nothing else, which is
+// exactly what was asked - while "Bowie" still fills all three.
+export function searchLibrary({ userId, q = '', limit = 100 } = {}) {
+  const list = searchWords(q);
+  if (!list.length) return { tracks: [], artists: [], albums: [] };
+  const whole = queryParams(q);
+
+  const trackWhere = allWordsIn(TRACK_SEARCH_FIELDS, list);
+  const trackScore = scoreOf(
+    't.title',
+    [
+      [['ar.name', 't.track_artist'], 15],
+      [['al.title'], 8],
+    ],
+    list
+  );
+  const tracks = db
+    .prepare(
+      `SELECT ${TRACK_FIELDS}, ${trackScore} AS score ${TRACK_FROM}
+        WHERE ${PRESENT} AND ${trackWhere.where}
+        ORDER BY score DESC, t.title COLLATE NOCASE ASC
+        LIMIT @limit`
+    )
+    .all({ userId, ...trackWhere.params, ...whole, limit })
+    .map(shapeTrack);
+
+  const artistWhere = allWordsIn(['ar.name'], list);
+  const artists = db
+    .prepare(
+      `SELECT ${ARTIST_ROW}, ${scoreOf('ar.name', [], list)} AS score ${ARTIST_FROM}
+        WHERE ${artistWhere.where}
+        GROUP BY ar.id
+       HAVING trackCount > 0
+        ORDER BY score DESC, ar.name COLLATE NOCASE ASC`
+    )
+    .all({ ...artistWhere.params, ...whole })
+    .map(shapeArtistRow);
+
+  const albumWhere = allWordsIn(ALBUM_SEARCH_FIELDS, list);
+  const albums = db
+    .prepare(
+      `SELECT ${ALBUM_ROW}, ${scoreOf('al.title', [[['ar.name'], 15]], list)} AS score ${ALBUM_FROM}
+        WHERE ${albumWhere.where}
+        GROUP BY al.id
+       HAVING trackCount > 0
+        ORDER BY score DESC, al.title COLLATE NOCASE ASC`
+    )
+    .all({ ...albumWhere.params, ...whole })
+    .map(shapeAlbum);
+
+  return { tracks, artists, albums };
 }
 
 // Counts what is actually there: a track whose file is gone still has a row for

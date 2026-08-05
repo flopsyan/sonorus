@@ -26,6 +26,7 @@ import {
   mostPlayed,
   newestAlbums,
   randomTracks,
+  searchLibrary,
   libraryStats,
 } from '../models/library.js';
 import {
@@ -276,14 +277,7 @@ router.get('/shuffle', (req, res) => {
 
 router.get('/search', (req, res) => {
   const q = String(req.query.q || '').trim();
-  if (!q) return res.json({ ok: true, q, tracks: [], artists: [], albums: [] });
-  res.json({
-    ok: true,
-    q,
-    tracks: listTracks({ userId: req.user.id, q, limit: 100 }),
-    artists: listArtists({ q }),
-    albums: listAlbums({ q }),
-  });
+  res.json({ ok: true, q, ...searchLibrary({ userId: req.user.id, q, limit: 100 }) });
 });
 
 // --- Ratings and history ----------------------------------------------------
