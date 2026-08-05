@@ -58,6 +58,21 @@ export const PRESENT = "t.missing_at = ''";
 const ALBUM_DATE = "COALESCE(NULLIF(al.release_date, ''), CAST(al.year AS TEXT))";
 const TRACK_DATE = "COALESCE(NULLIF(t.release_date, ''), CAST(t.year AS TEXT))";
 
+// How much a song was really listened to - the measure "am meisten gehört"
+// goes by, here and in the statistics. Not the number of times it was started:
+// a twenty-minute piece heard twice is more listening than a three-minute song
+// heard five times, and counting starts says the opposite.
+//
+// Plays written before the player reported its seconds carry 0; for those the
+// track length is the only estimate there is, and a counted play did run most
+// of the way through. Same expression as in stats.js, for the same reason.
+const LISTENED = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration, 0) END';
+
+// The same, per track of the account asking - as a correlated subquery, so it
+// can order a list that does not join `plays` at all.
+const TRACK_LISTENED = `(SELECT COALESCE(SUM(${LISTENED}), 0)
+    FROM plays p WHERE p.track_id = t.id AND p.user_id = @userId)`;
+
 // Turns a raw row into the shape the client expects: a cover URL instead of a
 // file name, genres as an array, numbers as numbers.
 //
@@ -245,11 +260,17 @@ export function getArtist(id, userId) {
     .all({ id })
     .map(shapeAlbum);
 
+  // The songs of an artist, most listened to first: opening an interpret is
+  // asking "what do I actually play by them", and the answer is time spent, not
+  // times started. Everything never played has nothing to rank by and keeps the
+  // order it had - newest album first, then disc and track number - so the tail
+  // of the list still reads like a discography.
   const tracks = db
     .prepare(
-      `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
+      `SELECT ${TRACK_FIELDS}, ${TRACK_LISTENED} AS listened ${TRACK_FROM}
         WHERE t.artist_id = @id AND ${PRESENT}
-        ORDER BY (${ALBUM_DATE}) IS NULL, ${ALBUM_DATE} DESC, al.title COLLATE NOCASE,
+        ORDER BY listened DESC,
+                 (${ALBUM_DATE}) IS NULL, ${ALBUM_DATE} DESC, al.title COLLATE NOCASE,
                  t.disc_no, t.track_no, t.title COLLATE NOCASE`
     )
     .all({ id, userId })
@@ -257,7 +278,14 @@ export function getArtist(id, userId) {
 
   // Files lying directly in the artist folder belong to no album. They get
   // their own section instead of being counted as one.
-  const singles = tracks.filter((t) => !t.albumId);
+  //
+  // Sorted by title, which is the order they had before the list above started
+  // ranking by listening time: a single has no album date, no disc and no track
+  // number, so every tiebreaker of that query fell through to the title. The
+  // Singles page is a collection of its own and keeps reading that way.
+  const singles = tracks
+    .filter((t) => !t.albumId)
+    .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }));
 
   // The picture the user picked wins; without one the artist borrows the
   // artwork of an album, and failing that of one of the singles.
@@ -548,18 +576,22 @@ export function recentlyPlayed(userId, limit = 18) {
     .map(shapeTrack);
 }
 
+// "Am häufigsten gehört" on the home page, and it means time listened - the
+// same measure the statistics rank by since they stopped counting starts. The
+// play count still comes along, it just does not decide the order.
 export function mostPlayed(userId, limit = 18) {
   return db
     .prepare(
-      `SELECT ${TRACK_FIELDS}, COUNT(p.id) AS playCount ${TRACK_FROM}
+      `SELECT ${TRACK_FIELDS}, COUNT(p.id) AS playCount,
+              ROUND(SUM(${LISTENED})) AS listened ${TRACK_FROM}
          JOIN plays p ON p.track_id = t.id AND p.user_id = @userId
         WHERE ${PRESENT}
         GROUP BY t.id
-        ORDER BY playCount DESC, MAX(p.played_at) DESC
+        ORDER BY listened DESC, playCount DESC, MAX(p.played_at) DESC
         LIMIT @limit`
     )
     .all({ userId, limit })
-    .map((r) => ({ ...shapeTrack(r), playCount: r.playCount }));
+    .map((r) => ({ ...shapeTrack(r), playCount: r.playCount, listened: r.listened }));
 }
 
 export function newestAlbums(limit = 12) {
