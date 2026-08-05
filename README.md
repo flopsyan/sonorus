@@ -30,6 +30,11 @@ belong to the account that created them.
   Alle Songs.
 - **Cover groß ansehen** - clicking the artwork on an album or artist page opens
   it at full size; click anywhere or press Escape to close it again.
+- **Suche** - one question, not three. A query is cut into words and every word
+  has to match somewhere; which field it lands in is free, so "Fame Bowie
+  Americans" finds the song *Fame* by David Bowie on *Young Americans*. Results
+  are ranked rather than alphabetical: searching "Fame" puts the songs called
+  Fame above the ones that only sit on an album called "The Fame Monster".
 - **Genres** - everything grouped by genre (multi-genre tags supported). Every
   card in the grid carries the same artwork as the page it leads to, singles
   included: a genre made of loose files takes its covers from the files.
@@ -87,9 +92,13 @@ belong to the account that created them.
   folders and file names alike. A name still starting with a real dot stays
   hidden on purpose - that is how you keep a folder out of the library.
 - What a folder name cannot say is still read from the file (ID3v1/ID3v2, Vorbis
-  comments, MP4 atoms, APE): release date, genre, duration, format and the
-  embedded cover art. An album with no embedded artwork in any of its files picks
-  up a `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
+  comments, MP4 atoms, APE): release date, genre, duration, format, lyrics and
+  the embedded cover art. An album with no embedded artwork in any of its files
+  picks up a `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
+  Lyrics are read from `USLT` / `SYLT` / `LYRICS` and their equivalents, and a
+  lyric written in LRC (`[01:23.45]` per line) keeps its timestamps, so it can
+  follow the song. Sonorus never fetches anything from the internet: what the
+  files do not carry does not exist for it.
 - **The release date is kept as exactly as the file knows it** - a full day, a
   month or a bare year. The **album page** is the one place that spells it out
   ("17. Mai 2013"); every list, grid and card shows the year, which is all they
@@ -151,6 +160,12 @@ belong to the account that created them.
   right next to it, and the track's own menu carries everything else.
 - **Aktuelle Wiedergabeliste** - the live queue in a side panel, showing the
   real upcoming order even while shuffle is on; drag to reorder, click to jump.
+- **Songtext** - the lyrics a file carries, in a panel next to the queue. When
+  the file also says when each line is sung, the line being sung is highlighted
+  and the panel scrolls along; it stops following for a few seconds after you
+  scroll somewhere else in it. Without timestamps the whole text simply stands
+  there. Nothing is fetched from anywhere - a file whose tags carry no lyrics
+  has none here.
 - A live level meter in the transport and a fullscreen **Visualisierung**, both
   driven by the actual audio through a Web Audio analyser.
 - Media Session support, so the lock screen and hardware media keys show the
@@ -173,8 +188,10 @@ dropping features.
   becomes a screen with big artwork, the stars and a seek bar a thumb can hit.
   It arrives and leaves as a sheet, and a wipe down over the artwork follows the
   finger.
+- **The line being sung** stands between the artwork and the title in that full
+  screen, for a song whose lyrics carry timestamps. Tapping it opens the rest.
 - **The back button closes what lies over the page** - the full screen, the
-  drawer, the queue, a dialog, a menu - before it leaves the app.
+  drawer, the queue, the lyrics, a dialog, a menu - before it leaves the app.
 - **Holding a track opens its menu**, the same one the "..." button opens, as a
   sheet from the bottom edge. A tap on the row plays it.
 - **Rating** happens in the full screen player or through "Bewerten …" in that
@@ -225,8 +242,16 @@ dropping features.
   under "Nach Bewertung", one per rating that artist actually has: one click
   gives you only that artist's 5-star songs (`/artists/7/stars/5`), and they
   combine the same way (`/artists/7/stars/5,4`). The list keeps the order of the
-  artist page - newest album first, then by track number.
+  artist page.
+- **Unbewertete mischen** - the second button on the home page, next to
+  "Zufallsmix starten": a random run through everything that has no star yet.
+  Rating a library is a job you do by ear, and this is what saves picking the
+  next one out of a list of a few thousand by hand. It only appears while there
+  is anything left to rate.
 - Automatic views for recently added, recently played and most played tracks.
+  "Am häufigsten gehört" means time listened, not times started - a
+  twenty-minute piece heard twice is more listening than a three-minute song
+  heard five times. The songs of an artist are ordered the same way.
 
 ### Statistik
 
