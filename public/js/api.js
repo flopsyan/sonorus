@@ -67,7 +67,9 @@ export const api = {
   // along in every track of every list.
   lyrics: (id) => request('GET', `/api/tracks/${id}/lyrics`),
   home: () => request('GET', '/api/home'),
-  shuffle: (limit) => request('GET', `/api/shuffle${query({ limit })}`),
+  // `unrated` narrows the random run to what has no star yet.
+  shuffle: (limit, unrated = false) =>
+    request('GET', `/api/shuffle${query({ limit, unrated: unrated ? '1' : '' })}`),
   search: (q) => request('GET', `/api/search${query({ q })}`),
 
   rate: (trackId, stars) => request('PUT', `/api/tracks/${trackId}/rating`, { stars }),

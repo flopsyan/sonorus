@@ -583,9 +583,18 @@ export function newestAlbums(limit = 12) {
 
 // A handful of random tracks, so "Zufallsmix" on the home page always has
 // something to play even on a fresh library with no history.
-export function randomTracks(userId, limit = 50) {
+//
+// `unrated` narrows it to what has no star yet, which is the other thing a
+// random run is for: rating a library is a job you do by ear, and picking the
+// next unrated song by hand out of a list of a few thousand is the part that
+// makes it stop happening.
+export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
   return db
-    .prepare(`SELECT ${TRACK_FIELDS} ${TRACK_FROM} WHERE ${PRESENT} ORDER BY RANDOM() LIMIT @limit`)
+    .prepare(
+      `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
+        WHERE ${unrated ? UNRATED : PRESENT}
+        ORDER BY RANDOM() LIMIT @limit`
+    )
     .all({ userId, limit })
     .map(shapeTrack);
 }

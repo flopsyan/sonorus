@@ -1262,12 +1262,19 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
-  if (e.target.closest('[data-shuffle-library]')) {
+  // The two random runs off the home page. Same thing, except that the second
+  // one draws only from what has no star yet - which is how a library actually
+  // gets rated.
+  const shuffleLibrary = e.target.closest('[data-shuffle-library], [data-shuffle-unrated]');
+  if (shuffleLibrary) {
+    const unrated = 'shuffleUnrated' in shuffleLibrary.dataset;
     try {
-      const { tracks } = await api.shuffle(300);
-      if (!tracks.length) return;
+      const { tracks } = await api.shuffle(300, unrated);
+      if (!tracks.length) {
+        return toast(unrated ? 'Alles ist bewertet.' : 'Hier gibt es nichts zum Abspielen.');
+      }
       if (!player.state.shuffle) player.setShuffle(true);
-      player.playTracks(tracks, 0, 'Zufallsmix');
+      player.playTracks(tracks, 0, unrated ? 'Unbewertete' : 'Zufallsmix');
     } catch (err) {
       toast(err.message, 'err');
     }

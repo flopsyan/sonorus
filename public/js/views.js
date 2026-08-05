@@ -130,6 +130,17 @@ export async function home() {
       ${readout}
       <div class="hero-actions">
         <button type="button" class="btn btn-primary" data-shuffle-library>${icon('shuffle', 16)} Zufallsmix starten</button>
+        ${
+          // The other reason to start a random run: rating a library is done by
+          // ear, and picking the next unrated song out of a list of a few
+          // thousand by hand is the part that makes it stop happening. Only
+          // offered while there is anything left to rate.
+          data.unrated
+            ? `<button type="button" class="btn btn-ghost" data-shuffle-unrated>
+                ${icon('star-outline', 16)} Unbewertete mischen
+              </button>`
+            : ''
+        }
         <a class="btn btn-ghost" href="/tracks" data-link>${icon('music', 16)} Alle Songs</a>
       </div>
       ${shelf('Zuletzt hinzugefügt', albumCards(data.newestAlbums), { href: '/albums', label: 'Alle Alben' })}

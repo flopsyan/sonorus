@@ -255,6 +255,10 @@ router.get('/home', (req, res) => {
   res.json({
     ok: true,
     stats: libraryStats(),
+    // How much is still waiting for a star. Per account, so it is not part of
+    // libraryStats - and it is what decides whether the page offers a random
+    // run through the unrated songs at all.
+    unrated: starCounts(req.user.id)[0],
     newestAlbums: newestAlbums(12),
     recentlyAdded: recentlyAdded(req.user.id, 12),
     recentlyPlayed: recentlyPlayed(req.user.id, 12),
@@ -262,8 +266,12 @@ router.get('/home', (req, res) => {
   });
 });
 
+// `unrated=1` draws only from what has no star yet - the same random run, but
+// aimed at the part of the library that is still waiting to be judged.
 router.get('/shuffle', (req, res) => {
-  res.json({ ok: true, tracks: randomTracks(req.user.id, Math.min(Number(req.query.limit) || 60, 500)) });
+  const limit = Math.min(Number(req.query.limit) || 60, 500);
+  const unrated = req.query.unrated === '1' || req.query.unrated === 'true';
+  res.json({ ok: true, unrated, tracks: randomTracks(req.user.id, limit, { unrated }) });
 });
 
 router.get('/search', (req, res) => {
