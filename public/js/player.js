@@ -8,6 +8,10 @@
 // the queue panel able to show the real upcoming order.
 
 import { api } from './api.js';
+import { spreadByArtist } from './shuffle.js';
+
+/** What interpret a position in the queue belongs to, for the spread. */
+const artistAt = (i) => state.queue[i]?.artist;
 
 const audio = document.getElementById('audio');
 
@@ -297,18 +301,15 @@ function buildOrder(startIndex) {
     state.pos = Math.min(Math.max(startIndex, 0), indices.length - 1);
     return;
   }
-  const rest = indices.filter((i) => i !== startIndex);
-  shuffleInPlace(rest);
+  const rest = spreadByArtist(
+    indices.filter((i) => i !== startIndex),
+    artistAt,
+    // The clicked track stays in front, so its own interpret following straight
+    // after it is the one repeat the spread cannot see by itself.
+    { avoid: artistAt(startIndex) }
+  );
   state.order = [startIndex, ...rest];
   state.pos = 0;
-}
-
-function shuffleInPlace(list) {
-  for (let i = list.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [list[i], list[j]] = [list[j], list[i]];
-  }
-  return list;
 }
 
 export function toggle() {
@@ -339,8 +340,9 @@ export function next(manual = false) {
     // would bring tracks back that were taken out of the queue.
     if (state.shuffle) {
       const last = state.order[state.pos];
-      const dealt = shuffleInPlace([...state.order]);
-      // A new round must not open with the track that just finished.
+      // A new round must not open with the interpret that just finished, which
+      // covers the track itself as well.
+      const dealt = spreadByArtist(state.order, artistAt, { avoid: artistAt(last) });
       if (dealt.length > 1 && dealt[0] === last) {
         const swap = 1 + Math.floor(Math.random() * (dealt.length - 1));
         [dealt[0], dealt[swap]] = [dealt[swap], dealt[0]];
@@ -501,8 +503,11 @@ export function setShuffle(on) {
   if (state.order.length) {
     const current = state.order[state.pos];
     if (state.shuffle) {
-      const rest = state.order.filter((i) => i !== current);
-      shuffleInPlace(rest);
+      const rest = spreadByArtist(
+        state.order.filter((i) => i !== current),
+        artistAt,
+        { avoid: artistAt(current) }
+      );
       state.order = [current, ...rest];
       state.pos = 0;
     } else {

@@ -6,6 +6,9 @@
 
 import db from '../db.js';
 import { normalize, loosen, primaryArtist } from '../lib/normalize.js';
+// Out of `public/` on purpose: the browser player deals the same way and can
+// only import what is served, so this is the one module both sides run.
+import { spreadByArtist } from '../../public/js/shuffle.js';
 
 // Who made this one song. Normally the artist folder it lies in - but a track
 // on a compilation ("Various") carries its own interpret, read off the file
@@ -708,8 +711,14 @@ export function newestAlbums(limit = 12) {
 // random run is for: rating a library is a job you do by ear, and picking the
 // next unrated song by hand out of a list of a few thousand is the part that
 // makes it stop happening.
+//
+// The draw stays per song - every track equally likely, so a random run sounds
+// like the library actually is. What is *not* left to chance is the order they
+// come in: a uniform permutation puts the same interpret next to itself far more
+// often than it feels like it should, which is what makes a correct random run
+// seem stuck on one name. See `public/js/shuffle.js`.
 export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
-  return db
+  const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
         WHERE ${unrated ? UNRATED : PRESENT}
@@ -717,6 +726,7 @@ export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
     )
     .all({ userId, limit })
     .map(shapeTrack);
+  return spreadByArtist(tracks, (t) => t.artist);
 }
 
 // --- The search page --------------------------------------------------------
