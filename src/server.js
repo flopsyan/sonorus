@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
 // Express "trust proxy": how many reverse proxies sit in front of the app.
-// Default 1 (the usual single homelab reverse proxy) - req.ip then comes from
+// Default 1 (the usual single reverse proxy) - req.ip then comes from
 // X-Forwarded-For as set by the proxy. Set TRUST_PROXY=false when the app is
 // exposed directly, otherwise clients could spoof their IP via that header
 // and cycle through the per-IP login limiter.
