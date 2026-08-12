@@ -2116,6 +2116,14 @@ const AUTO_SCROLL_MS = 900;
 let scrolledAt = 0;
 let autoScrollUntil = 0;
 
+// How far past its own timestamp a tapped line is jumped to. Setting
+// `currentTime` does not land where it is told: the browser goes to the nearest
+// decodable frame, which for an mp3 can be some 25 ms short of the second that
+// was asked for - and short is the one direction that hurts, because it hands
+// the light to the line above the one that was tapped. Inaudible, and it can
+// never overshoot into the next line: no lyric holds two of them 50 ms apart.
+const SEEK_NUDGE = 0.05;
+
 function lyricsOpen() {
   return el.lyrics.classList.contains('open');
 }
@@ -2158,11 +2166,17 @@ function renderLyrics() {
     el.lyricsBody.innerHTML = '<div class="loading">Wird geladen …</div>';
   } else if (lyricState.lines.length) {
     // Timed: every line is its own element, because one of them is highlighted
-    // and scrolled to on every step of the playhead.
+    // and scrolled to on every step of the playhead - and because a timed line
+    // is somewhere to jump to, which makes it a button rather than a paragraph.
+    // An instrumental gap keeps its paragraph: it carries a timestamp like the
+    // rest, but it is eight pixels tall and nothing anybody aims at.
     el.lyricsBody.innerHTML = `<div class="lyric-lines">${lyricState.lines
-      .map(
-        (line, i) =>
-          `<p class="lyric-line${line.text ? '' : ' is-gap'}" data-line="${i}">${esc(line.text)}</p>`
+      .map((line, i) =>
+        line.text
+          ? `<button type="button" class="lyric-line" data-line="${i}" data-at="${line.time}">${esc(
+              line.text
+            )}</button>`
+          : `<p class="lyric-line is-gap" data-line="${i}"></p>`
       )
       .join('')}</div>`;
   } else if (lyricState.text) {
@@ -2233,6 +2247,21 @@ el.lyricsBody.addEventListener('scroll', () => {
   if (Date.now() < autoScrollUntil) return;
   scrolledAt = Date.now();
 }, { passive: true });
+
+// Clicking a line jumps the song to it. Only a timed lyric offers it - an
+// untimed one has nowhere to jump to, and those lines are paragraphs with no
+// `data-at`, so they never match here.
+el.lyricsBody.addEventListener('click', (event) => {
+  const line = event.target.closest('.lyric-line[data-at]');
+  if (!line) return;
+  const at = Number(line.dataset.at) + SEEK_NUDGE;
+  player.seekToTime(at);
+  // Naming the line to play is the reader saying where they want to be, so the
+  // reading pause their scrolling earned is over: the panel centres on the line
+  // again and follows on from there.
+  scrolledAt = 0;
+  paintLyricPosition(at, true);
+});
 
 function openLyrics() {
   if (lyricsOpen()) return;

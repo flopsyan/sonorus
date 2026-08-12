@@ -1008,12 +1008,20 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    a song usually says the thing you looked it up for. */
 
 .lyric-lines { display: flex; flex-direction: column; gap: 2px; }
+/* A timed line is a button - clicking it jumps the song there - and an untimed
+   one a paragraph. They have to read as one text either way, so the button is
+   stripped back to the paragraph it replaces. The padding sits inside it, so
+   the whole strip is the target and not just the glyphs. */
 .lyric-line {
   margin: 0; padding: 5px 0;
+  border: none; background: none; width: 100%; text-align: left;
+  font-family: inherit;
   font-size: 1rem; line-height: 1.45; font-weight: 550;
   color: var(--text-faint);
   transition: color 0.2s ease;
 }
+button.lyric-line { cursor: pointer; }
+button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* An empty line is an instrumental gap. It keeps the timing honest but must not
    take a whole row of a phone screen. */
 .lyric-line.is-gap { padding: 0; height: 8px; }
@@ -1021,6 +1029,12 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    running - while everything still ahead is quieter. */
 .lyric-line.is-past { color: var(--text-dim); }
 .lyric-line.is-now { color: var(--accent); font-size: 1.12rem; }
+@media (hover: hover) {
+  /* Brightening a line on the way to it is what says it can be aimed at. The
+     one being sung already carries the accent and must not be dulled to it. */
+  button.lyric-line:hover { color: var(--text); }
+  button.lyric-line.is-now:hover { color: var(--accent); }
+}
 /* Without timestamps nothing is highlighted, so the whole text reads at once
    instead of sitting there greyed out waiting for a cue that never comes. */
 .lyric-lines.is-plain .lyric-line { color: var(--text); font-weight: 400; }

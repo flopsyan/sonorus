@@ -409,9 +409,17 @@ function stop() {
 }
 
 export function seekTo(fraction) {
+  seekToTime(Math.max(0, Math.min(1, fraction)) * (audio.duration || state.duration));
+}
+
+// The same jump in seconds. The rail drags a fraction of the width around and
+// never knows the running time; a lyric line only ever knows the second it is
+// sung at, and turning that back into a fraction here would be arithmetic for
+// nothing.
+export function seekToTime(seconds) {
   const total = audio.duration || state.duration;
-  if (!total || !Number.isFinite(total)) return;
-  audio.currentTime = Math.max(0, Math.min(1, fraction)) * total;
+  if (!total || !Number.isFinite(total) || !Number.isFinite(seconds)) return;
+  audio.currentTime = Math.max(0, Math.min(total, seconds));
 }
 
 // --- Queue edits ------------------------------------------------------------
