@@ -292,6 +292,23 @@ export function playTracks(tracks, startIndex = 0, source = '') {
   emit();
 }
 
+// A collection put on from its "Mischen" button.
+//
+// Nothing was clicked here, so no song has earned the front of the queue -
+// `buildOrder` keeps the index it is given in front while shuffling, and a fixed
+// zero would open every random run of a genre or an artist with the same song,
+// the first row of the list. The opener is drawn like every other position.
+//
+// Drawn from what can actually be played rather than from `tracks`: a missing
+// file never enters the queue, and drawing one would fall back to the front of
+// the list - exactly the song this is here to avoid.
+export function shuffleTracks(tracks, source = '') {
+  const pool = (tracks || []).filter((t) => t && !t.missing);
+  if (!pool.length) return;
+  if (!state.shuffle) setShuffle(true);
+  playTracks(pool, Math.floor(Math.random() * pool.length), source);
+}
+
 // Builds `order` for the current shuffle setting, keeping `startIndex` first
 // when shuffling so the track you clicked is the one that plays.
 function buildOrder(startIndex) {

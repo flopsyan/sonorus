@@ -1256,9 +1256,7 @@ content.addEventListener('click', async (e) => {
 
   const shuffleAll = e.target.closest('[data-shuffle-all]');
   if (shuffleAll) {
-    if (!view.tracks.length) return;
-    if (!player.state.shuffle) player.setShuffle(true);
-    player.playTracks(view.tracks, Math.floor(Math.random() * view.tracks.length), document.title.split(' · ')[0]);
+    player.shuffleTracks(view.tracks, document.title.split(' · ')[0]);
     return;
   }
 
