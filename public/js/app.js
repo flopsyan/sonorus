@@ -1647,6 +1647,15 @@ el.repeatBtn.addEventListener('click', () => player.cycleRepeat());
 el.muteBtn.addEventListener('click', () => player.toggleMute());
 el.volume.addEventListener('input', () => player.setVolume(Number(el.volume.value) / 100));
 
+// The slider is only left alone while it is actually being dragged. It used to
+// be skipped whenever it had the focus, which is what made the control feel
+// like two: a click focuses it, so every wheel step after that changed the
+// sound while the thumb stayed where the click had put it.
+let volumeDragging = false;
+el.volume.addEventListener('pointerdown', () => { volumeDragging = true; });
+el.volume.addEventListener('pointerup', () => { volumeDragging = false; });
+el.volume.addEventListener('pointercancel', () => { volumeDragging = false; });
+
 // The plus next to the stars: the one thing worth doing with a song while it is
 // playing. Playlists only - a rating is what the stars right next to it are
 // for, and offering both would say the same thing twice.
@@ -1662,7 +1671,9 @@ document.querySelector('.volume').addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
-    player.setVolume(player.state.volume + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP));
+    // From what the control shows, not from the stored level: muted the slider
+    // stands at zero, so a step up has to come back from zero as well.
+    player.setVolume(player.shownVolume() + (e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP));
   },
   { passive: false }
 );
@@ -1936,9 +1947,12 @@ function renderPlayer(s) {
   el.repeatBtn.classList.toggle('repeat-one', s.repeat === 'one');
   el.repeatBtn.setAttribute('aria-label', REPEAT_LABEL[s.repeat]);
 
-  el.muteBtn.innerHTML = icon(s.muted || s.volume === 0 ? 'volume-mute' : s.volume < 0.5 ? 'volume-low' : 'volume-high', 18);
-  el.muteBtn.setAttribute('aria-label', s.muted ? 'Ton einschalten' : 'Stumm schalten');
-  if (document.activeElement !== el.volume) el.volume.value = String(Math.round(s.volume * 100));
+  // Muted, the slider goes to zero and comes back to where it was - the icon,
+  // the thumb and the sound are one control saying one thing.
+  const shown = player.shownVolume();
+  el.muteBtn.innerHTML = icon(shown === 0 ? 'volume-mute' : shown < 0.5 ? 'volume-low' : 'volume-high', 18);
+  el.muteBtn.setAttribute('aria-label', shown === 0 ? 'Ton einschalten' : 'Stumm schalten');
+  if (!volumeDragging) el.volume.value = String(Math.round(shown * 100));
 
   el.nowSource.textContent = s.source || 'Warteschlange';
 

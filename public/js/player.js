@@ -167,6 +167,7 @@ export async function restore(prefs) {
   state.repeat = ['off', 'all', 'one'].includes(saved.repeat) ? saved.repeat : 'off';
   audio.volume = state.volume;
   audio.muted = state.muted;
+  if (state.volume > 0) lastAudible = state.volume;
 
   let stored = null;
   try {
@@ -558,20 +559,45 @@ export function cycleRepeat() {
   emit();
 }
 
+// The level to come back to when the sound is switched on again. Kept out of
+// the prefs on purpose: it only ever matters within a session, and restore()
+// seeds it from the stored volume.
+let lastAudible = 1;
+
 export function setVolume(value) {
   state.volume = Math.max(0, Math.min(1, value));
   audio.volume = state.volume;
-  if (state.volume > 0 && state.muted) {
-    state.muted = false;
-    audio.muted = false;
+  if (state.volume > 0) {
+    lastAudible = state.volume;
+    if (state.muted) {
+      state.muted = false;
+      audio.muted = false;
+    }
   }
   savePrefs();
   emit();
 }
 
+// What the control shows: mute and a slider at zero are the same silence, and
+// the UI has to say so with one number - otherwise the slider and the sound
+// drift apart (thumb at the far right, nothing audible).
+export function shownVolume() {
+  return state.muted ? 0 : state.volume;
+}
+
+// One button for both ways of being silent: the mute flag and a slider dragged
+// to zero. Pressing it while silent brings back the last level that was
+// audible, so switching the sound off and on again is symmetric.
 export function toggleMute() {
-  state.muted = !state.muted;
+  if (state.muted || state.volume === 0) {
+    state.muted = false;
+    if (state.volume === 0) state.volume = lastAudible;
+  } else {
+    lastAudible = state.volume;
+    state.muted = true;
+  }
   audio.muted = state.muted;
+  audio.volume = state.volume;
   savePrefs();
   emit();
 }
