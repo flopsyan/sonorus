@@ -219,6 +219,11 @@ textarea { resize: vertical; min-height: 70px; }
   .btn-quiet:hover { background: var(--surface-2); color: var(--text); }
   .btn-danger:hover { background: var(--danger); color: var(--bg); }
   .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  /* A switched-on button keeps its accent under the pointer. Without this the
+     hover colour wins (same specificity, later in the file) and shuffle and
+     repeat look identical whether they are on or off - which is the one thing
+     the colour is there to say. The background tint still answers the hover. */
+  .icon-btn.is-on:hover { color: var(--accent); }
   .icon-btn:disabled:hover { background: transparent; color: var(--text-faint); }
   .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
 }
