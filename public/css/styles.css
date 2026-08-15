@@ -269,6 +269,16 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   display: flex; align-items: center; gap: 11px;
   padding: 16px 18px 14px;
 }
+/* The fold button sits at the end of the brand row and only exists where the
+   sidebar is a column - on a phone it is a drawer and the hamburger closes it. */
+.sidebar-head .sidebar-toggle { margin-left: auto; }
+.topbar .sidebar-toggle { display: inline-grid; }
+
+/* Folded away: the column goes to zero and the content takes the whole width.
+   `display: none` rather than a width of nothing, so nothing inside it can
+   still be tabbed into. */
+.shell.sidebar-folded { grid-template-columns: 0 minmax(0, 1fr); }
+.shell.sidebar-folded .sidebar { display: none; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 20px; }
 
 .nav-group { margin-bottom: 22px; }
@@ -1266,7 +1276,11 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 }
 
 @media (max-width: 900px) {
-  .shell { grid-template-columns: minmax(0, 1fr); }
+  .shell, .shell.sidebar-folded { grid-template-columns: minmax(0, 1fr); }
+  /* Here the sidebar is a drawer, so folding it away is meaningless - and it
+     must not stay hidden, or the hamburger would open nothing. Both toggles go. */
+  .shell.sidebar-folded .sidebar { display: flex; }
+  .sidebar-toggle { display: none !important; }
   .sidebar {
     position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w);
     transform: translateX(-100%); transition: transform 0.22s var(--sheet-ease);

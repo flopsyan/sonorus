@@ -2460,6 +2460,26 @@ document.getElementById('menu-toggle').addEventListener('click', () => {
 });
 document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
 
+// Folding the sidebar away is a desktop thing - on a phone it is a drawer and
+// already out of the way. The state lives on the account like every other
+// preference, so it follows to another machine; the button to bring it back
+// sits in the topbar, because the one that folded it went with the sidebar.
+const shellEl = document.querySelector('.shell');
+const expandBtn = document.getElementById('sidebar-expand');
+
+function applySidebarCollapsed(collapsed) {
+  shellEl.classList.toggle('sidebar-folded', collapsed);
+  expandBtn.hidden = !collapsed;
+}
+
+function setSidebarCollapsed(collapsed) {
+  applySidebarCollapsed(collapsed);
+  setPref('sidebarCollapsed', collapsed);
+}
+
+document.getElementById('sidebar-collapse').addEventListener('click', () => setSidebarCollapsed(true));
+expandBtn.addEventListener('click', () => setSidebarCollapsed(false));
+
 // Theme switch
 function applyTheme(choice) {
   const resolved =
@@ -2646,6 +2666,7 @@ async function boot() {
   if (compact.matches) searchInput.placeholder = 'Suchen';
 
   paintIcons(document);
+  applySidebarCollapsed(!!shell.prefs.sidebarCollapsed);
   initHistory();
   renderAccount();
   renderSidebar();
