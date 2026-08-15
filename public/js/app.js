@@ -2669,7 +2669,8 @@ const SHORTCUTS = [
   ['R', 'Wiederholen umschalten'],
   ['M', 'Stummschalten'],
   ['Q', 'Warteschlange ein- / ausblenden'],
-  ['V', 'Visualisierung'],
+  ['L', 'Songtext ein- / ausblenden'],
+  ['V', 'Vollbild'],
   ['/', 'Suche'],
 ];
 
@@ -2725,8 +2726,11 @@ document.addEventListener('keydown', (e) => {
     case 'q':
       toggleQueue();
       break;
+    case 'l':
+      toggleLyrics();
+      break;
     case 'v':
-      openVisualizer();
+      toggleBigView();
       break;
     default: {
       if (/^[0-5]$/.test(e.key)) {
