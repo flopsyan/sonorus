@@ -357,24 +357,43 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
   color: var(--text-faint); pointer-events: none;
 }
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 
-/* The segmented switch: the theme picker in the topbar and the time range on
-   the statistics page. Same control, but only the theme one is dropped on a
-   narrow screen. */
-.theme-switch, .seg-switch {
+/* Statistik and Einstellungen, left of the avatar. Einstellungen is the icon
+   alone - the cog says it - while Statistik carries its word as long as the
+   window is wide enough for it. The badge is the count of open import notices,
+   which used to hang on the sidebar entry. */
+.top-link {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 11px; border-radius: var(--radius-sm);
+  color: var(--text-dim); font-size: 0.88rem; font-weight: 500;
+}
+.top-link.icon-only { padding: 0; width: 34px; justify-content: center; }
+.top-link.active { background: var(--surface-2); color: var(--text); }
+.top-link .nav-badge { position: absolute; top: 2px; right: 2px; }
+@media (hover: hover) {
+  .top-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+}
+
+/* The segmented switch, now only the time range on the statistics page and the
+   theme picker under Einstellungen. */
+.seg-switch {
   display: inline-flex; background: var(--surface); border: 1px solid var(--line);
   border-radius: 999px; padding: 2px;
 }
-.theme-switch button, .seg-switch button {
+.seg-switch button {
   border: none; background: transparent; color: var(--text-dim);
   font-size: 0.78rem; font-weight: 600; padding: 4px 11px;
   border-radius: 999px; cursor: pointer;
 }
 @media (hover: hover) {
-  .theme-switch button:hover, .seg-switch button:hover { color: var(--text); }
+  .seg-switch button:hover { color: var(--text); }
 }
-.theme-switch button.active, .seg-switch button.active { background: var(--surface-3); color: var(--text); }
+.seg-switch button.active { background: var(--surface-3); color: var(--text); }
+
+/* The account menu carries the two topbar links only where they do not fit. */
+.dropdown-item.only-compact { display: none; }
 
 .avatar { display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
@@ -1303,7 +1322,10 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
      the same thing in half the height here. */
   .readout-cell { padding: 11px 14px; }
   .readout-value { font-size: 1.2rem; }
-  .theme-switch { display: none; }
+  /* The word next to the chart icon is the first thing to give way; the icon
+     alone still says which page it leads to. */
+  .top-link-label { display: none; }
+  .top-link { padding: 0; width: 34px; justify-content: center; }
   /* Five widths at full size are wider than a phone. The switch itself stays -
      it is the only way to change what the whole page below it shows. */
   .seg-switch button { padding: 4px 8px; font-size: 0.73rem; }
@@ -1348,6 +1370,10 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   .player { grid-template-columns: minmax(0, 1fr) auto; }
   .player-right { display: none; }
   .transport .counter { display: none; }
+  /* Not even the two icons fit next to the search field here, so the account
+     menu carries both pages instead. */
+  .top-link { display: none; }
+  .dropdown-item.only-compact { display: flex; }
 }
 
 /* --- The transport as a screen of its own (phones only) -------------------- */

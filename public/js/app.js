@@ -391,24 +391,26 @@ function renderSidebar() {
       ${folderBlocks}
       <div class="playlist-root" data-drop-root>${loose.map(playlistItem).join('')}</div>
       ${hasPlaylists ? '' : '<p class="sidebar-empty">Noch keine Playlist. Lege eine an oder importiere eine CSV-Datei.</p>'}
-    </nav>
-
-    <nav class="nav-group">
-      <div class="nav-group-head"><span class="rack-label">System</span></div>
-      ${navItem({
-        href: '/stats',
-        label: 'Statistik',
-        iconName: 'chart',
-        active: path === '/stats',
-      })}
-      ${navItem({
-        href: '/settings',
-        label: 'Einstellungen',
-        iconName: 'settings',
-        active: path === '/settings',
-        extra: shell.issues ? `<span class="nav-badge">${fmt.number(shell.issues)}</span>` : '',
-      })}
     </nav>`;
+
+  renderTopLinks();
+}
+
+// Statistik and Einstellungen live in the topbar next to the avatar - they are
+// about the app, not about the library the rest of the sidebar lists. Drawn
+// from here because both the active state and the notice count change while the
+// app runs. Below 560 px the links give way and the account menu carries them.
+const topStats = document.getElementById('top-stats');
+const topSettings = document.getElementById('top-settings');
+
+function renderTopLinks() {
+  const path = window.location.pathname;
+  topStats.innerHTML = `${icon('chart', 18)}<span class="top-link-label">Statistik</span>`;
+  topStats.classList.toggle('active', path === '/stats');
+  topSettings.innerHTML = `${icon('settings', 18)}${
+    shell.issues ? `<span class="nav-badge">${fmt.number(shell.issues)}</span>` : ''
+  }`;
+  topSettings.classList.toggle('active', path === '/settings');
 }
 
 // Refetches the parts of the shell that other actions change.

@@ -25,11 +25,13 @@
         <input type="search" id="search-input" name="q" placeholder="Titel, Interpret, Album" aria-label="Bibliothek durchsuchen" />
       </form>
       <div class="topbar-right">
-        <div class="theme-switch" role="group" aria-label="Erscheinungsbild">
-          <button type="button" data-theme-choice="system">Auto</button>
-          <button type="button" data-theme-choice="light">Hell</button>
-          <button type="button" data-theme-choice="dark">Dunkel</button>
-        </div>
+        <!-- The two pages that are about the app rather than about the music.
+             They sit next to the avatar instead of at the bottom of the library
+             list; below 560 px they give way and the account menu carries them.
+             The labels are filled in by app.js, which also hangs the count of
+             open import notices on the settings link. -->
+        <a href="/stats" class="top-link" id="top-stats" data-link title="Statistik"></a>
+        <a href="/settings" class="top-link icon-only" id="top-settings" data-link title="Einstellungen"></a>
         <div class="menu-wrap" id="user-menu">
           <button type="button" class="avatar-btn" id="avatar-btn" aria-haspopup="true" aria-expanded="false" aria-label="Konto-Menü">
             <span class="avatar avatar-sm" id="topbar-avatar"></span>
