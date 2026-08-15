@@ -166,15 +166,17 @@ belong to the account that created them.
   scroll somewhere else in it. Without timestamps the whole text simply stands
   there. Nothing is fetched from anywhere - a file whose tags carry no lyrics
   has none here.
-- A live level meter in the transport and a fullscreen **Visualisierung**, both
-  driven by the actual audio through a Web Audio analyser.
+- A live level meter in the transport and a **big view** for what is playing,
+  opened by clicking the title in the bar (or with `V`). It takes the content
+  area and leaves the sidebar and the topbar standing, and carries three tabs:
+  the song with its artwork, its text, and a visualizer driven by the actual
+  audio through a Web Audio analyser.
 - Media Session support, so the lock screen and hardware media keys show the
   current track and work as expected: the card with cover art, previous and
   next, and the progress bar the notification draws from the reported position.
-  Whether the notification then shows all of it is the browser's decision - the
-  Wiedergabe panel under Einstellungen says what it accepted, and "nicht
-  verfügbar" there almost always means the page was opened over plain HTTP,
-  where the Media Session API does not exist.
+  Whether the notification then shows all of it is the browser's decision. If
+  it only offers pause, the page was almost certainly opened over plain HTTP,
+  where the Media Session API does not exist at all.
 - The queue, volume and the shuffle/repeat modes survive a reload. Volume,
   shuffle and repeat are stored on the account, so they follow you to another
   device; the queue itself stays in the browser you built it in.
@@ -199,8 +201,11 @@ dropping features.
   it stays - a window at half a screen keeps the rating, the time counter and
   the controls on the right of the bar, and the title cuts off instead. A title
   that had to be cut off says its full name on hover.
-- The seek bar can be dragged, the theme is picked under Einstellungen (the
-  topbar has no room for it), and nothing keeps a hover state after a tap.
+- The seek bar can be dragged, the theme is picked under Einstellungen, and
+  nothing keeps a hover state after a tap.
+- On a desktop the sidebar folds away, and Interpreten, Alben and Genres can be
+  shown as tiles or as one row per entry. Both choices are stored on the
+  account, the list/tile one per collection.
 
 ### Keyboard shortcuts
 
@@ -215,7 +220,8 @@ dropping features.
 | `R` | Cycle repeat |
 | `M` | Mute |
 | `Q` | Show / hide the queue |
-| `V` | Fullscreen visualizer |
+| `L` | Show / hide the lyrics |
+| `V` | Show / hide the big view |
 | `/` | Jump to the search field |
 
 ### Playlists
@@ -318,7 +324,8 @@ docker compose up -d --build
 
 Open http://localhost:3000. On the first visit you are guided through a one-time
 setup page to create the first administrator account. After that, log in and
-manage further accounts under **Einstellungen** (admins only).
+manage further accounts from the account menu behind your avatar (admins
+only - nobody else sees the account list).
 
 Alternatively, bootstrap the first admin non-interactively by setting
 `AUTH_PASSWORD` (and optionally `AUTH_USER`) in `.env` before the first start.

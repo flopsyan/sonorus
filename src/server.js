@@ -113,7 +113,7 @@ app.listen(port, () => {
   if (setupRequired()) {
     console.log('No account yet - open the app to run the one-time setup, or set AUTH_PASSWORD.');
   } else {
-    console.log('Login required. Manage accounts under Einstellungen (admins only).');
+    console.log('Login required. Manage accounts from the account menu (admins only).');
   }
   scanOnStart();
 });

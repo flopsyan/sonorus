@@ -45,7 +45,7 @@ import {
   renameFolder,
   deleteFolder,
 } from '../models/playlists.js';
-import { setRating, recordPlay, updatePlaySeconds, clearHistory, historyCount } from '../models/ratings.js';
+import { setRating, recordPlay, updatePlaySeconds, clearHistory } from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
 import { updateAlbum, updateSingle, updateArtistCover } from '../models/edits.js';
 import {
