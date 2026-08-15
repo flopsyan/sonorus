@@ -43,7 +43,22 @@ app.use(securityHeaders);
 // Static files (CSS, client JS) and the cover art extracted during the scan.
 // Covers are content-addressed by album id and rewritten on a rescan, so a
 // short cache is safe and keeps the album grid from re-fetching on every view.
-app.use('/static', express.static(path.join(projectRoot, 'public'), { maxAge: '1h' }));
+//
+// The JavaScript is the exception and has to revalidate. Only the two files the
+// page links directly carry the `?v=` cache buster; everything they import
+// (views.js, ui.js, player.js, ...) is fetched under its plain name, so with an
+// hour of cache a browser can run a fresh app.js against a stale views.js after
+// a deploy - which looks exactly like the deploy not having happened. A 304 is
+// one round trip and the file is not sent again.
+app.use(
+  '/static',
+  express.static(path.join(projectRoot, 'public'), {
+    maxAge: '1h',
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.js')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
 app.use('/covers', express.static(coversDir, { maxAge: '1h', fallthrough: false }));
 
 // Container healthcheck (no auth)

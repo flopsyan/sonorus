@@ -608,7 +608,9 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .list-art .art-fallback { font-size: 0.8rem; }
 .list-art .mosaic { width: 100%; height: 100%; }
 .list-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.list-title { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The type of a track row, to the tenth of a rem: the two lines are what makes
+   the row its height, so they have to be the same two lines. */
+.list-title { font-size: 0.91rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-sub { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-meta { font-size: 0.82rem; color: var(--text-dim); font-variant-numeric: tabular-nums; flex: none; }
 /* The play button keeps its slot whether or not the row has one, so the counts
