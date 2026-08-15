@@ -1280,8 +1280,7 @@ function issueRows(issues) {
 }
 
 export async function settings(_params, ctx) {
-  const [status, issueData, userData] = await Promise.all([api.scanStatus(), api.issues(), api.users()]);
-  const isAdmin = ctx.user.isAdmin;
+  const [status, issueData] = await Promise.all([api.scanStatus(), api.issues()]);
 
   return {
     title: 'Einstellungen',
@@ -1326,69 +1325,11 @@ export async function settings(_params, ctx) {
 
       <div class="panel">
         <h2>Darstellung</h2>
-        <p class="panel-hint">Sonorus ist für dunkel gebaut; hell gibt es für den Tag.
-          Oben in der Leiste steht dieselbe Auswahl - aber nur auf einem breiten Bildschirm.</p>
+        <p class="panel-hint">Sonorus ist für dunkel gebaut; hell gibt es für den Tag.</p>
         <div class="setting-row">
           <div class="setting-label">Erscheinungsbild</div>
           ${themeSwitch()}
         </div>
-      </div>
-
-      <div class="panel">
-        <h2>Wiedergabe</h2>
-        <p class="panel-hint">Was Sonorus dem Handy für die Benachrichtigung mitgibt: Titel, Cover,
-          die Tasten für vor und zurück und die Position im Lied. Zeigt die Benachrichtigung trotzdem
-          nur Pause, liegt es am Browser - und "nicht verfügbar" heißt fast immer, dass die Seite
-          ohne HTTPS geöffnet wurde: die Medien-Steuerung gibt es nur über eine sichere Verbindung.</p>
-        ${mediaSessionRows()}
-      </div>
-
-      <div class="panel">
-        <h2>Wiedergabe-Verlauf</h2>
-        <p class="panel-hint">Grundlage für "Zuletzt gehört" und "Am häufigsten gehört". Nur deine eigenen Wiedergaben.</p>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Gespeicherte Wiedergaben</div>
-            <div class="setting-sub num">${fmt.number(userData.historyCount)}</div>
-          </div>
-          <button type="button" class="btn btn-ghost" data-clear-history ${userData.historyCount ? '' : 'disabled'}>Verlauf löschen</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>Konten</h2>
-        <p class="panel-hint">${
-          isAdmin
-            ? 'Alle Konten teilen sich die Bibliothek. Playlists, Bewertungen und Verlauf gehören jeweils einem Konto.'
-            : 'Nur Administratoren können Konten anlegen oder löschen.'
-        }</p>
-        <div id="users-block">${userRows(userData.users, ctx.user, isAdmin)}</div>
-        ${
-          isAdmin
-            ? `<form id="user-form" class="mt-lg">
-                <div class="field-row">
-                  <div class="field">
-                    <label for="nu-user">Benutzername</label>
-                    <input type="text" id="nu-user" required />
-                  </div>
-                  <div class="field">
-                    <label for="nu-name">Anzeigename</label>
-                    <input type="text" id="nu-name" />
-                  </div>
-                </div>
-                <div class="field-row">
-                  <div class="field">
-                    <label for="nu-pass">Passwort</label>
-                    <input type="password" id="nu-pass" autocomplete="new-password" required />
-                  </div>
-                  <div class="field field-bottom">
-                    <label class="checkbox"><input type="checkbox" id="nu-admin" /> Administrator</label>
-                  </div>
-                </div>
-                <div class="form-actions"><button type="submit" class="btn btn-primary">Konto anlegen</button></div>
-              </form>`
-            : ''
-        }
       </div>`,
 
     // The return value is the router's cleanup hook - without passing it on,
@@ -1419,29 +1360,101 @@ function themeSwitch() {
     </div>`;
 }
 
-// What the browser lets Sonorus hand over for the notification on the lock
-// screen. Everything here is decided by the browser, not by the app, so it is
-// the one place that can answer "warum kann ich in der Benachrichtigung nur
-// pausieren" without guessing - a missing Media Session means the page is not
-// in a secure context, and a missing setPositionState means no progress bar.
-function mediaSessionRows() {
-  const session = 'mediaSession' in navigator ? navigator.mediaSession : null;
-  const rows = [
-    ['Medien-Steuerung (Media Session)', !!session],
-    ['Titel, Interpret und Cover', !!session && 'MediaMetadata' in window],
-    ['Tasten für vorheriger / nächster Titel', !!session && typeof session.setActionHandler === 'function'],
-    ['Fortschrittsleiste', !!session && typeof session.setPositionState === 'function'],
-    ['Sichere Verbindung (HTTPS)', window.isSecureContext],
-  ];
+// Account management, reached from the account menu and nowhere else. Admin
+// only, front and back: a normal user is not shown who else has an account, and
+// `GET /api/users` says no to them as well.
+export async function accounts(_params, ctx) {
+  if (!ctx.user.isAdmin) {
+    return {
+      title: 'Konten',
+      html: `${pageHead('Konto', 'Konten', '')}
+        <div class="empty"><h3>Nur für Administratoren</h3>
+        <p>Konten werden von einem Administrator angelegt und gelöscht.</p></div>`,
+    };
+  }
 
-  return rows
-    .map(
-      ([label, on]) => `<div class="setting-row">
-        <div class="setting-label">${esc(label)}</div>
-        <span class="badge ${on ? 'ok' : 'gone'}">${on ? 'verfügbar' : 'nicht verfügbar'}</span>
-      </div>`
-    )
-    .join('');
+  const userData = await api.users();
+  return {
+    title: 'Konten',
+    html: `${pageHead('Konto', 'Konten', 'Alle Konten teilen sich die Bibliothek. Playlists, Bewertungen und Verlauf gehören jeweils einem Konto.')}
+      <div class="panel">
+        <h2>Konten</h2>
+        <div id="users-block">${userRows(userData.users, ctx.user, true)}</div>
+        <form id="user-form" class="mt-lg">
+          <div class="field-row">
+            <div class="field">
+              <label for="nu-user">Benutzername</label>
+              <input type="text" id="nu-user" required />
+            </div>
+            <div class="field">
+              <label for="nu-name">Anzeigename</label>
+              <input type="text" id="nu-name" />
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="nu-pass">Passwort</label>
+              <input type="password" id="nu-pass" autocomplete="new-password" required />
+            </div>
+            <div class="field field-bottom">
+              <label class="checkbox"><input type="checkbox" id="nu-admin" /> Administrator</label>
+            </div>
+          </div>
+          <div class="form-actions"><button type="submit" class="btn btn-primary">Konto anlegen</button></div>
+        </form>
+      </div>`,
+    after(root, ctx2) {
+      return wireAccounts(root, ctx2);
+    },
+  };
+}
+
+// The two actions of the accounts page. Its own wiring, like the settings page:
+// the listener sits on #content, which outlives the view, so it has to be able
+// to go away again.
+function wireAccounts(root, ctx) {
+  const wiring = new AbortController();
+
+  root.addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-delete-user]');
+    if (!del) return;
+    const ok = await confirmDialog({
+      title: 'Konto löschen',
+      message: `Das Konto "${del.dataset.userName}" wird gelöscht, zusammen mit seinen Playlists, Bewertungen und seinem Verlauf. Die Musikdateien bleiben unberührt. Das lässt sich nicht rückgängig machen.`,
+      confirmLabel: 'Konto löschen',
+    });
+    if (!ok) return;
+    try {
+      const res = await api.deleteUser(del.dataset.deleteUser);
+      if (res.self) return window.location.reload();
+      root.querySelector('#users-block').innerHTML = userRows(res.users, ctx.user, true);
+      toast('Konto gelöscht.');
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  }, { signal: wiring.signal });
+
+  const userForm = root.querySelector('#user-form');
+  if (userForm) {
+    userForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const res = await api.createUser({
+          username: root.querySelector('#nu-user').value,
+          displayName: root.querySelector('#nu-name').value,
+          password: root.querySelector('#nu-pass').value,
+          isAdmin: root.querySelector('#nu-admin').checked,
+        });
+        userForm.reset();
+        root.querySelector('#users-block').innerHTML = userRows(res.users, ctx.user, true);
+        toast('Konto angelegt.');
+      } catch (err) {
+        toast(err.message, 'err');
+      }
+    });
+  }
+
+  return () => wiring.abort();
 }
 
 function userRows(users, me, isAdmin) {
@@ -1566,57 +1579,7 @@ function wireSettings(root, ctx) {
       return;
     }
 
-    if (e.target.closest('[data-clear-history]')) {
-      const ok = await confirmDialog({
-        title: 'Verlauf löschen',
-        message:
-          'Dein kompletter Wiedergabe-Verlauf wird gelöscht. "Zuletzt gehört" und "Am häufigsten gehört" starten danach bei null. Das lässt sich nicht rückgängig machen.',
-        confirmLabel: 'Verlauf löschen',
-      });
-      if (!ok) return;
-      await api.clearHistory();
-      ctx.navigate('/settings', { replace: true });
-      return;
-    }
-
-    const del = e.target.closest('[data-delete-user]');
-    if (del) {
-      const ok = await confirmDialog({
-        title: 'Konto löschen',
-        message: `Das Konto "${del.dataset.userName}" wird gelöscht, zusammen mit seinen Playlists, Bewertungen und seinem Verlauf. Die Musikdateien bleiben unberührt. Das lässt sich nicht rückgängig machen.`,
-        confirmLabel: 'Konto löschen',
-      });
-      if (!ok) return;
-      try {
-        const res = await api.deleteUser(del.dataset.deleteUser);
-        if (res.self) return window.location.reload();
-        root.querySelector('#users-block').innerHTML = userRows(res.users, ctx.user, ctx.user.isAdmin);
-        toast('Konto gelöscht.');
-      } catch (err) {
-        toast(err.message, 'err');
-      }
-    }
   }, { signal: wiring.signal });
-
-  const userForm = root.querySelector('#user-form');
-  if (userForm) {
-    userForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try {
-        const res = await api.createUser({
-          username: root.querySelector('#nu-user').value,
-          displayName: root.querySelector('#nu-name').value,
-          password: root.querySelector('#nu-pass').value,
-          isAdmin: root.querySelector('#nu-admin').checked,
-        });
-        userForm.reset();
-        root.querySelector('#users-block').innerHTML = userRows(res.users, ctx.user, true);
-        toast('Konto angelegt.');
-      } catch (err) {
-        toast(err.message, 'err');
-      }
-    });
-  }
 
   // CSV import: read the file in the browser and post its text.
   const drop = root.querySelector('#csv-drop');

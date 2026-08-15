@@ -479,8 +479,11 @@ router.put('/prefs', (req, res) => {
 
 // --- Accounts ---------------------------------------------------------------
 
-router.get('/users', (req, res) => {
-  res.json({ ok: true, users: listUsers(), historyCount: historyCount(req.user.id) });
+// Admin-only, like creating and deleting: account management moved out of the
+// settings page into the account menu, and who else has an account is nothing a
+// normal user is shown any more.
+router.get('/users', adminOnly, (req, res) => {
+  res.json({ ok: true, users: listUsers() });
 });
 
 router.post('/users', adminOnly, (req, res) => {

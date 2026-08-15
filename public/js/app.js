@@ -69,6 +69,7 @@ const ROUTES = [
   [/^\/settings$/, views.settings],
   [/^\/stats$/, views.stats],
   [/^\/profile$/, views.profile],
+  [/^\/accounts$/, views.accounts],
 ];
 
 // Preferences are stored on the account, so a sort picked once follows the user
@@ -2502,7 +2503,15 @@ function renderAccount() {
       </span>
     </div>
     <a href="/profile" class="dropdown-item" data-link>${icon('user', 16)} Profil</a>
-    <a href="/settings" class="dropdown-item" data-link>${icon('settings', 16)} Einstellungen</a>
+    ${
+      user.isAdmin
+        ? `<a href="/accounts" class="dropdown-item" data-link>${icon('users', 16)} Konten</a>`
+        : ''
+    }
+    <!-- The two topbar links, for the screens the topbar drops them on. Hidden
+         wherever the icons themselves fit, so nothing is offered twice. -->
+    <a href="/stats" class="dropdown-item only-compact" data-link>${icon('chart', 16)} Statistik</a>
+    <a href="/settings" class="dropdown-item only-compact" data-link>${icon('settings', 16)} Einstellungen</a>
     <button type="button" class="dropdown-item" data-shortcuts>${icon('list', 16)} Tastaturkürzel</button>
     <div class="dropdown-sep"></div>
     <form method="post" action="/logout">

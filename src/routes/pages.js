@@ -101,6 +101,8 @@ const APP_ROUTES = [
   '/settings',
   '/stats',
   '/profile',
+  // Account management, admin only in the client and in the API
+  '/accounts',
 ];
 
 for (const route of APP_ROUTES) {
