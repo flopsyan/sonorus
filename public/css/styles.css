@@ -901,6 +901,9 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 }
 .empty h3 { margin-bottom: 6px; color: var(--text); }
 .empty p { margin: 0 0 18px; font-size: 0.9rem; }
+/* The bottom margin is the gap before an action below. Without one it would
+   push the content off the vertical centre of the padded box. */
+.empty > :last-child { margin-bottom: 0; }
 .empty.small { padding: 28px 20px; }
 
 .loading { padding: 60px; text-align: center; color: var(--text-faint); }
@@ -1355,6 +1358,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   padding: 26px; text-align: center; color: var(--text-dim);
   font-size: 0.89rem; cursor: pointer;
 }
+/* .icon is display:block, so text-align does not reach it. */
+.drop-zone .icon { margin: 0 auto; }
 .drop-zone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 @media (hover: hover) {
   .drop-zone:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
