@@ -40,6 +40,7 @@ const STROKE = {
   alert: '<path d="M12 3.5 2 20.5h20z"/><path d="M12 10v4.5"/><path d="M12 17.6h.01"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   maximize: '<path d="M8 3H4a1 1 0 0 0-1 1v4"/><path d="M16 3h4a1 1 0 0 1 1 1v4"/><path d="M16 21h4a1 1 0 0 0 1-1v-4"/><path d="M8 21H4a1 1 0 0 1-1-1v-4"/>',
+  minimize: '<path d="M4 9h4a1 1 0 0 0 1-1V4"/><path d="M20 9h-4a1 1 0 0 1-1-1V4"/><path d="M20 15h-4a1 1 0 0 0-1 1v4"/><path d="M4 15h4a1 1 0 0 1 1 1v4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.3l3.2 1.9"/>',
   chart: '<path d="M4 20V4"/><path d="M4 20h16"/><rect x="7.5" y="12" width="3" height="5" rx="0.8"/><rect x="13" y="8" width="3" height="9" rx="0.8"/><rect x="18" y="14" width="3" height="3" rx="0.8"/>',
   trending: '<path d="m3 17 5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/>',

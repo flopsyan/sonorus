@@ -128,6 +128,9 @@ function navigate(url, { replace = false } = {}) {
   // before it. The page takes the entry's place instead of stacking on top.
   const overlaid = overlays.length > 0;
   closeOverlays();
+  // Following a link is asking for the library, and the library is what the big
+  // view is standing in front of.
+  closeBigView();
 
   if (replace) {
     window.history.replaceState({ idx: historyIndex, seq: entrySeq, ov: 0 }, '', url);
@@ -1633,6 +1636,13 @@ const el = {
   lyricsBtn: document.getElementById('btn-lyrics'),
   lyrics: document.getElementById('lyrics'),
   lyricsBody: document.getElementById('lyrics-body'),
+  bigview: document.getElementById('bigview'),
+  bigLyrics: document.getElementById('bigview-lyrics'),
+  bigviewArt: document.getElementById('bigview-art'),
+  bigviewTitle: document.getElementById('bigview-title'),
+  bigviewSub: document.getElementById('bigview-sub'),
+  bigviewLine: document.getElementById('bigview-line'),
+  bigviewCanvas: document.getElementById('bigview-canvas'),
   lyricsTitle: document.getElementById('lyrics-title'),
   nowLine: document.getElementById('now-line'),
   meter: document.getElementById('meter'),
@@ -1704,7 +1714,7 @@ function toggleQueue() {
 
 el.queueBtn.addEventListener('click', toggleQueue);
 document.getElementById('queue-close').addEventListener('click', closeQueue);
-el.visualBtn.addEventListener('click', openVisualizer);
+el.visualBtn.addEventListener('click', () => toggleBigView());
 
 // --- The player as a screen of its own (phones) -----------------------------
 // A phone gets the transport as a strip along the bottom; tapping it opens the
@@ -1988,6 +1998,7 @@ function renderPlayer(s) {
 
   markPlayingRow();
   renderQueue(s);
+  renderBigView(s);
 }
 
 // #now-stars is itself the .stars container in the shell markup, so it takes
@@ -2170,22 +2181,40 @@ function loadLyrics(track) {
     });
 }
 
+// The text is shown in two places - the side panel and the big view's Songtext
+// tab - so it is rendered once and written into both. Whichever of the two is
+// on screen is the one that scrolls along; the other just holds the same lines.
+function lyricBoxes() {
+  return [el.lyricsBody, el.bigLyrics];
+}
+
+// The box the reader is actually looking at, or null when neither is up.
+function activeLyricBox() {
+  if (bigViewTab() === 'lyrics') return el.bigLyrics;
+  if (lyricsOpen()) return el.lyricsBody;
+  return null;
+}
+
+function setLyricsHtml(html) {
+  lyricBoxes().forEach((box) => { box.innerHTML = html; });
+}
+
 function renderLyrics() {
   const track = player.currentTrack();
   el.lyricsTitle.textContent = track ? track.title : 'Nichts ausgewählt';
 
   const note = (message) => `<div class="empty small"><p>${esc(message)}</p></div>`;
   if (!track) {
-    el.lyricsBody.innerHTML = note('Spiele einen Song ab, um seinen Text zu sehen.');
+    setLyricsHtml(note('Spiele einen Song ab, um seinen Text zu sehen.'));
   } else if (lyricState.loading) {
-    el.lyricsBody.innerHTML = '<div class="loading">Wird geladen …</div>';
+    setLyricsHtml('<div class="loading">Wird geladen …</div>');
   } else if (lyricState.lines.length) {
     // Timed: every line is its own element, because one of them is highlighted
     // and scrolled to on every step of the playhead - and because a timed line
     // is somewhere to jump to, which makes it a button rather than a paragraph.
     // An instrumental gap keeps its paragraph: it carries a timestamp like the
     // rest, but it is eight pixels tall and nothing anybody aims at.
-    el.lyricsBody.innerHTML = `<div class="lyric-lines">${lyricState.lines
+    setLyricsHtml(`<div class="lyric-lines">${lyricState.lines
       .map((line, i) =>
         line.text
           ? `<button type="button" class="lyric-line" data-line="${i}" data-at="${line.time}">${esc(
@@ -2193,16 +2222,16 @@ function renderLyrics() {
             )}</button>`
           : `<p class="lyric-line is-gap" data-line="${i}"></p>`
       )
-      .join('')}</div>`;
+      .join('')}</div>`);
   } else if (lyricState.text) {
-    el.lyricsBody.innerHTML = `<div class="lyric-lines is-plain">${lyricState.text
+    setLyricsHtml(`<div class="lyric-lines is-plain">${lyricState.text
       .split(/\r?\n/)
       .map((line) => `<p class="lyric-line${line.trim() ? '' : ' is-gap'}">${esc(line)}</p>`)
-      .join('')}</div>`;
+      .join('')}</div>`);
   } else {
-    el.lyricsBody.innerHTML = note(
+    setLyricsHtml(note(
       'In dieser Datei steckt kein Songtext. Sonorus liest nur, was die Datei selbst mitbringt.'
-    );
+    ));
   }
   lyricState.at = -1;
   paintLyricPosition(player.state.currentTime, true);
@@ -2232,20 +2261,22 @@ function paintLyricPosition(time, force = false) {
 
   setNowLine(at >= 0 ? lyricState.lines[at].text : '');
 
-  const lines = el.lyricsBody.querySelectorAll('.lyric-line');
-  lines.forEach((line, i) => {
-    line.classList.toggle('is-now', i === at);
-    line.classList.toggle('is-past', i < at);
+  lyricBoxes().forEach((box) => {
+    box.querySelectorAll('.lyric-line').forEach((line, i) => {
+      line.classList.toggle('is-now', i === at);
+      line.classList.toggle('is-past', i < at);
+    });
   });
 
-  // Only follow along while the panel is actually open and nobody is reading
+  // Only the box on screen follows along, and only while nobody is reading
   // somewhere else in it.
-  if (!lyricsOpen() || at < 0 || Date.now() - scrolledAt < SCROLL_PAUSE) return;
-  const current = lines[at];
+  const box = activeLyricBox();
+  if (!box || at < 0 || Date.now() - scrolledAt < SCROLL_PAUSE) return;
+  const current = box.querySelectorAll('.lyric-line')[at];
   if (!current) return;
   autoScrollUntil = Date.now() + AUTO_SCROLL_MS;
-  el.lyricsBody.scrollTo({
-    top: current.offsetTop - el.lyricsBody.clientHeight / 2 + current.offsetHeight / 2,
+  box.scrollTo({
+    top: current.offsetTop - box.clientHeight / 2 + current.offsetHeight / 2,
     behavior: 'smooth',
   });
 }
@@ -2256,26 +2287,32 @@ function paintLyricPosition(time, force = false) {
 function setNowLine(text) {
   el.nowLine.textContent = text;
   el.nowLine.classList.toggle('is-on', !!text);
+  // The same line under the artwork of the big view's player tab.
+  el.bigviewLine.textContent = text;
+  el.bigviewLine.classList.toggle('is-on', !!text);
 }
 
-el.lyricsBody.addEventListener('scroll', () => {
-  if (Date.now() < autoScrollUntil) return;
-  scrolledAt = Date.now();
-}, { passive: true });
+// Both boxes carry the same text, so both get the same two handlers.
+lyricBoxes().forEach((box) => {
+  box.addEventListener('scroll', () => {
+    if (Date.now() < autoScrollUntil) return;
+    scrolledAt = Date.now();
+  }, { passive: true });
 
-// Clicking a line jumps the song to it. Only a timed lyric offers it - an
-// untimed one has nowhere to jump to, and those lines are paragraphs with no
-// `data-at`, so they never match here.
-el.lyricsBody.addEventListener('click', (event) => {
-  const line = event.target.closest('.lyric-line[data-at]');
-  if (!line) return;
-  const at = Number(line.dataset.at) + SEEK_NUDGE;
-  player.seekToTime(at);
-  // Naming the line to play is the reader saying where they want to be, so the
-  // reading pause their scrolling earned is over: the panel centres on the line
-  // again and follows on from there.
-  scrolledAt = 0;
-  paintLyricPosition(at, true);
+  // Clicking a line jumps the song to it. Only a timed lyric offers it - an
+  // untimed one has nowhere to jump to, and those lines are paragraphs with no
+  // `data-at`, so they never match here.
+  box.addEventListener('click', (event) => {
+    const line = event.target.closest('.lyric-line[data-at]');
+    if (!line) return;
+    const at = Number(line.dataset.at) + SEEK_NUDGE;
+    player.seekToTime(at);
+    // Naming the line to play is the reader saying where they want to be, so
+    // the reading pause their scrolling earned is over: the text centres on the
+    // line again and follows on from there.
+    scrolledAt = 0;
+    paintLyricPosition(at, true);
+  });
 });
 
 function openLyrics() {
@@ -2383,36 +2420,103 @@ function frame() {
 }
 startFrames();
 
-function openVisualizer() {
-  const track = player.currentTrack();
-  const wrap = document.createElement('div');
-  wrap.className = 'visualizer';
-  wrap.innerHTML = `<canvas></canvas>
-    <div class="visualizer-bar">
-      <div>
-        <div class="visualizer-title">${esc(track ? track.title : 'Nichts ausgewählt')}</div>
-        <div class="visualizer-artist">${esc(track ? [track.artist, track.album].filter(Boolean).join(' · ') : '')}</div>
-      </div>
-      <button type="button" class="btn btn-ghost visualizer-close">${icon('x', 16)} Schließen</button>
-    </div>`;
-  document.body.appendChild(wrap);
-  visualizerCanvas = wrap.querySelector('canvas');
+// ============================================================================
+// The big view (desktop): the song, its text, the visualizer
+// ============================================================================
+// Takes the content area and leaves the sidebar and the topbar standing, so the
+// library is one click away and nothing has to be layered over anything. The
+// phone has its own full screen (the transport blown up into a sheet) and does
+// not use this one - there the tabs would compete with the sheet's own gestures.
 
-  const close = () => {
-    if (!wrap.isConnected) return;
-    visualizerCanvas = null;
-    wrap.remove();
-    document.removeEventListener('keydown', onKey);
-    forgetOverlay('visualizer');
-  };
-  const onKey = (e) => {
-    if (e.key === 'Escape') close();
-  };
-  wrap.querySelector('.visualizer-close').addEventListener('click', close);
-  document.addEventListener('keydown', onKey);
-  pushOverlay('visualizer', close);
+const BIG_TABS = ['player', 'lyrics', 'visual'];
+let bigTab = 'player';
+
+function bigViewOpen() {
+  return !el.bigview.hidden;
+}
+
+// Which tab is on screen right now, or '' while the big view is closed - the
+// lyrics scrolling asks this to know which of its two boxes to follow.
+function bigViewTab() {
+  return bigViewOpen() ? bigTab : '';
+}
+
+function setBigTab(tab) {
+  bigTab = BIG_TABS.includes(tab) ? tab : 'player';
+  el.bigview.querySelectorAll('.bigview-tab').forEach((b) => {
+    const on = b.dataset.bigtab === bigTab;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+  el.bigview.querySelectorAll('.bigview-pane').forEach((pane) => {
+    pane.hidden = pane.dataset.pane !== bigTab;
+  });
+  // The visualizer only draws while its own tab is up; the frame loop parks
+  // itself as soon as no canvas is asking for it.
+  visualizerCanvas = bigTab === 'visual' ? el.bigviewCanvas : null;
+  if (bigTab === 'lyrics') {
+    scrolledAt = 0;
+    paintLyricPosition(player.state.currentTime, true);
+  }
   startFrames();
 }
+
+function openBigView(tab) {
+  const wasOpen = bigViewOpen();
+  // On a phone the transport can be blown up into a sheet over everything, and
+  // the big view sits in the page underneath it - so the sheet gives way.
+  collapsePlayer();
+  el.bigview.hidden = false;
+  content.hidden = true;
+  setBigTab(tab || bigTab);
+  renderBigView(player.state);
+  if (!wasOpen) pushOverlay('bigview', closeBigView);
+}
+
+function closeBigView() {
+  if (!bigViewOpen()) return;
+  el.bigview.hidden = true;
+  content.hidden = false;
+  visualizerCanvas = null;
+  forgetOverlay('bigview');
+}
+
+function toggleBigView(tab) {
+  // Pressing the same tab's key again puts it away; another tab switches.
+  if (bigViewOpen() && (!tab || tab === bigTab)) closeBigView();
+  else openBigView(tab);
+}
+
+// What is playing, in the size the big view has room for. Called from
+// renderPlayer, so it follows the track like every other part of the bar.
+function renderBigView(s) {
+  if (!bigViewOpen()) return;
+  const track = s.queue[s.order[s.pos]] || null;
+  el.bigviewArt.innerHTML = art(track ? track.cover : '', track ? track.album || track.title : '?');
+  el.bigviewTitle.textContent = track ? track.title : 'Nichts ausgewählt';
+  el.bigviewSub.textContent = track
+    ? [track.artist, track.album].filter(Boolean).join(' · ')
+    : 'Wähle einen Titel aus der Bibliothek';
+}
+
+el.bigview.addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-bigtab]');
+  if (tab) setBigTab(tab.dataset.bigtab);
+});
+document.getElementById('bigview-close').addEventListener('click', closeBigView);
+
+// The title in the bar is the way in, the way it is in a streaming client. On a
+// phone the same tap belongs to the sheet that blows the whole transport up, so
+// this one only answers where there is room for both.
+el.nowTitle.addEventListener('click', () => {
+  if (compact.matches) return;
+  toggleBigView('player');
+});
+el.nowTitle.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  if (!compact.matches) toggleBigView('player');
+});
 
 // ============================================================================
 // Topbar, account menu, theme, shortcuts

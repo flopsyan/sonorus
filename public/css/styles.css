@@ -924,7 +924,11 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .now-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .now-art .art-fallback { font-size: 1.2rem; }
 .now-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.now-title { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The title is the way into the big view, so it says so under the pointer. */
+.now-title { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+@media (hover: hover) {
+  .now-title:hover { text-decoration: underline; }
+}
 .now-artist { font-size: 0.81rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (hover: hover) {
   .now-artist a:hover { color: var(--text); text-decoration: underline; }
@@ -1104,22 +1108,74 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 @keyframes lightbox-in { from { opacity: 0; } }
 
 /* ============================================================================
-   Visualizer (fullscreen)
+   The big view: the song, its text, the visualizer
    ========================================================================== */
+/* Takes the place of the content area rather than covering the screen: the
+   sidebar and the topbar stay where they are, so the library is one click away.
+   It is a flex child of .main next to #content, which is hidden while it is up -
+   that way the page underneath keeps its scroll position and nothing is layered
+   over anything. */
 
-.visualizer {
-  position: fixed; inset: 0; z-index: 200;
-  background: var(--bg);
+.bigview {
+  flex: 1; min-height: 0;
   display: flex; flex-direction: column;
+  background: var(--bg);
 }
-.visualizer canvas { flex: 1; width: 100%; display: block; }
-.visualizer-bar {
-  display: flex; align-items: center; gap: 16px;
-  padding: 18px 24px; border-top: 1px solid var(--line);
+.bigview-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 22px; border-bottom: 1px solid var(--line);
 }
-.visualizer-title { font-size: 1.25rem; font-weight: 650; }
-.visualizer-artist { color: var(--text-dim); font-size: 0.92rem; }
-.visualizer-close { margin-left: auto; }
+.bigview-tabs { display: inline-flex; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.bigview-tab {
+  border: none; background: transparent; color: var(--text-dim);
+  font-size: 0.82rem; font-weight: 600; padding: 6px 14px;
+  border-radius: 999px; cursor: pointer;
+}
+.bigview-tab.active { background: var(--surface-3); color: var(--text); }
+@media (hover: hover) {
+  .bigview-tab:hover { color: var(--text); }
+}
+.bigview-head .icon-btn { margin-left: auto; }
+
+.bigview-body { flex: 1; min-height: 0; display: flex; }
+.bigview-pane { flex: 1; min-height: 0; min-width: 0; }
+
+/* The song itself: artwork as large as the height allows, its name under it. */
+.pane-player {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 26px; padding: 30px 24px; text-align: center;
+}
+.bigview-art {
+  width: min(46vh, 380px); aspect-ratio: 1;
+  border-radius: var(--radius); overflow: hidden;
+  background: var(--surface-2); box-shadow: var(--shadow-lg);
+  display: grid; place-items: center;
+}
+.bigview-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bigview-art .art-fallback { font-size: 4rem; }
+.bigview-meta { display: flex; flex-direction: column; gap: 6px; max-width: 60ch; }
+.bigview-title { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.bigview-sub { color: var(--text-dim); font-size: 1rem; margin: 0; }
+/* The line being sung, when the file brought a timed text with it. It reserves
+   no room at all while there is none - same rule as the phone's `.now-line`. */
+.bigview-line { display: none; color: var(--accent); font-size: 1.05rem; font-weight: 600; margin: 8px 0 0; }
+.bigview-line.is-on { display: block; }
+
+/* The text, in the same box the side panel uses - one renderer fills both. It
+   has a whole page here instead of a 320 px panel, so the type is set to match
+   the room: this is a text to read across the room, not out of the corner. */
+.pane-lyrics { display: flex; justify-content: center; overflow: hidden; }
+.pane-lyrics .lyrics-body { width: 100%; max-width: 720px; overflow-y: auto; overscroll-behavior: contain; padding: 34px 24px 40vh; }
+.pane-lyrics .lyric-lines { gap: 6px; }
+.pane-lyrics .lyric-line { font-size: 1.45rem; line-height: 1.4; padding: 7px 0; }
+.pane-lyrics .lyric-line.is-now { font-size: 1.6rem; }
+.pane-lyrics .lyric-line.is-gap { height: 14px; padding: 0; }
+
+/* Flex rather than a percentage height: the canvas is stretched by the pane,
+   which is the one thing a percentage inside a flex item cannot be trusted to
+   do the same way in every browser. */
+.pane-visual { display: flex; padding: 20px 24px 26px; }
+.pane-visual canvas { flex: 1; min-width: 0; display: block; }
 
 /* ============================================================================
    Modals, menus, toasts

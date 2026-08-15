@@ -55,6 +55,41 @@
     <main class="content" id="content">
       <div class="loading">Bibliothek wird geladen …</div>
     </main>
+
+    <!-- The big view: what is playing, taking the whole content area but not
+         the sidebar and not the topbar - the library stays one click away.
+         Three tabs over one player: the song itself, its text, and the
+         visualizer that used to cover the entire screen on its own. It sits
+         next to the content instead of over it, so nothing has to be stacked
+         and the page underneath keeps its scroll position. -->
+    <section class="bigview" id="bigview" hidden aria-label="Vollbild">
+      <div class="bigview-head">
+        <div class="bigview-tabs" role="tablist" aria-label="Ansicht">
+          <button type="button" class="bigview-tab" role="tab" data-bigtab="player">Player</button>
+          <button type="button" class="bigview-tab" role="tab" data-bigtab="lyrics">Songtext</button>
+          <button type="button" class="bigview-tab" role="tab" data-bigtab="visual">Visualisierung</button>
+        </div>
+        <button type="button" class="icon-btn" id="bigview-close" aria-label="Vollbild schließen"
+                title="Vollbild schließen" data-icon="minimize" data-icon-size="18"></button>
+      </div>
+      <div class="bigview-body">
+        <div class="bigview-pane pane-player" data-pane="player">
+          <div class="bigview-art" id="bigview-art"></div>
+          <div class="bigview-meta">
+            <h1 class="bigview-title" id="bigview-title">Nichts ausgewählt</h1>
+            <p class="bigview-sub" id="bigview-sub">Wähle einen Titel aus der Bibliothek</p>
+            <!-- The line being sung, when the song brings a timed text with it. -->
+            <p class="bigview-line" id="bigview-line"></p>
+          </div>
+        </div>
+        <div class="bigview-pane pane-lyrics" data-pane="lyrics" hidden>
+          <div class="lyrics-body" id="bigview-lyrics"></div>
+        </div>
+        <div class="bigview-pane pane-visual" data-pane="visual" hidden>
+          <canvas id="bigview-canvas"></canvas>
+        </div>
+      </div>
+    </section>
   </div>
 
   <footer class="player">
@@ -84,7 +119,9 @@
       <div class="now-text">
         <!-- data-clip: says its full name on hover, but only when it really had
              to be cut off - see the truncation handler in app.js. -->
-        <span class="now-title" id="now-title" data-clip>Nichts ausgewählt</span>
+        <!-- The way into the big view on a desktop; on a phone the tap belongs
+             to the sheet that blows the whole transport up. -->
+        <span class="now-title" id="now-title" data-clip role="button" tabindex="0">Nichts ausgewählt</span>
         <span class="now-artist" id="now-artist">Wähle einen Titel aus der Bibliothek</span>
         <div class="now-actions">
           <div class="stars" id="now-stars" role="group" aria-label="Bewertung"></div>
@@ -112,7 +149,7 @@
 
     <div class="player-right">
       <canvas class="meter" id="meter" width="144" height="52" aria-hidden="true"></canvas>
-      <button type="button" class="icon-btn" id="btn-visualizer" aria-label="Visualisierung" data-icon="maximize"></button>
+      <button type="button" class="icon-btn" id="btn-visualizer" aria-label="Vollbild" title="Vollbild" data-icon="maximize"></button>
       <div class="volume">
         <button type="button" class="icon-btn" id="btn-mute" aria-label="Stumm schalten" data-icon="volume-high"></button>
         <input type="range" class="volume-slider" id="volume" min="0" max="100" value="100" aria-label="Lautstärke" />
