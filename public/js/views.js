@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, mosaic, trackList, card, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, mosaic, trackList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
 
 // --- Shared bits ------------------------------------------------------------
 
@@ -55,6 +55,38 @@ function playActions(scope) {
 
 function facts(parts) {
   return parts.filter(Boolean).join(' <span class="dot">·</span> ');
+}
+
+// --- Grid or list, per collection -------------------------------------------
+// Interpreten, Alben and Genres can each be tiles or one row per entry, and the
+// choice is the account's - kept per collection, so the albums can be a list
+// while the interpreters stay a grid. Written through ctx.setPref like every
+// other preference, so it follows the user to another device.
+
+const COLLECTION_VIEWS = ['grid', 'list'];
+
+function collectionView(ctx, key) {
+  const saved = ((ctx && ctx.prefs && ctx.prefs.collectionView) || {})[key];
+  return COLLECTION_VIEWS.includes(saved) ? saved : 'grid';
+}
+
+function viewSwitch(key, current) {
+  const button = (value, label, iconName) =>
+    `<button type="button" class="switch-icon${value === current ? ' active' : ''}"
+       data-collection-view="${key}" data-view-value="${value}"
+       aria-label="${esc(label)}" title="${esc(label)}" aria-pressed="${value === current}">${icon(iconName, 16)}</button>`;
+  return `<div class="seg-switch view-switch" role="group" aria-label="Ansicht">
+      ${button('grid', 'Kacheln', 'grid')}${button('list', 'Liste', 'rows')}
+    </div>`;
+}
+
+// One entry per item, in whichever of the two shapes is switched on. `items`
+// are the arguments `card`/`listRow` share, so a collection describes itself
+// once and the view decides how it is drawn.
+function collection(view, items) {
+  return view === 'list'
+    ? `<div class="list-rows">${items.map(listRow).join('')}</div>`
+    : `<div class="grid">${items.map(card).join('')}</div>`;
 }
 
 // --- Home -------------------------------------------------------------------
@@ -173,26 +205,33 @@ export async function tracks(params, ctx) {
 
 // --- Artists ----------------------------------------------------------------
 
-export async function artists() {
+export async function artists(_params, ctx) {
   const { artists: list } = await api.artists();
+  const view = collectionView(ctx, 'artists');
   return {
     title: 'Interpreten',
-    html: `${pageHead('Bibliothek', 'Interpreten', fmt.plural(list.length, 'Interpret', 'Interpreten'))}
+    html: `${pageHead(
+      'Bibliothek',
+      'Interpreten',
+      fmt.plural(list.length, 'Interpret', 'Interpreten'),
+      viewSwitch('artists', view)
+    )}
       ${
         list.length
-          ? `<div class="grid">${list
-              .map((a) =>
-                // No play button on an artist: a round tile clips its corner,
-                // and an artist is a place you go to, not a queue you start.
-                card({
-                  href: `/artists/${a.id}`,
-                  cover: a.cover,
-                  title: a.name,
-                  sub: fmt.plural(a.trackCount, 'Song', 'Songs'),
-                  round: true,
-                })
-              )
-              .join('')}</div>`
+          ? collection(
+              view,
+              // No play button on an artist: a round tile clips its corner,
+              // and an artist is a place you go to, not a queue you start.
+              list.map((a) => ({
+                href: `/artists/${a.id}`,
+                cover: a.cover,
+                title: a.name,
+                // Name over count, the two lines a track row has - which is
+                // what makes a row here exactly as tall as a song there.
+                sub: fmt.plural(a.trackCount, 'Song', 'Songs'),
+                round: true,
+              }))
+            )
           : empty('Keine Interpreten', 'Jeder Ordner direkt im Musikordner ist ein Interpret. Starte einen Scan, sobald dort etwas liegt.')
       }`,
   };
@@ -333,28 +372,31 @@ export async function albums(params, ctx) {
       }>${label}</option>`
   ).join('');
 
+  const view = collectionView(ctx, 'albums');
+
   return {
     title: 'Alben',
     html: `${pageHead(
       'Bibliothek',
       'Alben',
       fmt.plural(list.length, 'Album', 'Alben'),
-      `<label class="sr-only" for="album-sort">Sortierung</label>
+      `${viewSwitch('albums', view)}
+       <label class="sr-only" for="album-sort">Sortierung</label>
        <select id="album-sort" data-album-sort>${sortOptions}</select>`
     )}
       ${
         list.length
-          ? `<div class="grid">${list
-              .map((a) =>
-                card({
-                  href: `/albums/${a.id}`,
-                  cover: a.cover,
-                  title: a.title,
-                  sub: a.year ? `${a.artist} · ${a.year}` : a.artist,
-                  playAction: `data-play-album="${a.id}"`,
-                })
-              )
-              .join('')}</div>`
+          ? collection(
+              view,
+              list.map((a) => ({
+                href: `/albums/${a.id}`,
+                cover: a.cover,
+                title: a.title,
+                sub: a.year ? `${a.artist} · ${a.year}` : a.artist,
+                meta: fmt.plural(a.trackCount, 'Song', 'Songs'),
+                playAction: `data-play-album="${a.id}"`,
+              }))
+            )
           : empty('Keine Alben', 'Ein Album ist ein Unterordner im Ordner eines Interpreten. Dateien, die direkt beim Interpreten liegen, sind Singles.')
       }`,
     // Sorting is not a place in the history, it is the same page seen
@@ -404,26 +446,31 @@ export async function album(params) {
 
 // --- Genres -----------------------------------------------------------------
 
-export async function genres() {
+export async function genres(_params, ctx) {
   const { genres: list } = await api.genres();
+  const view = collectionView(ctx, 'genres');
   return {
     title: 'Genres',
-    html: `${pageHead('Bibliothek', 'Genres', fmt.plural(list.length, 'Genre', 'Genres'))}
+    html: `${pageHead(
+      'Bibliothek',
+      'Genres',
+      fmt.plural(list.length, 'Genre', 'Genres'),
+      viewSwitch('genres', view)
+    )}
       ${
         list.length
-          ? `<div class="grid">${list
-              .map((g) =>
-                card({
-                  // The same artwork the genre's own page carries, so the grid
-                  // and the page it leads to introduce it the same way.
-                  href: `/genres/${g.id}`,
-                  covers: g.covers,
-                  title: g.name,
-                  sub: fmt.plural(g.trackCount, 'Song', 'Songs'),
-                  playAction: `data-play-genre="${g.id}"`,
-                })
-              )
-              .join('')}</div>`
+          ? collection(
+              view,
+              // The same artwork the genre's own page carries, so the list and
+              // the page it leads to introduce it the same way.
+              list.map((g) => ({
+                href: `/genres/${g.id}`,
+                covers: g.covers,
+                title: g.name,
+                sub: fmt.plural(g.trackCount, 'Song', 'Songs'),
+                playAction: `data-play-genre="${g.id}"`,
+              }))
+            )
           : empty('Keine Genres', 'Deine Dateien tragen noch keine Genre-Tags.')
       }`,
   };

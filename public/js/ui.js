@@ -178,6 +178,26 @@ export function card({ href, cover, covers, title, sub, round = false, playActio
     </a>`;
 }
 
+// The same thing as a row instead of a tile: one line per entry, built to the
+// height of a track row so a list of albums reads like a list of songs. Takes
+// exactly what `card` takes, plus the count that sits on the right.
+export function listRow({ href, cover, covers, title, sub, meta, round = false, playAction }) {
+  return `<a class="list-row" href="${esc(href)}" data-link>
+      <span class="list-art${round ? ' round' : ''}">${covers ? coverMosaic(covers, title) : art(cover, title)}</span>
+      <span class="list-text">
+        <span class="list-title" data-clip>${esc(title)}</span>
+        ${sub ? `<span class="list-sub">${esc(sub)}</span>` : ''}
+      </span>
+      ${meta ? `<span class="list-meta">${esc(meta)}</span>` : ''}
+      ${
+        playAction
+          ? `<button type="button" class="icon-btn icon-btn-sm list-play" ${playAction}
+               aria-label="${esc(title)} abspielen">${icon('play', 15)}</button>`
+          : '<span class="list-play-gap"></span>'
+      }
+    </a>`;
+}
+
 export function empty(title, text, action = '') {
   return `<div class="empty"><h3>${esc(title)}</h3><p>${esc(text)}</p>${action}</div>`;
 }

@@ -448,7 +448,10 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .page-head .rack-label { display: block; margin-bottom: 7px; }
 .page-head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
 .page-meta { color: var(--text-dim); font-size: 0.88rem; margin-top: 5px; }
-.page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The generic form rule stretches a select across whatever it is in, which on
+   the album page pushed the view switch onto a line of its own. */
+.page-actions select { width: auto; }
 
 .section { margin-bottom: 34px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
@@ -588,6 +591,50 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
    content, and a long title on one line (nowrap, for the ellipsis) is content.
    Without this one card in a shelf grows past the 164px and stands out. */
 .grid.row > * { flex: 0 0 164px; min-width: 0; }
+
+/* The other way to show a collection: one row per entry instead of a tile.
+   Built to the height of a track row on purpose - a list of albums has to read
+   like the list of songs it leads to, so `min-height` and padding are the ones
+   from .track-row and nothing else. */
+.list-rows { display: flex; flex-direction: column; }
+.list-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  min-height: 46px; color: var(--text);
+}
+.list-art { width: 32px; height: 32px; border-radius: var(--radius-xs); overflow: hidden; background: var(--surface-2); flex: none; }
+.list-art.round { border-radius: 50%; }
+.list-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.list-art .art-fallback { font-size: 0.8rem; }
+.list-art .mosaic { width: 100%; height: 100%; }
+.list-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.list-title { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-sub { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-meta { font-size: 0.82rem; color: var(--text-dim); font-variant-numeric: tabular-nums; flex: none; }
+/* The play button keeps its slot whether or not the row has one, so the counts
+   line up down the whole list. */
+.list-play, .list-play-gap { width: 28px; height: 28px; flex: none; }
+.list-play { opacity: 0; }
+.list-row:focus-within .list-play { opacity: 1; }
+@media (hover: hover) {
+  .list-row:hover { background: var(--surface-2); text-decoration: none; }
+  .list-row:hover .list-play { opacity: 1; }
+}
+/* A finger has no hover to reveal it with. */
+@media (hover: none) {
+  .list-play { opacity: 1; }
+}
+
+/* Tiles or rows: two icons, the segmented switch the statistics page uses. */
+.view-switch .switch-icon {
+  display: inline-grid; place-items: center; width: 30px; height: 26px;
+  border: none; background: transparent; color: var(--text-dim);
+  border-radius: 999px; cursor: pointer;
+}
+.view-switch .switch-icon.active { background: var(--surface-3); color: var(--text); }
+@media (hover: hover) {
+  .view-switch .switch-icon:hover { color: var(--text); }
+}
 
 .card { cursor: pointer; border: none; background: none; padding: 0; text-align: left; display: block; width: 100%; }
 /* The card is built from spans, and an inline box ignores width, aspect-ratio

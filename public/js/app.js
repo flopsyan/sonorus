@@ -1216,6 +1216,18 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
+  // Tiles or rows, per collection. The choice is saved on the account and the
+  // page is drawn again from it - the same replace-in-place the album sort does,
+  // because seeing the same list differently is not a place in the history.
+  const viewBtn = e.target.closest('[data-collection-view]');
+  if (viewBtn) {
+    e.preventDefault();
+    const key = viewBtn.dataset.collectionView;
+    setPref('collectionView', { ...(shell.prefs.collectionView || {}), [key]: viewBtn.dataset.viewValue });
+    navigate(`${window.location.pathname}${window.location.search}`, { replace: true });
+    return;
+  }
+
   // Star rating
   const star = e.target.closest('[data-rate]');
   if (star) {
