@@ -627,10 +627,16 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   .list-play { opacity: 1; }
 }
 
-/* Tiles or rows: two icons, the segmented switch the statistics page uses. */
+/* Tiles or rows: two icons, the segmented switch the statistics page uses.
+   The padding has to be reset, and that is the whole reason this rule sets it:
+   .seg-switch button carries 4px 11px for the text buttons it was written for,
+   and with box-sizing: border-box that leaves 8px of content width in a 30px
+   box. The 16px icon then overflows its own track and sits 11px from the left
+   and 3px from the right instead of centred - visible as a switch whose icons
+   lean right. */
 .view-switch .switch-icon {
   display: inline-grid; place-items: center; width: 30px; height: 26px;
-  border: none; background: transparent; color: var(--text-dim);
+  padding: 0; border: none; background: transparent; color: var(--text-dim);
   border-radius: 999px; cursor: pointer;
 }
 .view-switch .switch-icon.active { background: var(--surface-3); color: var(--text); }
