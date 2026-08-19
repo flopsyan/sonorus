@@ -240,17 +240,92 @@ function resetListening() {
   reported = 0;
 }
 
+// --- Podcast progress -------------------------------------------------------
+// A song is played and forgotten; an episode is 70 minutes long and has to pick
+// up where it was left. None of this runs for a song - `progressTrack` is only
+// ever set for an episode, and every function below leaves immediately without
+// one.
+//
+// The position is reported on a timer while it plays and once more whenever
+// playback leaves the episode: pausing, skipping, closing the tab.
+
+const PROGRESS_EVERY = 15; // seconds of playback between two reports
+// Close enough to the end to call it heard. Without this an episode stopped
+// during the outro stays half-finished forever and keeps offering itself.
+const NEARLY_DONE = 30;
+
+let progressTrack = null;
+let progressSeconds = 0;
+let progressSent = 0;
+
+// Keeps every copy of the episode in the queue in step, so the player bar and
+// the list behind it never disagree about how far it got.
+export function applyEpisodeProgress(trackId, position, completed) {
+  for (const track of state.queue) {
+    if (track.id !== trackId) continue;
+    track.position = position;
+    track.completed = completed;
+    track.resumeAt = completed ? 0 : position;
+  }
+  emit();
+}
+
+function armProgress(track, at) {
+  progressTrack = track && track.podcastId ? track : null;
+  progressSeconds = at;
+  progressSent = Math.floor(at);
+}
+
+function sendProgress(track, position, completed, keepalive) {
+  applyEpisodeProgress(track.id, position, completed);
+  api.episodeProgress(track.id, { position, completed }, keepalive).catch(() => {});
+}
+
+// Marks the episode finished. Called when it runs out, before the queue moves
+// on - `progressTrack` is cleared so the load of the next one cannot write a
+// position back over it.
+function completeEpisode() {
+  const track = progressTrack;
+  if (!track) return;
+  progressTrack = null;
+  sendProgress(track, 0, true, false);
+}
+
+function flushProgress(keepalive = false) {
+  const track = progressTrack;
+  if (!track) return;
+  const at = Math.floor(progressSeconds);
+  if (at <= 0 || at === progressSent) return;
+  progressSent = at;
+  // Stopped in the outro: that counts as heard, and saying so here means the
+  // rule holds however playback left the episode.
+  const total = track.duration || 0;
+  if (total && total - at <= NEARLY_DONE) {
+    progressTrack = null;
+    sendProgress(track, 0, true, keepalive);
+    return;
+  }
+  sendProgress(track, at, false, keepalive);
+}
+
 function load(track, autoplay, startAt = 0) {
   if (!track) return;
+  // Where the episode being left off stood, before anything points at the new
+  // one.
+  flushProgress();
   resetListening();
+  // An episode picks up where it was left. An explicit startAt wins: it comes
+  // from the queue restore and describes this very session.
+  const at = startAt || (track.podcastId ? track.resumeAt || 0 : 0);
+  armProgress(track, at);
   audio.src = `/api/stream/${track.id}`;
-  if (startAt > 0) {
+  if (at > 0) {
     audio.addEventListener('loadedmetadata', () => {
-      audio.currentTime = Math.min(startAt, audio.duration || startAt);
+      audio.currentTime = Math.min(at, audio.duration || at);
     }, { once: true });
   }
   state.duration = track.duration || 0;
-  state.currentTime = startAt;
+  state.currentTime = at;
   updateMediaSession(track);
   // The length is already known from the database, so the bar can show the new
   // track right away instead of staying on the previous one until it opens.
@@ -344,6 +419,8 @@ export function next(manual = false) {
     // here, a track on loop would report ever more seconds into the one row it
     // opened and count as a single play forever.
     resetListening();
+    // Never reaches load(), so the position has to be re-armed by hand.
+    armProgress(currentTrack(), 0);
     audio.currentTime = 0;
     start();
     return;
@@ -506,6 +583,8 @@ export function moveInQueue(from, to) {
 }
 
 export function clearQueue() {
+  flushProgress();
+  armProgress(null, 0);
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
@@ -726,6 +805,9 @@ audio.addEventListener('play', () => {
 audio.addEventListener('pause', () => {
   state.playing = false;
   setPlaybackState('paused');
+  // Pausing is the most common way to leave an episode, so it is the moment
+  // its position has to be safe.
+  flushProgress();
   // The notification stops interpolating from the last reported position, so
   // without this the bar would sit wherever the final update left it.
   updatePositionState(true);
@@ -747,6 +829,14 @@ audio.addEventListener('timeupdate', () => {
   if (step > 0 && step < 2) listened += step;
   lastTick = audio.currentTime;
   updatePositionState();
+
+  // Where the episode stands, reported every PROGRESS_EVERY seconds. Unlike the
+  // listening time this follows the playhead itself, seeking included - the
+  // question is "where do I carry on", not "how much did I hear".
+  if (progressTrack) {
+    progressSeconds = audio.currentTime;
+    if (Math.floor(progressSeconds) - progressSent >= PROGRESS_EVERY) flushProgress();
+  }
 
   // Count a play once the track has run long enough to mean something.
   if (!playCounted && state.duration) {
@@ -770,8 +860,12 @@ audio.addEventListener('timeupdate', () => {
   emit();
 });
 
-// The last seconds of a track would otherwise never be reported.
-window.addEventListener('pagehide', () => reportListening(true));
+// The last seconds of a track would otherwise never be reported, and neither
+// would the place an episode was left at.
+window.addEventListener('pagehide', () => {
+  reportListening(true);
+  flushProgress(true);
+});
 
 audio.addEventListener('durationchange', () => {
   if (Number.isFinite(audio.duration)) state.duration = audio.duration;
@@ -779,7 +873,12 @@ audio.addEventListener('durationchange', () => {
   emit();
 });
 
-audio.addEventListener('ended', () => next(false));
+audio.addEventListener('ended', () => {
+  // Running to the end is what "gehört" means. Recorded before the queue moves
+  // on, because next() loads the following track and that flushes a position.
+  completeEpisode();
+  next(false);
+});
 
 audio.addEventListener('error', () => {
   // A file the browser cannot decode should not stall the queue.

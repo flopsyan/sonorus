@@ -14,7 +14,12 @@ import { spreadByArtist } from '../../public/js/shuffle.js';
 // on a compilation ("Various") carries its own interpret, read off the file
 // name by the scanner, and then that one is the answer. Empty everywhere else,
 // so the expression costs nothing for an ordinary library.
-const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name)";
+const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.name)";
+
+// The same question without the podcast fallback, for the one query that brings
+// its own FROM and never joins the podcasts table. It selects music only, so
+// pc.name could not answer anything there anyway.
+const MUSIC_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name)";
 
 // One shared projection so every endpoint returns tracks in the same shape.
 // The genre subquery uses the (track_id, genre_id) primary key, the rating
@@ -26,7 +31,10 @@ export const TRACK_FIELDS = `
   t.duration, t.bitrate, t.codec, t.lossless, t.added_at AS addedAt,
   t.artist_id AS artistId, ${TRACK_ARTIST} AS artist, t.track_artist AS trackArtist,
   t.album_id AS albumId, al.title AS album,
-  COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
+  t.podcast_id AS podcastId, pc.name AS podcast, t.episode_no AS episodeNo,
+  -- An episode has no cover of its own: the show carries one and every episode
+  -- of it shows that, see storePodcastCover in the scanner.
+  COALESCE(NULLIF(al.cover, ''), NULLIF(t.cover, ''), pc.cover) AS cover,
   (SELECT group_concat(g.name, ', ')
      FROM track_genres tg JOIN genres g ON g.id = tg.genre_id
     WHERE tg.track_id = t.id) AS genres,
@@ -42,12 +50,29 @@ export const TRACK_FROM = `
   FROM tracks t
   LEFT JOIN artists ar ON ar.id = t.artist_id
   LEFT JOIN albums  al ON al.id = t.album_id
+  LEFT JOIN podcasts pc ON pc.id = t.podcast_id
 `;
 
 // Tracks whose file is gone are kept for their ratings and playlists, but they
 // have no business in the browse views. Everything that lists the library adds
 // this; the star playlists and playlists deliberately do not.
 export const PRESENT = "t.missing_at = ''";
+
+// Podcast episodes live in the same table as the songs - so the player, the
+// streaming endpoint and the queue are the same code for both - but they are
+// not part of the music library and must not turn up anywhere in it. 691
+// episodes would be two thirds of "Nicht bewertet", the loudest entries in
+// every statistic, and a Zufallsmix that drops a 70-minute true-crime episode
+// between two songs.
+//
+// So NULL means music, and this is the condition every music query carries.
+// The only ones that deliberately do not are those that look a track up by id -
+// streaming, the queue after a reload - where the caller already knows what it
+// asked for.
+export const MUSIC = 't.podcast_id IS NULL';
+// The other half of the same rule, for the podcast model.
+export const EPISODE = 't.podcast_id IS NOT NULL';
+const PRESENT_MUSIC = `${PRESENT} AND ${MUSIC}`;
 
 // What "sort by year" actually sorts by: the release date, as exactly as it is
 // known. The year column alone puts two records of the same year in an
@@ -97,6 +122,11 @@ export function shapeTrack(row) {
     artistId: row.trackArtist ? null : row.artistId,
     album: row.album || '',
     albumId: row.albumId,
+    // Set only on a podcast episode. The client reads it as "this is spoken
+    // word": no stars, no playlists, and a resume position instead.
+    podcastId: row.podcastId || null,
+    podcast: row.podcast || '',
+    episodeNo: row.episodeNo ?? null,
     cover: row.cover ? `/covers/${row.cover}` : null,
     trackNo: row.trackNo,
     discNo: row.discNo,
@@ -131,7 +161,7 @@ export function shapeTrack(row) {
 // A query longer than this is a mistake, and every word costs one LIKE per row.
 const MAX_WORDS = 8;
 
-function searchWords(q) {
+export function searchWords(q) {
   return String(q || '')
     .trim()
     .split(/\s+/)
@@ -142,7 +172,7 @@ function searchWords(q) {
 // "every word is found in one of these fields", as a WHERE fragment and the
 // parameters it binds. Null for an empty query, so a caller can tell "no filter"
 // from "a filter that matches nothing".
-function allWordsIn(fields, list) {
+export function allWordsIn(fields, list) {
   if (!list.length) return null;
   const params = {};
   const where = list
@@ -162,7 +192,7 @@ function allWordsIn(fields, list) {
 // one, and a word in the main field beats the same word beside it. `others` is
 // a list of [fields, weight] - a set of fields because the interpret of a song
 // lives in two columns.
-function scoreOf(main, others, list) {
+export function scoreOf(main, others, list) {
   const parts = [
     `CASE WHEN ${main} LIKE @qExact THEN 1000
           WHEN ${main} LIKE @qStart THEN 400
@@ -180,7 +210,7 @@ function scoreOf(main, others, list) {
 }
 
 // The three forms of the whole query the score compares against.
-function queryParams(q) {
+export function queryParams(q) {
   const whole = String(q || '').trim();
   return { qExact: whole, qStart: `${whole}%`, qLike: `%${whole}%` };
 }
@@ -210,7 +240,7 @@ export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit 
   const direction = String(dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
   const search = allWordsIn(TRACK_SEARCH_FIELDS, searchWords(q));
 
-  const where = search ? `WHERE ${PRESENT} AND ${search.where}` : `WHERE ${PRESENT}`;
+  const where = search ? `WHERE ${PRESENT_MUSIC} AND ${search.where}` : `WHERE ${PRESENT_MUSIC}`;
   const page = limit ? `LIMIT @limit OFFSET @offset` : '';
 
   // NULLS LAST for every sort, so untagged tracks never head the list.
@@ -227,9 +257,9 @@ export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit 
 
 export function countTracks({ q = '' } = {}) {
   const search = allWordsIn(TRACK_SEARCH_FIELDS, searchWords(q));
-  if (!search) return db.prepare(`SELECT COUNT(*) AS c FROM tracks t WHERE ${PRESENT}`).get().c;
+  if (!search) return db.prepare(`SELECT COUNT(*) AS c FROM tracks t WHERE ${PRESENT_MUSIC}`).get().c;
   return db
-    .prepare(`SELECT COUNT(*) AS c ${TRACK_FROM} WHERE ${PRESENT} AND ${search.where}`)
+    .prepare(`SELECT COUNT(*) AS c ${TRACK_FROM} WHERE ${PRESENT_MUSIC} AND ${search.where}`)
     .get(search.params).c;
 }
 
@@ -303,7 +333,7 @@ const ARTIST_ROW = `
 
 const ARTIST_FROM = `
   FROM artists ar
-  LEFT JOIN tracks t ON t.artist_id = ar.id AND ${PRESENT}
+  LEFT JOIN tracks t ON t.artist_id = ar.id AND ${PRESENT_MUSIC}
 `;
 
 const shapeArtistRow = (a) => ({ ...a, cover: a.cover ? `/covers/${a.cover}` : null });
@@ -331,7 +361,7 @@ export function getArtist(id, userId) {
       `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
-         LEFT JOIN tracks t ON t.album_id = al.id AND ${PRESENT}
+         LEFT JOIN tracks t ON t.album_id = al.id AND ${PRESENT_MUSIC}
         WHERE al.artist_id = @id
         GROUP BY al.id
        HAVING trackCount > 0
@@ -348,7 +378,7 @@ export function getArtist(id, userId) {
   const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS}, ${TRACK_LISTENED} AS listened ${TRACK_FROM}
-        WHERE t.artist_id = @id AND ${PRESENT}
+        WHERE t.artist_id = @id AND ${PRESENT_MUSIC}
         ORDER BY listened DESC,
                  (${ALBUM_DATE}) IS NULL, ${ALBUM_DATE} DESC, al.title COLLATE NOCASE,
                  t.disc_no, t.track_no, t.title COLLATE NOCASE`
@@ -411,7 +441,7 @@ const ALBUM_ROW = `
 const ALBUM_FROM = `
   FROM albums al
   LEFT JOIN artists ar ON ar.id = al.artist_id
-  LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT}
+  LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT_MUSIC}
 `;
 
 // An album is looked for under its own title and under its artist's name, so
@@ -443,7 +473,7 @@ export function getAlbum(id, userId) {
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
          LEFT JOIN artists ar ON ar.id = al.artist_id
-         LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT}
+         LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT_MUSIC}
         WHERE al.id = @id
         GROUP BY al.id`
     )
@@ -453,7 +483,7 @@ export function getAlbum(id, userId) {
   const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
-        WHERE t.album_id = @id AND ${PRESENT}
+        WHERE t.album_id = @id AND ${PRESENT_MUSIC}
         ORDER BY t.disc_no, t.track_no, t.title COLLATE NOCASE`
     )
     .all({ id, userId })
@@ -494,11 +524,11 @@ const GENRE_COVERS = `
   WITH per_record AS (
     SELECT tg.genre_id AS genreId,
            COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
-           ${TRACK_ARTIST} AS artist, al.title AS album,
+           ${MUSIC_ARTIST} AS artist, al.title AS album,
            ROW_NUMBER() OVER (PARTITION BY tg.genre_id, COALESCE(t.album_id, -t.id)
                               ORDER BY t.disc_no, t.track_no, t.id) AS inRecord
       FROM track_genres tg
-      JOIN tracks t ON t.id = tg.track_id AND ${PRESENT}
+      JOIN tracks t ON t.id = tg.track_id AND ${PRESENT_MUSIC}
       LEFT JOIN artists ar ON ar.id = t.artist_id
       LEFT JOIN albums al ON al.id = t.album_id
      WHERE COALESCE(NULLIF(al.cover, ''), t.cover) <> ''
@@ -524,7 +554,7 @@ export function listGenres() {
       `SELECT g.id, g.name, COUNT(t.id) AS trackCount
          FROM genres g
          LEFT JOIN track_genres tg ON tg.genre_id = g.id
-         LEFT JOIN tracks t ON t.id = tg.track_id AND ${PRESENT}
+         LEFT JOIN tracks t ON t.id = tg.track_id AND ${PRESENT_MUSIC}
         GROUP BY g.id
        HAVING trackCount > 0
         ORDER BY g.name COLLATE NOCASE ASC`
@@ -563,7 +593,7 @@ export function getGenres(ids, userId) {
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
         WHERE t.id IN (SELECT tg.track_id FROM track_genres tg
                         WHERE tg.genre_id IN (${wanted.join(',')}))
-          AND ${PRESENT}
+          AND ${PRESENT_MUSIC}
         ORDER BY ${TRACK_ARTIST} COLLATE NOCASE, al.title COLLATE NOCASE, t.disc_no, t.track_no`
     )
     .all({ userId })
@@ -613,7 +643,7 @@ export function tracksByStarSelection(values, userId) {
 
 // The counterpart to the star playlists: everything still waiting for a
 // rating. Only playable tracks - a file that is gone cannot be rated by ear.
-const UNRATED = `${PRESENT} AND NOT EXISTS
+const UNRATED = `${PRESENT_MUSIC} AND NOT EXISTS
   (SELECT 1 FROM ratings r WHERE r.track_id = t.id AND r.user_id = @userId)`;
 
 export function unratedTracks(userId) {
@@ -646,7 +676,7 @@ export function starCounts(userId) {
 export function recentlyAdded(userId, limit = 18) {
   return db
     .prepare(
-      `SELECT ${TRACK_FIELDS} ${TRACK_FROM} WHERE ${PRESENT}
+      `SELECT ${TRACK_FIELDS} ${TRACK_FROM} WHERE ${PRESENT_MUSIC}
         ORDER BY t.added_at DESC, t.id DESC LIMIT @limit`
     )
     .all({ userId, limit })
@@ -658,7 +688,7 @@ export function recentlyPlayed(userId, limit = 18) {
     .prepare(
       `SELECT ${TRACK_FIELDS}, MAX(p.played_at) AS lastPlayed ${TRACK_FROM}
          JOIN plays p ON p.track_id = t.id AND p.user_id = @userId
-        WHERE ${PRESENT}
+        WHERE ${PRESENT_MUSIC}
         GROUP BY t.id
         ORDER BY lastPlayed DESC
         LIMIT @limit`
@@ -676,7 +706,7 @@ export function mostPlayed(userId, limit = 18) {
       `SELECT ${TRACK_FIELDS}, COUNT(p.id) AS playCount,
               ROUND(SUM(${LISTENED})) AS listened ${TRACK_FROM}
          JOIN plays p ON p.track_id = t.id AND p.user_id = @userId
-        WHERE ${PRESENT}
+        WHERE ${PRESENT_MUSIC}
         GROUP BY t.id
         ORDER BY listened DESC, playCount DESC, MAX(p.played_at) DESC
         LIMIT @limit`
@@ -694,7 +724,7 @@ export function newestAlbums(limit = 12) {
               MAX(t.added_at) AS addedAt
          FROM albums al
          LEFT JOIN artists ar ON ar.id = al.artist_id
-         LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT}
+         LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT_MUSIC}
         GROUP BY al.id
        HAVING trackCount > 0
         ORDER BY addedAt DESC
@@ -721,7 +751,7 @@ export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
   const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM}
-        WHERE ${unrated ? UNRATED : PRESENT}
+        WHERE ${unrated ? UNRATED : PRESENT_MUSIC}
         ORDER BY RANDOM() LIMIT @limit`
     )
     .all({ userId, limit })
@@ -756,7 +786,7 @@ export function searchLibrary({ userId, q = '', limit = 100 } = {}) {
   const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS}, ${trackScore} AS score ${TRACK_FROM}
-        WHERE ${PRESENT} AND ${trackWhere.where}
+        WHERE ${PRESENT_MUSIC} AND ${trackWhere.where}
         ORDER BY score DESC, t.title COLLATE NOCASE ASC
         LIMIT @limit`
     )
@@ -795,23 +825,23 @@ export function searchLibrary({ userId, q = '', limit = 100 } = {}) {
 export function libraryStats() {
   const one = (sql) => db.prepare(sql).get().c;
   return {
-    tracks: one(`SELECT COUNT(*) AS c FROM tracks t WHERE ${PRESENT}`),
+    tracks: one(`SELECT COUNT(*) AS c FROM tracks t WHERE ${PRESENT_MUSIC}`),
     artists: one(
       `SELECT COUNT(*) AS c FROM artists ar
-        WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.artist_id = ar.id AND ${PRESENT})`
+        WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.artist_id = ar.id AND ${PRESENT_MUSIC})`
     ),
     albums: one(
       `SELECT COUNT(*) AS c FROM albums al
-        WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = al.id AND ${PRESENT})`
+        WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = al.id AND ${PRESENT_MUSIC})`
     ),
-    singles: one(`SELECT COUNT(*) AS c FROM tracks t WHERE t.album_id IS NULL AND ${PRESENT}`),
+    singles: one(`SELECT COUNT(*) AS c FROM tracks t WHERE t.album_id IS NULL AND ${PRESENT_MUSIC}`),
     genres: one(
       `SELECT COUNT(DISTINCT tg.genre_id) AS c FROM track_genres tg
-         JOIN tracks t ON t.id = tg.track_id AND ${PRESENT}`
+         JOIN tracks t ON t.id = tg.track_id AND ${PRESENT_MUSIC}`
     ),
     missing: one(`SELECT COUNT(*) AS c FROM tracks t WHERE t.missing_at <> ''`),
-    duration: db.prepare(`SELECT COALESCE(SUM(t.duration), 0) AS d FROM tracks t WHERE ${PRESENT}`).get().d,
-    size: db.prepare(`SELECT COALESCE(SUM(t.size), 0) AS s FROM tracks t WHERE ${PRESENT}`).get().s,
+    duration: db.prepare(`SELECT COALESCE(SUM(t.duration), 0) AS d FROM tracks t WHERE ${PRESENT_MUSIC}`).get().d,
+    size: db.prepare(`SELECT COALESCE(SUM(t.size), 0) AS s FROM tracks t WHERE ${PRESENT_MUSIC}`).get().s,
   };
 }
 
@@ -832,12 +862,12 @@ export function findTrackForImport({ title, artists, album }) {
 
   if (artist) {
     const byExact = db
-      .prepare(`SELECT id FROM tracks t WHERE norm_title = ? AND norm_artist = ? AND ${PRESENT} LIMIT 1`)
+      .prepare(`SELECT id FROM tracks t WHERE norm_title = ? AND norm_artist = ? AND ${PRESENT_MUSIC} LIMIT 1`)
       .get(exact, artist);
     if (byExact) return byExact.id;
 
     const byLoose = db
-      .prepare(`SELECT id FROM tracks t WHERE loose_title = ? AND norm_artist = ? AND ${PRESENT} LIMIT 1`)
+      .prepare(`SELECT id FROM tracks t WHERE loose_title = ? AND norm_artist = ? AND ${PRESENT_MUSIC} LIMIT 1`)
       .get(loose, artist);
     if (byLoose) return byLoose.id;
   }
@@ -847,7 +877,7 @@ export function findTrackForImport({ title, artists, album }) {
       .prepare(
         `SELECT t.id FROM tracks t
            JOIN albums al ON al.id = t.album_id
-          WHERE t.loose_title = ? AND al.title = ? COLLATE NOCASE AND ${PRESENT}
+          WHERE t.loose_title = ? AND al.title = ? COLLATE NOCASE AND ${PRESENT_MUSIC}
           LIMIT 1`
       )
       .get(loose, album);
@@ -855,7 +885,7 @@ export function findTrackForImport({ title, artists, album }) {
   }
 
   const candidates = db
-    .prepare(`SELECT id FROM tracks t WHERE loose_title = ? AND ${PRESENT} LIMIT 2`)
+    .prepare(`SELECT id FROM tracks t WHERE loose_title = ? AND ${PRESENT_MUSIC} LIMIT 2`)
     .all(loose);
   return candidates.length === 1 ? candidates[0].id : null;
 }

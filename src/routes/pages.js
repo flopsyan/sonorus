@@ -95,6 +95,9 @@ const APP_ROUTES = [
   '/genres',
   // One id or a comma list of them, the same as /stars/:stars
   '/genres/:ids',
+  // Spoken word: the shows, and one show with its episodes
+  '/podcasts',
+  '/podcasts/:id',
   '/playlists/:id',
   '/stars/:stars',
   '/search',

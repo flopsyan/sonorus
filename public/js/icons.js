@@ -42,6 +42,11 @@ const STROKE = {
   maximize: '<path d="M8 3H4a1 1 0 0 0-1 1v4"/><path d="M16 3h4a1 1 0 0 1 1 1v4"/><path d="M16 21h4a1 1 0 0 0 1-1v-4"/><path d="M8 21H4a1 1 0 0 1-1-1v-4"/>',
   minimize: '<path d="M4 9h4a1 1 0 0 0 1-1V4"/><path d="M20 9h-4a1 1 0 0 1-1-1V4"/><path d="M20 15h-4a1 1 0 0 0-1 1v4"/><path d="M4 15h4a1 1 0 0 1 1 1v4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.3l3.2 1.9"/>',
+  // Spoken word: a microphone. The sidebar entry for the podcasts, and later
+  // for the audiobooks and radio plays that go in the same group.
+  mic: '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/><path d="M8.5 21h7"/>',
+  // An episode that has been heard all the way through.
+  'check-circle': '<circle cx="12" cy="12" r="9"/><path d="m8.2 12.2 2.6 2.6 5-5.4"/>',
   chart: '<path d="M4 20V4"/><path d="M4 20h16"/><rect x="7.5" y="12" width="3" height="5" rx="0.8"/><rect x="13" y="8" width="3" height="9" rx="0.8"/><rect x="18" y="14" width="3" height="3" rx="0.8"/>',
   trending: '<path d="m3 17 5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/>',
   edit: '<path d="M12 20h9"/><path d="M16.6 3.4a2.1 2.1 0 0 1 3 3L7.5 18.5 3 20l1.5-4.5z"/>',

@@ -16,6 +16,14 @@ const coversDir = path.join(dataDir, 'covers');
 // The music library itself. Mounted read-only; Sonorus only ever reads from it.
 const musicDir = path.resolve(process.env.MUSIC_DIR || path.join(projectRoot, 'music'));
 
+// Spoken word, in a root of its own. It is deliberately not a folder inside the
+// music library: since 2026-07-25 the folder structure *is* the library
+// (artist / album / track), and a podcast read through that rule would turn
+// every show into an interpret and every episode into a single. A second root
+// keeps the two apart without a rule that has to guess which is which. Missing
+// is fine - an instance without podcasts simply has nothing to scan there.
+const podcastDir = path.resolve(process.env.PODCAST_DIR || path.join(projectRoot, 'podcasts'));
+
 fs.mkdirSync(coversDir, { recursive: true });
 
 const dbPath = path.join(dataDir, 'sonorus.sqlite');
@@ -86,6 +94,23 @@ db.exec(`
     name TEXT NOT NULL UNIQUE COLLATE NOCASE
   );
 
+  -- A podcast show: one folder under PODCAST_DIR, one row. The counterpart to
+  -- artists for spoken word, and separate from it on purpose - a show is not
+  -- an interpret and must not turn up in the music library.
+  CREATE TABLE IF NOT EXISTS podcasts (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name  TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- What the episodes say about the show. Every episode of a show repeats the
+    -- same text in its description tag, so it is stored once, here.
+    description TEXT NOT NULL DEFAULT '',
+    cover TEXT NOT NULL DEFAULT '',
+    -- The release date of the episode cover was taken from. A show rebrands,
+    -- and 361 episodes carry 37 different pictures - so the newest one wins,
+    -- and this is what lets the scanner tell newer from older without reading
+    -- every file again.
+    cover_date TEXT NOT NULL DEFAULT ''
+  );
+
   CREATE TABLE IF NOT EXISTS tracks (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     path        TEXT NOT NULL UNIQUE,
@@ -127,6 +152,12 @@ db.exec(`
     norm_title  TEXT NOT NULL DEFAULT '',
     loose_title TEXT NOT NULL DEFAULT '',
     norm_artist TEXT NOT NULL DEFAULT '',
+    -- The show this row is an episode of. NULL for everything in the music
+    -- library, which is what tells the two apart in every query.
+    podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE SET NULL,
+    -- The number in front of the file name ("#100 ..."). NULL for a show that
+    -- does not number its episodes, which is what the date is for.
+    episode_no  INTEGER,
     added_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist_id);
@@ -208,6 +239,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_plays_user ON plays(user_id, played_at DESC);
 
+  -- Where listening to an episode stopped, and whether it was finished. This is
+  -- the one thing a podcast needs that a song does not: plays records that a
+  -- track was played, never where you left off, and a 70-minute episode that
+  -- starts from the beginning every time is unusable.
+  CREATE TABLE IF NOT EXISTS episode_progress (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    track_id   INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    -- Seconds into the episode. Reset to 0 once it is finished, so "Weiterhören"
+    -- never offers an episode that has nothing left to hear.
+    position   REAL NOT NULL DEFAULT 0,
+    completed  INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, track_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_progress_user ON episode_progress(user_id, updated_at DESC);
+
   -- Rows from a CSV import that no file in the library matches. Kept until the
   -- user dismisses them, or until a later scan turns up a matching file.
   CREATE TABLE IF NOT EXISTS import_issues (
@@ -269,6 +316,19 @@ addColumn('playlists', 'position', 'INTEGER NOT NULL DEFAULT 0');
 
 // The album decides the genres of its songs, not the other way round.
 addColumn('albums', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
+
+// Podcast episodes share the tracks table with the music. NULL is "this is a
+// song", which is what every music query filters on - so an existing library
+// becomes a library of pure music the moment the column exists, without a
+// migration. A foreign key may be added this way because the default is NULL.
+addColumn('tracks', 'podcast_id', 'INTEGER REFERENCES podcasts(id) ON DELETE SET NULL');
+addColumn('tracks', 'episode_no', 'INTEGER');
+// The show a cover was taken from, added after the podcasts table itself.
+addColumn('podcasts', 'cover_date', "TEXT NOT NULL DEFAULT ''");
+
+// After the column exists, never before: on an existing database the CREATE
+// TABLE block above is a no-op and podcast_id only arrives here.
+db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_podcast ON tracks(podcast_id)');
 
 // --- One-off data migrations ------------------------------------------------
 // Unlike the columns above, these rewrite rows, so they must not run twice. The
@@ -338,5 +398,5 @@ export function setMeta(key, value) {
   ).run(key, String(value));
 }
 
-export { dbPath, dataDir, coversDir, musicDir };
+export { dbPath, dataDir, coversDir, musicDir, podcastDir };
 export default db;

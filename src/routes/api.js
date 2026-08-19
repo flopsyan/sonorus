@@ -30,6 +30,14 @@ import {
   libraryStats,
 } from '../models/library.js';
 import {
+  listPodcasts,
+  getPodcast,
+  continueListening,
+  setProgress,
+  searchEpisodes,
+  podcastStats,
+} from '../models/podcasts.js';
+import {
   playlistTree,
   listPlaylists,
   getPlaylist,
@@ -243,6 +251,38 @@ router.get('/genres/:ids', (req, res) => {
   res.json({ ok: true, genre });
 });
 
+// --- Podcasts ---------------------------------------------------------------
+
+// The spoken-word side of the library. Episodes share the tracks table with the
+// songs, so playing and streaming one needs nothing of its own - only browsing
+// them and remembering where listening stopped does.
+router.get('/podcasts', (req, res) => {
+  res.json({
+    ok: true,
+    podcasts: listPodcasts(req.user.id),
+    // What is half-finished, across all shows. The row at the top of the page.
+    continue: continueListening(req.user.id, 12),
+    stats: podcastStats(req.user.id),
+  });
+});
+
+router.get('/podcasts/:id', (req, res) => {
+  const podcast = getPodcast(id(req.params.id), req.user.id, { sort: req.query.sort });
+  if (!podcast) return fail(res, 'not_found', 404);
+  res.json({ ok: true, podcast });
+});
+
+// Where listening stopped. Sent by the player while an episode runs, and by the
+// two menu entries that mark one played or unplayed by hand.
+router.put('/episodes/:id/progress', (req, res) => {
+  const result = setProgress(req.user.id, id(req.params.id), {
+    position: req.body.position,
+    completed: req.body.completed,
+  });
+  if (result.error) return fail(res, result.error, 404);
+  res.json(result);
+});
+
 // 0 is the list of everything that has no rating yet. Several ratings can be
 // asked for at once ("4,5"), which gives one combined list.
 router.get('/stars/:stars', (req, res) => {
@@ -275,9 +315,17 @@ router.get('/shuffle', (req, res) => {
   res.json({ ok: true, unrated, tracks: randomTracks(req.user.id, limit, { unrated }) });
 });
 
+// One query, four answers. Episodes are their own section rather than part of
+// the songs: they are not in the music library, and a search that mixed 691
+// episodes into the song results would bury it.
 router.get('/search', (req, res) => {
   const q = String(req.query.q || '').trim();
-  res.json({ ok: true, q, ...searchLibrary({ userId: req.user.id, q, limit: 100 }) });
+  res.json({
+    ok: true,
+    q,
+    ...searchLibrary({ userId: req.user.id, q, limit: 100 }),
+    episodes: searchEpisodes({ userId: req.user.id, q, limit: 40 }),
+  });
 });
 
 // --- Ratings and history ----------------------------------------------------

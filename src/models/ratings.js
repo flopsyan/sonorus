@@ -8,7 +8,11 @@ export function setRating(userId, trackId, stars) {
   const value = Number(stars);
   if (!Number.isInteger(value) || value < 0 || value > 5) return { error: 'invalid_stars' };
 
-  const track = db.prepare('SELECT id FROM tracks WHERE id = ?').get(trackId);
+  // Songs only: spoken word is not rated, so the star playlists cannot fill up
+  // with episodes even if something asks the API directly.
+  const track = db
+    .prepare('SELECT id FROM tracks WHERE id = ? AND podcast_id IS NULL')
+    .get(trackId);
   if (!track) return { error: 'not_found' };
 
   if (value === 0) {

@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, mosaic, trackList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
 
 // --- Shared bits ------------------------------------------------------------
 
@@ -444,6 +444,152 @@ export async function album(params) {
   };
 }
 
+// --- Podcasts ---------------------------------------------------------------
+// The spoken-word side of the library. Deliberately not built like the music
+// collections: a show is a feed you follow, so what the page is about is what is
+// new and what is half-finished - not how much of it there is.
+
+const EPISODE_SORTS = ['new', 'old'];
+
+function episodeSort(params, ctx) {
+  const saved = (ctx && ctx.prefs && ctx.prefs.episodeSort) || '';
+  const wanted = params.get('sort') || saved;
+  return EPISODE_SORTS.includes(wanted) ? wanted : 'new';
+}
+
+function sortSwitch(current) {
+  const button = (value, label) =>
+    `<button type="button" class="switch-text${value === current ? ' active' : ''}"
+       data-episode-sort="${value}" aria-pressed="${value === current}">${label}</button>`;
+  return `<div class="seg-switch" role="group" aria-label="Reihenfolge">
+      ${button('new', 'Neueste zuerst')}${button('old', 'Älteste zuerst')}
+    </div>`;
+}
+
+export async function podcasts(_params, ctx) {
+  const data = await api.podcasts();
+  const list = data.podcasts;
+  const view = collectionView(ctx, 'podcasts');
+  const s = data.stats;
+
+  if (!list.length) {
+    return {
+      title: 'Podcasts',
+      html: `${pageHead('Gesprochenes', 'Podcasts', '')}
+        ${empty(
+          'Noch keine Podcasts gefunden',
+          'Sonorus liest den Ordner, den du unter PODCAST_DIR eingehängt hast - ein Unterordner je Sendung, die Folgen darin. Starte einen Scan, sobald dort Dateien liegen.',
+          '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>'
+        )}`,
+    };
+  }
+
+  return {
+    title: 'Podcasts',
+    // What the transport plays from this page: the episodes that are still
+    // running, in the order they are shown.
+    tracks: data.continue,
+    html: `${pageHead(
+      'Gesprochenes',
+      'Podcasts',
+      facts([
+        fmt.plural(s.shows, 'Sendung', 'Sendungen'),
+        fmt.plural(s.episodes, 'Folge', 'Folgen'),
+        `${fmt.number(s.unplayed)} ungehört`,
+      ]),
+      viewSwitch('podcasts', view)
+    )}
+      ${
+        data.continue.length
+          ? `<section class="section">
+              <div class="section-head"><h2>Weiterhören</h2></div>
+              ${episodeList(data.continue, { showName: true })}
+            </section>`
+          : ''
+      }
+      <section class="section">
+        <div class="section-head"><h2>Sendungen</h2></div>
+        ${collection(
+          view,
+          // No play button on a show, for the same reason an interpret has
+          // none: it is a place you go to, not a queue you start - which of 361
+          // episodes would it even begin with.
+          list.map((p) => ({
+            href: `/podcasts/${p.id}`,
+            cover: p.cover,
+            title: p.name,
+            sub: `${fmt.number(p.unplayedCount)} von ${fmt.number(p.episodeCount)} ungehört`,
+            meta: fmt.durationRack(p.duration),
+          }))
+        )}
+      </section>`,
+    // The progress bars get their width here, not from an inline style: the CSP
+    // is style-src 'self' and would drop it.
+    after: applyProgress,
+  };
+}
+
+export async function podcast(params, ctx) {
+  const sort = episodeSort(params, ctx);
+  const { podcast: data } = await api.podcast(params.id, sort);
+
+  // "Weiterhören" is the button this page exists for: a podcast listener opens
+  // a show to carry on, not to start something. Without a half-finished episode
+  // it gives way to plain playback of the list as it is sorted.
+  const primary = data.resume
+    ? `<button type="button" class="btn btn-primary" data-play-episode="${data.resume.id}">
+         ${icon('play', 16)} Weiterhören
+       </button>`
+    : `<button type="button" class="btn btn-primary" data-play-all="view">
+         ${icon('play', 16)} Abspielen
+       </button>`;
+
+  return {
+    title: data.name,
+    tracks: data.episodes,
+    html: `${detailHead({
+      label: 'Podcast',
+      title: data.name,
+      artHtml: art(data.cover, data.name),
+      zoom: data.cover,
+      meta: facts([
+        fmt.plural(data.episodeCount, 'Folge', 'Folgen'),
+        `${fmt.number(data.unplayedCount)} ungehört`,
+        fmt.durationLong(data.duration),
+        data.latest ? `zuletzt ${fmt.releaseDate(data.latest)}` : '',
+      ]),
+      actions: primary,
+    })}
+      ${data.description ? `<p class="podcast-note">${esc(data.description)}</p>` : ''}
+      ${
+        data.resume
+          ? `<p class="podcast-resume">Angefangen: <strong>${esc(data.resume.title)}</strong> -
+             noch ${fmt.duration(Math.max(0, data.resume.duration - data.resume.position))}</p>`
+          : ''
+      }
+      <section class="section">
+        <div class="section-head">
+          <h2>Folgen</h2>
+          ${sortSwitch(data.sort)}
+        </div>
+        ${episodeList(data.episodes)}
+      </section>`,
+    // The order is not a place in the history, it is the same page read the
+    // other way round - so the router replaces instead of pushing, exactly like
+    // the album sort.
+    after(root, ctx2) {
+      applyProgress(root);
+      root.querySelectorAll('[data-episode-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const value = button.dataset.episodeSort;
+          ctx2.setPref('episodeSort', value);
+          ctx2.navigate(`/podcasts/${params.id}?sort=${value}`, { replace: true });
+        });
+      });
+    },
+  };
+}
+
 // --- Genres -----------------------------------------------------------------
 
 export async function genres(_params, ctx) {
@@ -740,15 +886,20 @@ export async function search(params) {
     return { title: 'Suche', html: pageHead('Suche', 'Suche', 'Tippe oben etwas ein.') };
   }
   const data = await api.search(q);
-  const nothing = !data.tracks.length && !data.artists.length && !data.albums.length;
+  const episodes = data.episodes || [];
+  const nothing = !data.tracks.length && !data.artists.length && !data.albums.length && !episodes.length;
 
   return {
     title: `Suche: ${q}`,
-    tracks: data.tracks,
+    // Songs first, episodes behind them, in one list - that is what the rows
+    // index into. The "Alle abspielen" button under "Songs" carries a limit so
+    // it still means the songs and not everything found.
+    tracks: data.tracks.concat(episodes),
     html: `${pageHead('Suche', `„${q}“`, nothing ? '' : facts([
       data.artists.length ? fmt.plural(data.artists.length, 'Interpret', 'Interpreten') : '',
       data.albums.length ? fmt.plural(data.albums.length, 'Album', 'Alben') : '',
       data.tracks.length ? fmt.plural(data.tracks.length, 'Song', 'Songs') : '',
+      episodes.length ? fmt.plural(episodes.length, 'Folge', 'Folgen') : '',
     ]))}
       ${
         nothing
@@ -791,11 +942,19 @@ export async function search(params) {
         ${
           data.tracks.length
             ? `<section class="section"><div class="section-head"><h2>Songs</h2>
-                <button type="button" class="btn btn-ghost btn-sm" data-play-all="view">${icon('play', 14)} Alle abspielen</button></div>
+                <button type="button" class="btn btn-ghost btn-sm" data-play-all="view"
+                  data-play-limit="${data.tracks.length}">${icon('play', 14)} Alle abspielen</button></div>
                 ${trackList(data.tracks)}</section>`
+            : ''
+        }
+        ${
+          episodes.length
+            ? `<section class="section"><div class="section-head"><h2>Podcast-Folgen</h2></div>
+                ${episodeList(episodes, { offset: data.tracks.length, showName: true })}</section>`
             : ''
         }`
       }`,
+    after: applyProgress,
   };
 }
 
@@ -1268,6 +1427,12 @@ function scanBlock(scan, lastScan) {
         <div>
           <div class="setting-label">Musikordner</div>
           <div class="setting-sub num">${esc(scan.musicDir)}</div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Podcast-Ordner</div>
+          <div class="setting-sub num">${esc(scan.podcastDir || '')}</div>
         </div>
       </div>
       <div class="setting-row">

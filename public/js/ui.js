@@ -2,7 +2,7 @@
 // track lists, plus the small overlays (toast, modal, confirm, context menu).
 
 import { icon, paintIcons } from './icons.js';
-import { duration } from './format.js';
+import { duration, releaseDate } from './format.js';
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -114,10 +114,14 @@ export function trackList(tracks, options = {}) {
   const rows = tracks
     .map((track, i) => {
       const shown = numbering === 'track' ? track.trackNo || i + 1 : i + 1;
+      // Written onto the row because the number is not always the position in
+      // the list: an album numbers by tag, a podcast by episode. markPlayingRow
+      // rebuilds this cell when playback moves on and reads it back from here.
+      const num = ` data-num="${shown}"`;
       // A track whose file is gone keeps its rating, so it keeps its row. It is
       // greyed out, cannot be played, and says on hover where the file was.
       const gone = !!track.missing;
-      return `<div class="track-row item${gone ? ' missing' : ''}" data-track-id="${track.id}" data-index="${i}"
+      return `<div class="track-row item${gone ? ' missing' : ''}" data-track-id="${track.id}" data-index="${i}"${num}
              ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(track.path)}"` : ''}
              ${track.itemId ? `data-item-id="${track.itemId}"` : ''}
              ${draggable ? 'draggable="true"' : ''}>
@@ -161,6 +165,80 @@ export function trackList(tracks, options = {}) {
     .join('');
 
   return `<div class="tracks">${head}${rows}</div>`;
+}
+
+// --- Episode list -----------------------------------------------------------
+
+// The episodes of one show. Built out of the same `.track-row.item` as a song,
+// on purpose and not by accident: clicking a row to play it, the long press
+// that opens its menu, the right-click, and the equaliser that marks what is
+// playing are all wired to that class in app.js, and an episode wants every one
+// of them. Only the cells differ, because the questions differ - a song asks
+// which album and how many stars, an episode asks how much of it is left.
+// `offset` is where this list starts inside the page's own track list. Only the
+// search page needs it, where the episodes sit behind the songs in one array
+// and data-play-index has to point at the right entry of it.
+//
+// `showName` names the podcast on every row. Off inside one show, where the
+// page already says which one it is; on wherever the list spans several -
+// "Weiterhören" and the search results.
+export function episodeList(episodes, { offset = 0, showName = false } = {}) {
+  if (!episodes.length) return '';
+
+  const rows = episodes
+    .map((ep, i) => {
+      const gone = !!ep.missing;
+      const at = offset + i;
+      const shown = ep.episodeNo != null ? ep.episodeNo : at + 1;
+      const left = Math.max(0, (ep.duration || 0) - (ep.position || 0));
+      // Three states, and each says something the other two do not: finished,
+      // part-way through with the rest named, or untouched.
+      const state = ep.completed
+        ? `<span class="ep-done">${icon('check-circle', 14)}<span class="ep-word">Gehört</span></span>`
+        : ep.position > 0 && ep.duration
+          ? // The width goes on as a data attribute and is applied by the view's
+            // `after` hook: the CSP is style-src 'self', so an inline style
+            // attribute is simply dropped and the bar would stay at zero. Same
+            // construction as the scan progress in the settings.
+            `<span class="ep-progress" title="Noch ${duration(left)}">
+               <span class="ep-bar"><span data-progress="${Math.min(100, Math.round((ep.position / ep.duration) * 100))}"></span></span>
+               <span class="ep-left">noch ${duration(left)}</span>
+             </span>`
+          : '';
+
+      return `<div class="track-row item episode-row${gone ? ' missing' : ''}${ep.completed ? ' heard' : ''}"
+             data-track-id="${ep.id}" data-index="${at}" data-num="${shown}"
+             ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(ep.path)}"` : ''}>
+        <span class="track-index">
+          ${
+            gone
+              ? `<span class="num-label">${shown}</span>`
+              : `<button type="button" data-play-index="${at}" aria-label="${esc(ep.title)} abspielen">
+                  <span class="num-label">${shown}</span>
+                  <span class="play-hint">${icon('play', 13)}</span>
+                </button>`
+          }
+        </span>
+        <span class="track-main">
+          <span class="track-art">${art(ep.cover, ep.podcast || ep.title)}</span>
+          <span class="track-text">
+            <span class="track-title" data-clip>${esc(ep.title)}${
+              gone ? ' <span class="badge gone">fehlt</span>' : ''
+            }</span>
+            <span class="track-artist">${
+              showName && ep.podcast ? `${esc(ep.podcast)} <span class="dot">·</span> ` : ''
+            }${esc(releaseDate(ep.releaseDate))}</span>
+          </span>
+        </span>
+        <span class="episode-state">${state}</span>
+        <span class="track-time col-time">${duration(ep.duration)}</span>
+        <span><button type="button" class="icon-btn icon-btn-sm row-menu" data-menu-track="${ep.id}"
+              aria-label="Weitere Aktionen">${icon('more', 16)}</button></span>
+      </div>`;
+    })
+    .join('');
+
+  return `<div class="tracks episodes">${rows}</div>`;
 }
 
 // --- Cards ------------------------------------------------------------------

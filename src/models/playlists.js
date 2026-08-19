@@ -206,7 +206,9 @@ export const addTracks = db.transaction((userId, id, trackIds) => {
 
   let pos = nextPosition.get(id).pos;
   let added = 0;
-  const exists = db.prepare('SELECT id FROM tracks WHERE id = ?');
+  // Songs only. A podcast episode belongs to its show, not to a playlist, and
+  // an id that names one is skipped like any other id that leads nowhere.
+  const exists = db.prepare('SELECT id FROM tracks WHERE id = ? AND podcast_id IS NULL');
   for (const raw of trackIds) {
     const trackId = Number(raw);
     if (!Number.isInteger(trackId) || !exists.get(trackId)) continue;

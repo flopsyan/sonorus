@@ -63,6 +63,8 @@ const ROUTES = [
   [/^\/genres$/, views.genres],
   // Like the star playlists, several genres are one combined list.
   [/^\/genres\/(\d+(?:,\d+)*)$/, views.genre, ['ids']],
+  [/^\/podcasts$/, views.podcasts],
+  [/^\/podcasts\/(\d+)$/, views.podcast, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -321,6 +323,14 @@ function renderSidebar() {
     .map((item) => navItem({ ...item, active: path === item.href }))
     .join('');
 
+  // Spoken word, between the music and the ratings. Its own group because it is
+  // its own library: nothing in it is browsed by interpret, album or genre, and
+  // nothing in it is rated. Hörbücher und Hörspiele join it later, which is why
+  // the heading is not "Podcasts".
+  const spoken = [{ href: '/podcasts', label: 'Podcasts', iconName: 'mic' }]
+    .map((item) => navItem({ ...item, active: path.startsWith('/podcasts') }))
+    .join('');
+
   const starItems = [5, 4, 3, 2, 1]
     .map((n) =>
       `<a class="nav-item${starred.includes(n) ? ' active' : ''}" href="/stars/${n}" data-link>
@@ -376,6 +386,11 @@ function renderSidebar() {
     <nav class="nav-group">
       <div class="nav-group-head"><span class="rack-label">Bibliothek</span></div>
       ${library}
+    </nav>
+
+    <nav class="nav-group">
+      <div class="nav-group-head"><span class="rack-label">Gesprochenes</span></div>
+      ${spoken}
     </nav>
 
     <nav class="nav-group">
@@ -1199,6 +1214,14 @@ function addToPlaylistDialog(trackIds, { create = true } = {}) {
 
 // Loads the track list behind a "play this collection" button.
 async function tracksFor(el) {
+  // The search page holds songs and podcast episodes in one list; the button
+  // under "Songs" means the songs, so it says how far its own section reaches.
+  if (el.dataset.playLimit) return view.tracks.slice(0, Number(el.dataset.playLimit));
+  // "Weiterhören": one episode, picked out of the list the page already has.
+  if (el.dataset.playEpisode) {
+    const found = view.tracks.find((t) => String(t.id) === el.dataset.playEpisode);
+    return found ? [found] : [];
+  }
   if (el.dataset.playAlbum) return (await api.album(el.dataset.playAlbum)).album.tracks;
   if (el.dataset.playSingles) return (await api.artist(el.dataset.playSingles)).artist.singles;
   if (el.dataset.playGenre) return (await api.genre(el.dataset.playGenre)).genre.tracks;
@@ -1257,7 +1280,7 @@ content.addEventListener('click', async (e) => {
   }
 
   // Collection play / shuffle buttons on cards and page heads
-  const play = e.target.closest('[data-play-all], [data-play-album], [data-play-singles], [data-play-genre], [data-play-track]');
+  const play = e.target.closest('[data-play-all], [data-play-album], [data-play-singles], [data-play-genre], [data-play-track], [data-play-episode]');
   if (play) {
     e.preventDefault();
     e.stopPropagation();
@@ -1472,6 +1495,29 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (!track) return;
   const index = view.tracks.indexOf(track);
 
+  // An episode answers to a different set of questions than a song: it has no
+  // rating, it belongs in no playlist and it has no interpret to visit - what it
+  // has instead is a "heard" flag, which is the only thing worth toggling by
+  // hand once the player stops setting it for you.
+  if (track.podcastId) {
+    const items = track.missing
+      ? []
+      : [
+          { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
+          { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
+          { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
+          null,
+        ];
+    items.push(
+      track.completed
+        ? { label: 'Als ungehört markieren', icon: 'refresh', onSelect: () => markEpisode(track, false) }
+        : { label: 'Als gehört markieren', icon: 'check-circle', onSelect: () => markEpisode(track, true) }
+    );
+    items.push({ label: 'Zur Sendung', icon: 'mic', onSelect: () => navigate(`/podcasts/${track.podcastId}`) });
+    contextMenu(x, y, items);
+    return;
+  }
+
   // A track whose file is gone keeps its rating and its place in playlists, so
   // it keeps its menu - only the playback entries would go nowhere.
   const items = track.missing
@@ -1514,6 +1560,20 @@ function openTrackMenu(x, y, trackId, itemId) {
   }
 
   contextMenu(x, y, items);
+}
+
+// Heard, or not heard after all. Marking one unplayed clears its position too,
+// because that is what the request means: start it over.
+async function markEpisode(track, completed) {
+  try {
+    const res = await api.episodeProgress(track.id, { position: 0, completed });
+    player.applyEpisodeProgress(track.id, res.position, res.completed);
+    // The list the user is looking at changes under them - the same case the
+    // star playlists have, and the same answer: redraw without moving.
+    render({ keep: true });
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 async function rate(trackId, value) {
@@ -1991,15 +2051,21 @@ function renderPlayer(s) {
     // The album is its own span: the strip along the bottom of a phone has room
     // for the interpret and nothing else, and half an album title behind an
     // ellipsis says less than leaving it out.
-    el.nowArtist.innerHTML = track.artistId
-      ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>${
-          track.albumId
-            ? `<span class="now-album"> · <a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a></span>`
-            : ''
-        }`
-      : esc(track.artist);
-    el.nowStars.innerHTML = starButtons(track.stars, track.id);
-    el.nowAdd.hidden = false;
+    // An episode names its show where a song names its interpret, and the show
+    // is a page like an artist is.
+    el.nowArtist.innerHTML = track.podcastId
+      ? `<a href="/podcasts/${track.podcastId}" data-link>${esc(track.artist)}</a>`
+      : track.artistId
+        ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>${
+            track.albumId
+              ? `<span class="now-album"> · <a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a></span>`
+              : ''
+          }`
+        : esc(track.artist);
+    // Spoken word is neither rated nor put into playlists, so the two controls
+    // that offer exactly that have nothing to say about an episode.
+    el.nowStars.innerHTML = track.podcastId ? '' : starButtons(track.stars, track.id);
+    el.nowAdd.hidden = !!track.podcastId;
   } else {
     el.nowArt.innerHTML = '';
     el.nowTitle.textContent = 'Nichts ausgewählt';
@@ -2036,7 +2102,10 @@ function markPlayingRow() {
       existing.classList.toggle('paused', !player.state.playing);
     } else if (!isPlaying && existing) {
       const i = Number(row.dataset.index);
-      const shown = view.tracks[i] ? i + 1 : '';
+      // The number is not always the position in the list - an album numbers by
+      // tag, a podcast by episode - so the row carries it and this reads it back
+      // instead of counting again.
+      const shown = row.dataset.num ?? (view.tracks[i] ? i + 1 : '');
       index.innerHTML = `<button type="button" data-play-index="${i}" aria-label="Abspielen">
           <span class="num-label">${shown}</span>
           <span class="play-hint">${icon('play', 13)}</span>

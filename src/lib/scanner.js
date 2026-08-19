@@ -20,6 +20,17 @@
 // was edited by hand hands its own down to every song in it, the ones it gains
 // later included.
 //
+// Spoken word is scanned from a second root, PODCAST_DIR, and read by a rule of
+// its own:
+//
+//   podcasts/<Show>/#001 Titel.mp3               one episode of one show
+//
+// It is a second root rather than a folder in the music library because the
+// rule above would otherwise turn every show into an interpret and every
+// episode into a single. Episodes land in the same `tracks` table - so the
+// player, the streaming endpoint and the queue need to know nothing about them -
+// but they carry a `podcast_id`, and every music query asks for that to be NULL.
+//
 // The music folder is read-only. Everything the scanner produces (rows, cover
 // art) lives in the data directory, so a rescan can always rebuild the library
 // from the files without touching them.
@@ -32,7 +43,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 
-import db, { coversDir, musicDir, getMeta, setMeta } from '../db.js';
+import db, { coversDir, musicDir, podcastDir, getMeta, setMeta } from '../db.js';
 import { normalize, loosen, primaryArtist } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
 import { extractLyrics } from './lyrics.js';
@@ -52,7 +63,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'lyrics-1';
+const SCANNER_VERSION = 'podcasts-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -80,7 +91,7 @@ const state = {
 };
 
 export function scanState() {
-  return { ...state, musicDir };
+  return { ...state, musicDir, podcastDir };
 }
 
 export function isScanning() {
@@ -146,6 +157,27 @@ function genreId(name) {
   const found = selectGenre.get(clean);
   if (found) return found.id;
   return Number(insertGenre.run(clean).lastInsertRowid);
+}
+
+const selectPodcast = db.prepare(
+  'SELECT id, cover, cover_date, description FROM podcasts WHERE name = ?'
+);
+const insertPodcast = db.prepare('INSERT INTO podcasts (name) VALUES (?)');
+const setPodcastCover = db.prepare(
+  'UPDATE podcasts SET cover = ?, cover_date = ? WHERE id = ?'
+);
+// Written once, by the first episode that carries one. Every episode of a show
+// repeats the same show description, so there is nothing to keep up to date.
+const setPodcastDescription = db.prepare(
+  "UPDATE podcasts SET description = ? WHERE id = ? AND description = ''"
+);
+
+function podcastId(name) {
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+  const found = selectPodcast.get(clean);
+  if (found) return found.id;
+  return Number(insertPodcast.run(clean).lastInsertRowid);
 }
 
 // --- Where a file sits in the folder structure -------------------------------
@@ -230,6 +262,32 @@ function describeFile(filePath) {
   };
 }
 
+// A folder directly under PODCAST_DIR is a show; a file lying loose in the root
+// belongs to none, and gets this one rather than being skipped, so nothing
+// silently disappears from the library.
+const UNKNOWN_SHOW = 'Unbekannter Podcast';
+
+// "#100 Titel", "100 - Titel", "100. Titel". A bare number followed by a space
+// is deliberately *not* read as an episode number: "2020 Jahresrueckblick" is a
+// title, and a show that numbers its episodes at all writes the number tightly
+// or with a separator. Both shows in Florian's library use the "#NNN " form.
+function splitEpisodeNumber(base) {
+  const m = base.match(/^#\s*(\d{1,5})\s+(.+)$/) || base.match(/^(\d{1,5})\s*[-._)]\s*(.+)$/);
+  if (!m) return { episodeNo: null, title: base };
+  return { episodeNo: Number(m[1]), title: m[2].trim() || base };
+}
+
+// The show and the episode a podcast file describes. Simpler than the music
+// rule on purpose: a show is one folder, everything under it is an episode, and
+// there is no album level to get wrong.
+function describeEpisode(filePath) {
+  const parts = path.relative(podcastDir, filePath).split(path.sep);
+  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
+  const show = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_SHOW;
+  const parsed = splitEpisodeNumber(base);
+  return { show, title: parsed.title, episodeNo: parsed.episodeNo };
+}
+
 // --- The release date -------------------------------------------------------
 
 // The most precise date the tags of one file agree on. `date` is the primary
@@ -292,6 +350,20 @@ async function storeAlbumCover(albumId_, meta, filePath) {
   if (name) setAlbumCover.run(name, album.id);
 }
 
+// The show wears the artwork of its newest episode, and only the show does.
+// Measured on the real library: 361 Brainpain episodes carry 37 different
+// pictures and 330 Serienkiller episodes carry 10 - a show rebrands, it does not
+// draw one cover per episode. Storing one file per episode would write those 47
+// pictures 691 times for nothing, so the show keeps one and every episode of it
+// shows that. The date is what decides "newest" without reading anything twice.
+async function storePodcastCover(id, meta, filePath, date) {
+  const show = db.prepare('SELECT id, cover, cover_date FROM podcasts WHERE id = ?').get(id);
+  if (!show) return;
+  if (show.cover && show.cover_date >= (date || '')) return;
+  const name = await storeCoverFile(meta, filePath, `podcast-${show.id}`, true);
+  if (name) setPodcastCover.run(name, date || '', show.id);
+}
+
 // --- Walking the folder -----------------------------------------------------
 
 // Collects every audio file under the music folder. Symlinked directories are
@@ -352,12 +424,12 @@ const insertTrack = db.prepare(`
                       release_date, duration, bitrate, codec, lossless, cover, lyrics,
                       lyrics_sync, missing_at,
                       genres_locked, year_locked, cover_locked, size, mtime, norm_title,
-                      loose_title, norm_artist)
+                      loose_title, norm_artist, podcast_id, episode_no)
   VALUES (@path, @title, @artist_id, @track_artist, @album_id, @track_no, @disc_no, @year,
           @release_date, @duration, @bitrate, @codec, @lossless, @cover, @lyrics,
           @lyrics_sync, @missing_at,
           @genres_locked, @year_locked, @cover_locked, @size, @mtime, @norm_title,
-          @loose_title, @norm_artist)
+          @loose_title, @norm_artist, @podcast_id, @episode_no)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, track_artist = @track_artist,
@@ -369,7 +441,8 @@ const updateTrack = db.prepare(`
                     missing_at = @missing_at, genres_locked = @genres_locked,
                     year_locked = @year_locked, cover_locked = @cover_locked,
                     size = @size, mtime = @mtime,
-                    norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist
+                    norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist,
+                    podcast_id = @podcast_id, episode_no = @episode_no
    WHERE id = @id
 `);
 const clearTrackGenres = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
@@ -467,6 +540,9 @@ async function indexFile(filePath, stat, force) {
     // A CSV export names the artist of the *song*, so on a compilation that is
     // what an import has to match against - not the "Various" folder.
     norm_artist: primaryArtist(place.trackArtist || place.artist),
+    // This is music. Every library query asks for exactly that.
+    podcast_id: null,
+    episode_no: null,
   };
 
   const trackId = writeTrack(
@@ -491,6 +567,75 @@ async function indexFile(filePath, stat, force) {
   }
 }
 
+// One episode of one show. Far shorter than indexFile because almost everything
+// that makes a music track complicated has no counterpart here: an episode
+// belongs to no artist and no album, carries no genre worth browsing by, and
+// nobody hand-edits it - so there is nothing to lock and nothing to inherit.
+async function indexEpisode(filePath, stat, force) {
+  const existing = selectTrackByPath.get(filePath);
+  if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
+    if (existing.missing_at) markFound.run(existing.id);
+    state.skipped += 1;
+    return;
+  }
+
+  const meta = await parseFile(filePath, { duration: true });
+  const common = meta.common || {};
+  const format = meta.format || {};
+
+  const place = describeEpisode(filePath);
+  const date = releaseDate(common);
+  const pId = podcastId(place.show);
+
+  // The show description, written once. music-metadata reports the ID3 TDES
+  // frame here, and every episode of a show repeats the same text.
+  const described = Array.isArray(common.description) ? common.description[0] : common.description;
+  if (pId && described) setPodcastDescription.run(String(described).trim(), pId);
+
+  const row = {
+    path: filePath,
+    title: place.title,
+    artist_id: null,
+    track_artist: '',
+    album_id: null,
+    track_no: null,
+    disc_no: null,
+    year: yearOf(date),
+    release_date: date,
+    duration: format.duration || 0,
+    bitrate: format.bitrate ? Math.round(format.bitrate) : null,
+    codec: String(format.codec || format.container || ''),
+    lossless: format.lossless ? 1 : 0,
+    // The show carries the artwork, see storePodcastCover.
+    cover: '',
+    lyrics: '',
+    lyrics_sync: '',
+    missing_at: '',
+    genres_locked: 0,
+    year_locked: 0,
+    cover_locked: 0,
+    size: stat.size,
+    mtime: Math.floor(stat.mtimeMs),
+    norm_title: normalize(place.title),
+    loose_title: loosen(place.title),
+    // The show stands where the interpret stands for a song, so the search
+    // finds an episode under the name of its podcast.
+    norm_artist: primaryArtist(place.show),
+    podcast_id: pId,
+    episode_no: place.episodeNo,
+  };
+
+  // No genres: "Podcast" is the only tag these files carry, and a genre that
+  // every episode shares says nothing and would sit in the music library's
+  // genre list.
+  writeTrack(row, [], existing && existing.id, false);
+
+  if (existing) state.updated += 1;
+  else state.added += 1;
+
+  if (pId) await storePodcastCover(pId, meta, filePath, date);
+}
+
 // --- Pruning ----------------------------------------------------------------
 
 // A star rating outlives its file: deleting the row would cascade the rating
@@ -503,6 +648,8 @@ const isReferenced = db.prepare(`
   SELECT 1 FROM playlist_items WHERE track_id = @id
    UNION ALL
   SELECT 1 FROM plays          WHERE track_id = @id
+   UNION ALL
+  SELECT 1 FROM episode_progress WHERE track_id = @id
    LIMIT 1
 `);
 const markMissing = db.prepare('UPDATE tracks SET missing_at = @now WHERE id = @id');
@@ -537,6 +684,8 @@ const prune = db.transaction(() => {
     DELETE FROM genres
      WHERE id NOT IN (SELECT genre_id FROM track_genres)
        AND id NOT IN (SELECT genre_id FROM album_genres);
+    DELETE FROM podcasts
+     WHERE id NOT IN (SELECT podcast_id FROM tracks WHERE podcast_id IS NOT NULL);
   `);
 });
 
@@ -569,7 +718,10 @@ export async function runScan() {
     }
 
     const files = await collectFiles(musicDir);
-    state.total = files.length;
+    // A second root, and it is allowed to be missing: an instance without
+    // spoken word simply has nothing there. Only the music folder is required.
+    const episodes = fs.existsSync(podcastDir) ? await collectFiles(podcastDir) : [];
+    state.total = files.length + episodes.length;
     state.phase = 'reading';
 
     // After a change to how a file is read, the size/mtime shortcut would keep
@@ -577,17 +729,21 @@ export async function runScan() {
     const force = getMeta('scanner_version') !== SCANNER_VERSION;
 
     const seen = new Set();
-    for (const file of files) {
-      seen.add(file);
-      try {
-        const stat = await fsp.stat(file);
-        await indexFile(file, stat, force);
-      } catch (err) {
-        state.failed += 1;
-        console.warn(`Sonorus: could not read ${file}:`, err && err.message ? err.message : err);
+    const readAll = async (list, index) => {
+      for (const file of list) {
+        seen.add(file);
+        try {
+          const stat = await fsp.stat(file);
+          await index(file, stat, force);
+        } catch (err) {
+          state.failed += 1;
+          console.warn(`Sonorus: could not read ${file}:`, err && err.message ? err.message : err);
+        }
+        state.done += 1;
       }
-      state.done += 1;
-    }
+    };
+    await readAll(files, indexFile);
+    await readAll(episodes, indexEpisode);
 
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();

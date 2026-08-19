@@ -24,9 +24,13 @@ import db from '../db.js';
 // did run most of the way through.
 const SECONDS = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration, 0) END';
 
+// Podcast episodes are played through the same player and land in the same
+// plays table, but the statistics are about the music library. One 70-minute
+// episode outweighs a dozen songs, so leaving them in would make every chart a
+// chart about podcasts.
 const FROM = `
   FROM plays p
-  JOIN tracks t ON t.id = p.track_id
+  JOIN tracks t ON t.id = p.track_id AND t.podcast_id IS NULL
 `;
 
 // played_at is UTC. The day a play belongs to is a question about the listener,

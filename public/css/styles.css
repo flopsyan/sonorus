@@ -757,6 +757,38 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   .track-row.item:hover .row-menu { opacity: 1; }
 }
 
+/* ----------------------------------------------------------------------------
+   Episodes
+   A podcast episode is a track row with different questions asked of it. What a
+   song answers with an album, a genre and five stars, an episode answers with
+   one thing: how much of it is left.
+   -------------------------------------------------------------------------- */
+
+.track-row.episode-row { grid-template-columns: 46px minmax(0, 1fr) 150px 66px 32px; }
+/* Heard all the way through: still there, still playable, just no longer
+   asking to be. */
+.track-row.item.heard .track-title { color: var(--text-dim); font-weight: 500; }
+
+.episode-state { font-size: 0.76rem; color: var(--text-dim); min-width: 0; }
+.ep-done { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); }
+.ep-done .icon { flex: none; }
+
+.ep-progress { display: flex; flex-direction: column; gap: 4px; }
+.ep-bar {
+  height: 3px; border-radius: 999px; background: var(--surface-3); overflow: hidden;
+}
+.ep-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.ep-left { font-variant-numeric: tabular-nums; color: var(--text-faint); }
+
+/* The show description and the line that says what is half-finished. Both are
+   prose under the head, so they read at the width prose reads at. */
+.podcast-note {
+  max-width: 68ch; margin: 0 0 14px; color: var(--text-dim);
+  font-size: 0.88rem; line-height: 1.6;
+}
+.podcast-resume { margin: 0 0 14px; font-size: 0.86rem; color: var(--text-dim); }
+.podcast-resume strong { color: var(--text); font-weight: 600; }
+
 /* Now-playing indicator: three bars moving like a level meter */
 .eq { display: flex; align-items: flex-end; gap: 2px; height: 13px; justify-content: center; }
 .eq span { width: 2.5px; background: var(--accent); border-radius: 1px; animation: eq-bounce 0.9s ease-in-out infinite; }
@@ -1383,6 +1415,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 @media (max-width: 1100px) {
   .track-row { grid-template-columns: 34px minmax(0, 2.4fr) minmax(0, 1.4fr) 92px 58px 32px; }
   .track-row .col-genre { display: none; }
+  /* An episode has no genre column to drop, so it keeps its five. */
+  .track-row.episode-row { grid-template-columns: 46px minmax(0, 1fr) 130px 62px 32px; }
 }
 
 @media (max-width: 900px) {
@@ -1432,6 +1466,7 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
      name on hover (see the truncation handler in app.js). */
   .track-row { grid-template-columns: 30px minmax(0, 1fr) 92px 58px 32px; }
   .track-row .col-album, .track-row .col-year { display: none; }
+  .track-row.episode-row { grid-template-columns: 40px minmax(0, 1fr) 96px 58px 32px; }
   /* Three columns again, and the outer two equal: that is the whole reason the
      transport sits in the middle of the bar instead of being pushed to one
      side by however long the title next to it happens to be. */
@@ -1491,6 +1526,11 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 @media (max-width: 560px) {
   .track-row { grid-template-columns: 30px minmax(0, 1fr) 58px 32px; }
   .track-row .col-stars { display: none; }
+  /* The bar survives where the words do not: it is the whole message. The
+     columns around it give up what they can, because the title is what is
+     really being read here and it has an extra column to compete with. */
+  .track-row.episode-row { grid-template-columns: 34px minmax(0, 1fr) 44px 54px 30px; gap: 8px; }
+  .episode-row .ep-left, .episode-row .ep-word { display: none; }
   .player { grid-template-columns: minmax(0, 1fr) auto; }
   .player-right { display: none; }
   .transport .counter { display: none; }

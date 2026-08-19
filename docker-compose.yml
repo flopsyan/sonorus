@@ -12,8 +12,9 @@ services:
     environment:
       SITE_NAME: ${SITE_NAME:-Sonorus}
       NODE_ENV: production
-      # Path inside the container - the host path comes from the volume below.
+      # Paths inside the container - the host paths come from the volumes below.
       MUSIC_DIR: /music
+      PODCAST_DIR: /podcasts
       # auto (scan when the library is empty) | always | never
       SCAN_ON_START: ${SCAN_ON_START:-auto}
       # Optional: bootstrap the first admin account non-interactively. If left
@@ -29,6 +30,9 @@ services:
     volumes:
       # Your music folder, mounted read-only: Sonorus never writes to it.
       - "${MUSIC_DIR:-./music}:/music:ro"
+      # Podcasts, one subfolder per show. Read-only for the same reason, and a
+      # root of its own so a show is never read as an interpret.
+      - "${PODCAST_DIR:-./podcasts}:/podcasts:ro"
       # Persistent data: SQLite database + extracted cover art
       - sonorus-data:/app/data
     healthcheck:

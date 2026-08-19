@@ -60,6 +60,12 @@ export const api = {
   // Year and cover art of a single - an album track takes both from its album.
   updateTrack: (id, patch) => request('PATCH', `/api/tracks/${id}`, patch),
   genres: () => request('GET', '/api/genres'),
+  // Spoken word. The shows, one show with its episodes, and where listening
+  // stopped - the last one keepalive so the final report survives a closing tab.
+  podcasts: () => request('GET', '/api/podcasts'),
+  podcast: (id, sort) => request('GET', `/api/podcasts/${id}${query({ sort })}`),
+  episodeProgress: (id, body, keepalive = false) =>
+    request('PUT', `/api/episodes/${id}/progress`, body, keepalive ? { keepalive: true } : undefined),
   // One id or a comma list of them - several genres are one combined list.
   genre: (ids) => request('GET', `/api/genres/${ids}`),
   starred: (stars) => request('GET', `/api/stars/${stars}`),
