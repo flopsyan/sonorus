@@ -4,7 +4,7 @@ Self-hosted music player for your own audio files. Sonorus scans a music folder
 you mount into the container and turns your folder structure into a browsable
 library: artists, albums, singles, genres, all tracks, and your own playlists.
 
-Podcasts live next to the music in a second folder of their own: one subfolder
+Podcasts and audiobooks live next to the music in roots of their own: one subfolder
 per show, the episodes in it. They are kept out of the music library on purpose -
 a show is not an artist and an episode is not a song - and they carry the one
 thing a song does not need, a remembered position, so a 70-minute episode picks
@@ -185,6 +185,42 @@ podcasts/
   episode would write the same handful of images hundreds of times.
 - Episode ordering aside, nothing here talks to the internet. Like the music,
   everything Sonorus knows about a podcast comes out of the files themselves.
+
+### Audiobooks
+
+Audiobooks are scanned from `AUDIOBOOK_DIR`, a third root. One folder per
+author, one folder per book inside it, and the audio files in a book folder:
+
+```
+audiobooks/
+  Umberto Eco/
+    Der Name der Rose/
+      01 - Kapitel 1.mp3
+      02 - Kapitel 2.mp3
+```
+
+**A book is one thing, and the files it is made of are never shown.** However
+many parts the rip happened to produce - forty, or one - the book page has a
+cover, an author, a length and a single button, and nothing else. There is no
+parts list, and you do not have to merge anything beforehand: the parts are
+queued in order and play straight through.
+
+- **Autoren** - every author, as tiles or as a list, with how many books they
+  have. Behind each one their books, behind each book the book itself.
+- **Weiterhören** - every book you are part-way through, most recent first.
+- The position is kept **across files**: "44 Sek. von 4 Min." counts the parts
+  already heard plus the seconds into the current one, and resuming opens the
+  right file at the right second. Ordering follows the number in front of the
+  file name where there is one, and the file name otherwise.
+- **Als gehört markieren** applies to the whole book, because that is the only
+  unit the interface offers.
+- Like podcasts, books are **not part of the music library** and are neither
+  rated nor added to playlists. The search finds them in a section of its own.
+
+One thing worth knowing: the transition between two parts is not gapless. The
+browser has to open the next file, which costs a fraction of a second - at the
+end of a chapter this is essentially unnoticeable, but it is not the same as
+one continuous file.
 
 ### Playback
 
@@ -380,6 +416,7 @@ All settings are read from the environment (see `.env.example`):
 | --- | --- | --- |
 | `MUSIC_DIR` | `./music` | Host path of your music folder, mounted read-only into the container |
 | `PODCAST_DIR` | `./podcasts` | Host path of your podcast folder (one subfolder per show), mounted read-only. May point at nothing; it must not lie inside `MUSIC_DIR` |
+| `AUDIOBOOK_DIR` | `./audiobooks` | Host path of your audiobook folder (one folder per author, one per book inside it), mounted read-only. Same rules as `PODCAST_DIR` |
 | `PORT` | `3000` | Host port the app is reachable on |
 | `SITE_NAME` | `Sonorus` | Name shown in the header and browser tab |
 | `AUTH_USER` | `admin` | Username for the bootstrapped first admin |

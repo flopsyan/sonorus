@@ -43,7 +43,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 
-import db, { coversDir, musicDir, podcastDir, getMeta, setMeta } from '../db.js';
+import db, { coversDir, musicDir, podcastDir, audiobookDir, getMeta, setMeta } from '../db.js';
 import { normalize, loosen, primaryArtist } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
 import { extractLyrics } from './lyrics.js';
@@ -63,7 +63,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'podcasts-1';
+const SCANNER_VERSION = 'audiobooks-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -91,7 +91,7 @@ const state = {
 };
 
 export function scanState() {
-  return { ...state, musicDir, podcastDir };
+  return { ...state, musicDir, podcastDir, audiobookDir };
 }
 
 export function isScanning() {
@@ -178,6 +178,29 @@ function podcastId(name) {
   const found = selectPodcast.get(clean);
   if (found) return found.id;
   return Number(insertPodcast.run(clean).lastInsertRowid);
+}
+
+const selectAuthor = db.prepare('SELECT id FROM authors WHERE name = ?');
+const insertAuthor = db.prepare('INSERT INTO authors (name) VALUES (?)');
+
+function authorId(name) {
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+  const found = selectAuthor.get(clean);
+  if (found) return found.id;
+  return Number(insertAuthor.run(clean).lastInsertRowid);
+}
+
+const selectBook = db.prepare('SELECT id, cover FROM audiobooks WHERE title = ? AND author_id IS ?');
+const insertBook = db.prepare('INSERT INTO audiobooks (title, author_id) VALUES (?, ?)');
+const setBookCover = db.prepare('UPDATE audiobooks SET cover = ? WHERE id = ?');
+
+function audiobookId(title, aId) {
+  const clean = String(title || '').trim();
+  if (!clean) return null;
+  const found = selectBook.get(clean, aId);
+  if (found) return found.id;
+  return Number(insertBook.run(clean, aId).lastInsertRowid);
 }
 
 // --- Where a file sits in the folder structure -------------------------------
@@ -288,6 +311,28 @@ function describeEpisode(filePath) {
   return { show, title: parsed.title, episodeNo: parsed.episodeNo };
 }
 
+// A file lying loose directly under AUDIOBOOK_DIR has neither an author nor a
+// book folder to name it; these keep it in the library rather than dropping it.
+const UNKNOWN_AUTHOR = 'Unbekannter Autor';
+
+// Where a file sits in audiobooks/<Author>/<Book>/<part>.mp3.
+//
+// The part is the one thing the listener never sees: a book is one thing to
+// them, and the files it is made of only decide the order it plays in. So
+// nothing here tries to make a nice title out of the file name - only the
+// number in front of it matters, and even that only for sorting.
+function describeAudiobookPart(filePath) {
+  const parts = path.relative(audiobookDir, filePath).split(path.sep);
+  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
+
+  const author = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_AUTHOR;
+  // A file directly in the author folder is a book of one part, named after
+  // the file. A book folder is the normal case.
+  const book = parts.length > 2 ? unhide(parts[1].trim()) : base;
+  const m = base.match(/^(\d{1,4})\s*[-._)]?\s+/) || base.match(/^(\d{1,4})$/);
+  return { author, book, title: base, partNo: m ? Number(m[1]) : null };
+}
+
 // --- The release date -------------------------------------------------------
 
 // The most precise date the tags of one file agree on. `date` is the primary
@@ -364,6 +409,17 @@ async function storePodcastCover(id, meta, filePath, date) {
   if (name) setPodcastCover.run(name, date || '', show.id);
 }
 
+// The book keeps the first artwork any of its parts turns up, and a cover.jpg
+// lying in the book folder counts - that is the usual way an audiobook carries
+// its picture. The author has none of their own; the query borrows one of their
+// books' covers, the same way an artist borrows an album's.
+async function storeBookCover(id, meta, filePath) {
+  const book = db.prepare('SELECT id, cover FROM audiobooks WHERE id = ?').get(id);
+  if (!book || book.cover) return;
+  const name = await storeCoverFile(meta, filePath, `book-${book.id}`, true);
+  if (name) setBookCover.run(name, book.id);
+}
+
 // --- Walking the folder -----------------------------------------------------
 
 // Collects every audio file under the music folder. Symlinked directories are
@@ -424,12 +480,14 @@ const insertTrack = db.prepare(`
                       release_date, duration, bitrate, codec, lossless, cover, lyrics,
                       lyrics_sync, missing_at,
                       genres_locked, year_locked, cover_locked, size, mtime, norm_title,
-                      loose_title, norm_artist, podcast_id, episode_no)
+                      loose_title, norm_artist, podcast_id, episode_no,
+                      audiobook_id, part_no)
   VALUES (@path, @title, @artist_id, @track_artist, @album_id, @track_no, @disc_no, @year,
           @release_date, @duration, @bitrate, @codec, @lossless, @cover, @lyrics,
           @lyrics_sync, @missing_at,
           @genres_locked, @year_locked, @cover_locked, @size, @mtime, @norm_title,
-          @loose_title, @norm_artist, @podcast_id, @episode_no)
+          @loose_title, @norm_artist, @podcast_id, @episode_no,
+          @audiobook_id, @part_no)
 `);
 const updateTrack = db.prepare(`
   UPDATE tracks SET title = @title, artist_id = @artist_id, track_artist = @track_artist,
@@ -442,7 +500,8 @@ const updateTrack = db.prepare(`
                     year_locked = @year_locked, cover_locked = @cover_locked,
                     size = @size, mtime = @mtime,
                     norm_title = @norm_title, loose_title = @loose_title, norm_artist = @norm_artist,
-                    podcast_id = @podcast_id, episode_no = @episode_no
+                    podcast_id = @podcast_id, episode_no = @episode_no,
+                    audiobook_id = @audiobook_id, part_no = @part_no
    WHERE id = @id
 `);
 const clearTrackGenres = db.prepare('DELETE FROM track_genres WHERE track_id = ?');
@@ -543,6 +602,8 @@ async function indexFile(filePath, stat, force) {
     // This is music. Every library query asks for exactly that.
     podcast_id: null,
     episode_no: null,
+    audiobook_id: null,
+    part_no: null,
   };
 
   const trackId = writeTrack(
@@ -623,6 +684,8 @@ async function indexEpisode(filePath, stat, force) {
     norm_artist: primaryArtist(place.show),
     podcast_id: pId,
     episode_no: place.episodeNo,
+    audiobook_id: null,
+    part_no: null,
   };
 
   // No genres: "Podcast" is the only tag these files carry, and a genre that
@@ -634,6 +697,70 @@ async function indexEpisode(filePath, stat, force) {
   else state.added += 1;
 
   if (pId) await storePodcastCover(pId, meta, filePath, date);
+}
+
+// One part of one book. Shorter still than an episode: a part has no title
+// worth showing, no date, no genre and nothing anybody edits - it exists only
+// so the book has something to play, in the right order.
+async function indexAudiobookPart(filePath, stat, force) {
+  const existing = selectTrackByPath.get(filePath);
+  if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
+    if (existing.missing_at) markFound.run(existing.id);
+    state.skipped += 1;
+    return;
+  }
+
+  const meta = await parseFile(filePath, { duration: true });
+  const common = meta.common || {};
+  const format = meta.format || {};
+
+  const place = describeAudiobookPart(filePath);
+  const aId = authorId(place.author);
+  const bId = audiobookId(place.book, aId);
+
+  const row = {
+    path: filePath,
+    // The file name, and it is never shown - see describeAudiobookPart. The
+    // book title is what the listener reads, and that comes from the folder.
+    title: place.title,
+    artist_id: null,
+    track_artist: '',
+    album_id: null,
+    track_no: null,
+    disc_no: null,
+    year: null,
+    release_date: '',
+    duration: format.duration || 0,
+    bitrate: format.bitrate ? Math.round(format.bitrate) : null,
+    codec: String(format.codec || format.container || ''),
+    lossless: format.lossless ? 1 : 0,
+    // The book carries the artwork, like a show does for its episodes.
+    cover: '',
+    lyrics: '',
+    lyrics_sync: '',
+    missing_at: '',
+    genres_locked: 0,
+    year_locked: 0,
+    cover_locked: 0,
+    size: stat.size,
+    mtime: Math.floor(stat.mtimeMs),
+    // Searched for under the book and the author, which is what a listener
+    // would type - never under the name of a part file.
+    norm_title: normalize(place.book),
+    loose_title: loosen(place.book),
+    norm_artist: primaryArtist(place.author),
+    podcast_id: null,
+    episode_no: null,
+    audiobook_id: bId,
+    part_no: place.partNo,
+  };
+
+  writeTrack(row, [], existing && existing.id, false);
+
+  if (existing) state.updated += 1;
+  else state.added += 1;
+
+  if (bId) await storeBookCover(bId, meta, filePath);
 }
 
 // --- Pruning ----------------------------------------------------------------
@@ -686,6 +813,10 @@ const prune = db.transaction(() => {
        AND id NOT IN (SELECT genre_id FROM album_genres);
     DELETE FROM podcasts
      WHERE id NOT IN (SELECT podcast_id FROM tracks WHERE podcast_id IS NOT NULL);
+    DELETE FROM audiobooks
+     WHERE id NOT IN (SELECT audiobook_id FROM tracks WHERE audiobook_id IS NOT NULL);
+    DELETE FROM authors
+     WHERE id NOT IN (SELECT author_id FROM audiobooks WHERE author_id IS NOT NULL);
   `);
 });
 
@@ -721,7 +852,9 @@ export async function runScan() {
     // A second root, and it is allowed to be missing: an instance without
     // spoken word simply has nothing there. Only the music folder is required.
     const episodes = fs.existsSync(podcastDir) ? await collectFiles(podcastDir) : [];
-    state.total = files.length + episodes.length;
+    // And a third, on the same terms: missing is fine.
+    const bookParts = fs.existsSync(audiobookDir) ? await collectFiles(audiobookDir) : [];
+    state.total = files.length + episodes.length + bookParts.length;
     state.phase = 'reading';
 
     // After a change to how a file is read, the size/mtime shortcut would keep
@@ -744,6 +877,7 @@ export async function runScan() {
     };
     await readAll(files, indexFile);
     await readAll(episodes, indexEpisode);
+    await readAll(bookParts, indexAudiobookPart);
 
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();

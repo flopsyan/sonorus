@@ -590,6 +590,156 @@ export async function podcast(params, ctx) {
   };
 }
 
+// --- Audiobooks -------------------------------------------------------------
+// A book is one thing. The files it is made of are never drawn - no parts list,
+// no part titles - because that is the whole point of the feature: you open a
+// book and carry on, the way you would with a paper one.
+
+// What a book says about itself in a grid or a list: who wrote it, and how much
+// of it is left. The remaining time is the only number worth the space - the
+// total length says the same thing every time you look.
+function bookSub(b) {
+  if (b.finished) return `${b.author} · gehört`;
+  if (b.started) return `${b.author} · noch ${fmt.durationRack(Math.max(0, b.duration - b.elapsed))}`;
+  return `${b.author} · ${fmt.durationRack(b.duration)}`;
+}
+
+const bookItem = (b) => ({
+  href: `/audiobooks/books/${b.id}`,
+  cover: b.cover,
+  title: b.title,
+  sub: bookSub(b),
+  meta: fmt.durationRack(b.duration),
+});
+
+export async function audiobooks(_params, ctx) {
+  const data = await api.audiobooks();
+  const view = collectionView(ctx, 'audiobooks');
+  const s = data.stats;
+
+  if (!data.authors.length) {
+    return {
+      title: 'Hörbücher',
+      html: `${pageHead('Gesprochenes', 'Hörbücher', '')}
+        ${empty(
+          'Noch keine Hörbücher gefunden',
+          'Sonorus liest den Ordner, den du unter AUDIOBOOK_DIR eingehängt hast - ein Ordner je Autor, darin ein Ordner je Buch, darin die Dateien. Starte einen Scan, sobald dort etwas liegt.',
+          '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>'
+        )}`,
+    };
+  }
+
+  return {
+    title: 'Hörbücher',
+    html: `${pageHead(
+      'Gesprochenes',
+      'Hörbücher',
+      facts([
+        fmt.plural(s.authors, 'Autor', 'Autoren'),
+        fmt.plural(s.books, 'Buch', 'Bücher'),
+        fmt.durationLong(s.duration),
+      ]),
+      viewSwitch('audiobooks', view)
+    )}
+      ${
+        data.continue.length
+          ? `<section class="section">
+              <div class="section-head"><h2>Weiterhören</h2></div>
+              <div class="grid row">${data.continue.map((b) => card(bookItem(b))).join('')}</div>
+            </section>`
+          : ''
+      }
+      <section class="section">
+        <div class="section-head"><h2>Autoren</h2></div>
+        ${collection(
+          view,
+          data.authors.map((a) => ({
+            href: `/audiobooks/authors/${a.id}`,
+            cover: a.cover,
+            title: a.name,
+            sub: fmt.plural(a.bookCount, 'Buch', 'Bücher'),
+            meta: fmt.durationRack(a.duration),
+            round: true,
+          }))
+        )}
+      </section>`,
+  };
+}
+
+export async function bookAuthor(params) {
+  const { author: data } = await api.bookAuthor(params.id);
+  const total = data.books.reduce((sum, b) => sum + b.duration, 0);
+
+  return {
+    title: data.name,
+    html: `${detailHead({
+      label: 'Autor',
+      title: data.name,
+      round: true,
+      artHtml: art(data.cover, data.name),
+      zoom: data.cover,
+      meta: facts([fmt.plural(data.books.length, 'Buch', 'Bücher'), fmt.durationLong(total)]),
+      actions: '',
+    })}
+      <section class="section">
+        <div class="section-head"><h2>Bücher</h2></div>
+        <div class="grid">${data.books.map((b) => card(bookItem(b))).join('')}</div>
+      </section>`,
+  };
+}
+
+export async function audiobook(params) {
+  const { book } = await api.book(params.id);
+  const percent = book.duration ? Math.min(100, Math.round((book.elapsed / book.duration) * 100)) : 0;
+
+  // One button, because there is one thing to do with a book. It says
+  // "Weiterhören" the moment there is something to carry on with.
+  const primary = `<button type="button" class="btn btn-primary" data-play-book="${book.id}"
+        data-resume-index="${book.resume.index}">
+        ${icon('play', 16)} ${book.started && !book.finished ? 'Weiterhören' : 'Abspielen'}
+      </button>`;
+
+  const heard = `<button type="button" class="btn btn-ghost" data-book-heard="${book.id}"
+        data-heard="${book.finished ? '1' : '0'}">
+        ${icon(book.finished ? 'refresh' : 'check-circle', 16)}
+        ${book.finished ? 'Als ungehört markieren' : 'Als gehört markieren'}
+      </button>`;
+
+  return {
+    title: book.title,
+    // The parts, for the transport - never for the page. Nothing below draws
+    // them; they are what the play button hands to the queue.
+    tracks: book.parts,
+    html: `${detailHead({
+      label: 'Hörbuch',
+      title: book.title,
+      artHtml: art(book.cover, book.title),
+      zoom: book.cover,
+      meta: facts([
+        book.authorId
+          ? `<a href="/audiobooks/authors/${book.authorId}" data-link>${esc(book.author)}</a>`
+          : esc(book.author),
+        fmt.durationLong(book.duration),
+        book.finished
+          ? 'gehört'
+          : book.started
+            ? `noch ${fmt.durationLong(book.remaining)}`
+            : '',
+      ]),
+      actions: `${primary}${heard}`,
+    })}
+      ${
+        book.started && !book.finished
+          ? `<div class="book-progress">
+              <div class="book-bar"><span data-progress="${percent}"></span></div>
+              <p class="book-place">${fmt.durationLong(book.elapsed)} von ${fmt.durationLong(book.duration)} · ${percent} %</p>
+             </div>`
+          : ''
+      }`,
+    after: applyProgress,
+  };
+}
+
 // --- Genres -----------------------------------------------------------------
 
 export async function genres(_params, ctx) {
@@ -887,7 +1037,9 @@ export async function search(params) {
   }
   const data = await api.search(q);
   const episodes = data.episodes || [];
-  const nothing = !data.tracks.length && !data.artists.length && !data.albums.length && !episodes.length;
+  const books = data.books || [];
+  const nothing = !data.tracks.length && !data.artists.length && !data.albums.length
+    && !episodes.length && !books.length;
 
   return {
     title: `Suche: ${q}`,
@@ -900,6 +1052,7 @@ export async function search(params) {
       data.albums.length ? fmt.plural(data.albums.length, 'Album', 'Alben') : '',
       data.tracks.length ? fmt.plural(data.tracks.length, 'Song', 'Songs') : '',
       episodes.length ? fmt.plural(episodes.length, 'Folge', 'Folgen') : '',
+      books.length ? fmt.plural(books.length, 'Hörbuch', 'Hörbücher') : '',
     ]))}
       ${
         nothing
@@ -951,6 +1104,12 @@ export async function search(params) {
           episodes.length
             ? `<section class="section"><div class="section-head"><h2>Podcast-Folgen</h2></div>
                 ${episodeList(episodes, { offset: data.tracks.length, showName: true })}</section>`
+            : ''
+        }
+        ${
+          books.length
+            ? `<section class="section"><div class="section-head"><h2>Hörbücher</h2></div>
+                <div class="grid">${books.map((b) => card(bookItem(b))).join('')}</div></section>`
             : ''
         }`
       }`,
@@ -1433,6 +1592,12 @@ function scanBlock(scan, lastScan) {
         <div>
           <div class="setting-label">Podcast-Ordner</div>
           <div class="setting-sub num">${esc(scan.podcastDir || '')}</div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Hörbuch-Ordner</div>
+          <div class="setting-sub num">${esc(scan.audiobookDir || '')}</div>
         </div>
       </div>
       <div class="setting-row">

@@ -156,8 +156,13 @@ export function continueListening(userId, limit = 12) {
     .map(shapeEpisode);
 }
 
-const isEpisode = db.prepare(
-  'SELECT id, duration FROM tracks WHERE id = ? AND podcast_id IS NOT NULL'
+// Anything that remembers where it stopped: a podcast episode and a part of an
+// audiobook alike. The player reports both through the same endpoint, because
+// from its side they are the same thing - a long spoken track you leave and
+// come back to. A song has no row here.
+const isSpoken = db.prepare(
+  `SELECT id, duration FROM tracks
+    WHERE id = ? AND (podcast_id IS NOT NULL OR audiobook_id IS NOT NULL)`
 );
 
 const writeProgress = db.prepare(`
@@ -176,7 +181,7 @@ const writeProgress = db.prepare(`
 // it there. Marking one unplayed by hand clears the position for the same
 // reason - it is the request to start over.
 export function setProgress(userId, trackId, { position, completed } = {}) {
-  const track = isEpisode.get(trackId);
+  const track = isSpoken.get(trackId);
   if (!track) return { error: 'not_found' };
 
   const done = completed === undefined ? false : !!completed;

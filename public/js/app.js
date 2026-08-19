@@ -65,6 +65,9 @@ const ROUTES = [
   [/^\/genres\/(\d+(?:,\d+)*)$/, views.genre, ['ids']],
   [/^\/podcasts$/, views.podcasts],
   [/^\/podcasts\/(\d+)$/, views.podcast, ['id']],
+  [/^\/audiobooks$/, views.audiobooks],
+  [/^\/audiobooks\/authors\/(\d+)$/, views.bookAuthor, ['id']],
+  [/^\/audiobooks\/books\/(\d+)$/, views.audiobook, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -327,8 +330,11 @@ function renderSidebar() {
   // its own library: nothing in it is browsed by interpret, album or genre, and
   // nothing in it is rated. Hörbücher und Hörspiele join it later, which is why
   // the heading is not "Podcasts".
-  const spoken = [{ href: '/podcasts', label: 'Podcasts', iconName: 'mic' }]
-    .map((item) => navItem({ ...item, active: path.startsWith('/podcasts') }))
+  const spoken = [
+    { href: '/podcasts', label: 'Podcasts', iconName: 'mic' },
+    { href: '/audiobooks', label: 'Hörbücher', iconName: 'book' },
+  ]
+    .map((item) => navItem({ ...item, active: path.startsWith(item.href) }))
     .join('');
 
   const starItems = [5, 4, 3, 2, 1]
@@ -1295,6 +1301,36 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
+  // A whole book, from where it was left. The parts are already in view.tracks
+  // (the book view hands them over for exactly this) and the resume index says
+  // which file to open; the part's own resumeAt puts the playhead inside it.
+  const playBook = e.target.closest('[data-play-book]');
+  if (playBook) {
+    e.preventDefault();
+    const at = Number(playBook.dataset.resumeIndex) || 0;
+    if (!view.tracks.length) return toast('Hier gibt es nichts zum Abspielen.', 'err');
+    // A book is read in its order, never shuffled.
+    if (player.state.shuffle) player.setShuffle(false);
+    player.playTracks(view.tracks, at, document.title.split(' · ')[0]);
+    return;
+  }
+
+  const bookHeard = e.target.closest('[data-book-heard]');
+  if (bookHeard) {
+    e.preventDefault();
+    const bookId = Number(bookHeard.dataset.bookHeard);
+    const heard = bookHeard.dataset.heard !== '1';
+    try {
+      await api.setBookHeard(bookId, heard);
+      // Every part of the book changed at once, so the whole page is redrawn -
+      // but the reader has not gone anywhere.
+      render({ keep: true });
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+    return;
+  }
+
   const shuffleAll = e.target.closest('[data-shuffle-all]');
   if (shuffleAll) {
     player.shuffleTracks(view.tracks, document.title.split(' · ')[0]);
@@ -1499,6 +1535,16 @@ function openTrackMenu(x, y, trackId, itemId) {
   // rating, it belongs in no playlist and it has no interpret to visit - what it
   // has instead is a "heard" flag, which is the only thing worth toggling by
   // hand once the player stops setting it for you.
+  // A part of a book is never a row on a page - but it can be reached from the
+  // queue panel, and there the only sensible answer is the book it belongs to.
+  if (track.audiobookId) {
+    contextMenu(x, y, [
+      { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
+      { label: 'Zum Hörbuch', icon: 'book', onSelect: () => navigate(`/audiobooks/books/${track.audiobookId}`) },
+    ]);
+    return;
+  }
+
   if (track.podcastId) {
     const items = track.missing
       ? []
@@ -1566,7 +1612,7 @@ function openTrackMenu(x, y, trackId, itemId) {
 // because that is what the request means: start it over.
 async function markEpisode(track, completed) {
   try {
-    const res = await api.episodeProgress(track.id, { position: 0, completed });
+    const res = await api.saveProgress(track.id, { position: 0, completed });
     player.applyEpisodeProgress(track.id, res.position, res.completed);
     // The list the user is looking at changes under them - the same case the
     // star playlists have, and the same answer: redraw without moving.
@@ -2053,7 +2099,9 @@ function renderPlayer(s) {
     // ellipsis says less than leaving it out.
     // An episode names its show where a song names its interpret, and the show
     // is a page like an artist is.
-    el.nowArtist.innerHTML = track.podcastId
+    el.nowArtist.innerHTML = track.audiobookId
+      ? `<a href="/audiobooks/books/${track.audiobookId}" data-link>${esc(track.artist)}</a>`
+      : track.podcastId
       ? `<a href="/podcasts/${track.podcastId}" data-link>${esc(track.artist)}</a>`
       : track.artistId
         ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>${
@@ -2064,8 +2112,9 @@ function renderPlayer(s) {
         : esc(track.artist);
     // Spoken word is neither rated nor put into playlists, so the two controls
     // that offer exactly that have nothing to say about an episode.
-    el.nowStars.innerHTML = track.podcastId ? '' : starButtons(track.stars, track.id);
-    el.nowAdd.hidden = !!track.podcastId;
+    const spoken = !!(track.podcastId || track.audiobookId);
+    el.nowStars.innerHTML = spoken ? '' : starButtons(track.stars, track.id);
+    el.nowAdd.hidden = spoken;
   } else {
     el.nowArt.innerHTML = '';
     el.nowTitle.textContent = 'Nichts ausgewählt';

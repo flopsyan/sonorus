@@ -206,9 +206,9 @@ export const addTracks = db.transaction((userId, id, trackIds) => {
 
   let pos = nextPosition.get(id).pos;
   let added = 0;
-  // Songs only. A podcast episode belongs to its show, not to a playlist, and
+  // Songs only. Spoken word belongs to its show or its book, not to a playlist, and
   // an id that names one is skipped like any other id that leads nowhere.
-  const exists = db.prepare('SELECT id FROM tracks WHERE id = ? AND podcast_id IS NULL');
+  const exists = db.prepare('SELECT id FROM tracks WHERE id = ? AND podcast_id IS NULL AND audiobook_id IS NULL');
   for (const raw of trackIds) {
     const trackId = Number(raw);
     if (!Number.isInteger(trackId) || !exists.get(trackId)) continue;

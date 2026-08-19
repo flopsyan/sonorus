@@ -24,6 +24,12 @@ const musicDir = path.resolve(process.env.MUSIC_DIR || path.join(projectRoot, 'm
 // is fine - an instance without podcasts simply has nothing to scan there.
 const podcastDir = path.resolve(process.env.PODCAST_DIR || path.join(projectRoot, 'podcasts'));
 
+// Audiobooks, a third root. Deeper than the podcasts by one level, because a
+// book has an author and a show does not: audiobooks/<Author>/<Book>/*.mp3.
+// The files inside a book folder are its parts and are never shown - a book is
+// one thing to the listener, and the parts only decide the order it plays in.
+const audiobookDir = path.resolve(process.env.AUDIOBOOK_DIR || path.join(projectRoot, 'audiobooks'));
+
 fs.mkdirSync(coversDir, { recursive: true });
 
 const dbPath = path.join(dataDir, 'sonorus.sqlite');
@@ -111,6 +117,24 @@ db.exec(`
     cover_date TEXT NOT NULL DEFAULT ''
   );
 
+  -- Who wrote the book. Deliberately not the artists table: an author is not an
+  -- interpret and has no business in the music library's Interpreten list.
+  CREATE TABLE IF NOT EXISTS authors (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name  TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    cover TEXT NOT NULL DEFAULT ''
+  );
+
+  -- One book: one folder under an author. Its files are parts, never shown.
+  CREATE TABLE IF NOT EXISTS audiobooks (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    author_id INTEGER REFERENCES authors(id) ON DELETE SET NULL,
+    title     TEXT NOT NULL,
+    cover     TEXT NOT NULL DEFAULT '',
+    UNIQUE (title, author_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_audiobooks_author ON audiobooks(author_id);
+
   CREATE TABLE IF NOT EXISTS tracks (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     path        TEXT NOT NULL UNIQUE,
@@ -158,6 +182,10 @@ db.exec(`
     -- The number in front of the file name ("#100 ..."). NULL for a show that
     -- does not number its episodes, which is what the date is for.
     episode_no  INTEGER,
+    -- The book this row is a part of, and where the part sits in it. Both NULL
+    -- for everything that is not an audiobook.
+    audiobook_id INTEGER REFERENCES audiobooks(id) ON DELETE SET NULL,
+    part_no     INTEGER,
     added_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist_id);
@@ -323,12 +351,16 @@ addColumn('albums', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
 // migration. A foreign key may be added this way because the default is NULL.
 addColumn('tracks', 'podcast_id', 'INTEGER REFERENCES podcasts(id) ON DELETE SET NULL');
 addColumn('tracks', 'episode_no', 'INTEGER');
+// The audiobook side of the same idea, added 2026-08-19.
+addColumn('tracks', 'audiobook_id', 'INTEGER REFERENCES audiobooks(id) ON DELETE SET NULL');
+addColumn('tracks', 'part_no', 'INTEGER');
 // The show a cover was taken from, added after the podcasts table itself.
 addColumn('podcasts', 'cover_date', "TEXT NOT NULL DEFAULT ''");
 
 // After the column exists, never before: on an existing database the CREATE
 // TABLE block above is a no-op and podcast_id only arrives here.
 db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_podcast ON tracks(podcast_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_audiobook ON tracks(audiobook_id)');
 
 // --- One-off data migrations ------------------------------------------------
 // Unlike the columns above, these rewrite rows, so they must not run twice. The
@@ -398,5 +430,5 @@ export function setMeta(key, value) {
   ).run(key, String(value));
 }
 
-export { dbPath, dataDir, coversDir, musicDir, podcastDir };
+export { dbPath, dataDir, coversDir, musicDir, podcastDir, audiobookDir };
 export default db;

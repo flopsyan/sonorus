@@ -38,6 +38,16 @@ import {
   podcastStats,
 } from '../models/podcasts.js';
 import {
+  listAuthors,
+  getAuthor,
+  listBooks,
+  getBook,
+  continueBooks,
+  setBookHeard,
+  searchBooks,
+  audiobookStats,
+} from '../models/audiobooks.js';
+import {
   playlistTree,
   listPlaylists,
   getPlaylist,
@@ -272,15 +282,49 @@ router.get('/podcasts/:id', (req, res) => {
   res.json({ ok: true, podcast });
 });
 
-// Where listening stopped. Sent by the player while an episode runs, and by the
-// two menu entries that mark one played or unplayed by hand.
-router.put('/episodes/:id/progress', (req, res) => {
+// Where listening stopped, for anything spoken: a podcast episode or a part of
+// an audiobook. One endpoint, because the player does not care which it is -
+// it reports a position on a long track it may be leaving.
+router.put('/progress/:id', (req, res) => {
   const result = setProgress(req.user.id, id(req.params.id), {
     position: req.body.position,
     completed: req.body.completed,
   });
   if (result.error) return fail(res, result.error, 404);
   res.json(result);
+});
+
+// --- Audiobooks -------------------------------------------------------------
+
+// A book is one thing: the parts it is made of never leave this file except
+// inside `getBook`, where the player needs them to know what to queue.
+router.get('/audiobooks', (req, res) => {
+  res.json({
+    ok: true,
+    authors: listAuthors(),
+    continue: continueBooks(req.user.id, 12),
+    stats: audiobookStats(req.user.id),
+  });
+});
+
+router.get('/audiobooks/authors/:id', (req, res) => {
+  const author = getAuthor(id(req.params.id), req.user.id);
+  if (!author) return fail(res, 'not_found', 404);
+  res.json({ ok: true, author });
+});
+
+router.get('/audiobooks/books/:id', (req, res) => {
+  const book = getBook(id(req.params.id), req.user.id);
+  if (!book) return fail(res, 'not_found', 404);
+  res.json({ ok: true, book });
+});
+
+// Heard or not heard, for the whole book at once - there is no smaller unit
+// the listener is shown.
+router.put('/audiobooks/books/:id/heard', (req, res) => {
+  const result = setBookHeard(req.user.id, id(req.params.id), !!req.body.heard);
+  if (result.error) return fail(res, result.error, 404);
+  res.json({ ...result, book: getBook(id(req.params.id), req.user.id) });
 });
 
 // 0 is the list of everything that has no rating yet. Several ratings can be
@@ -325,6 +369,7 @@ router.get('/search', (req, res) => {
     q,
     ...searchLibrary({ userId: req.user.id, q, limit: 100 }),
     episodes: searchEpisodes({ userId: req.user.id, q, limit: 40 }),
+    books: searchBooks({ userId: req.user.id, q, limit: 20 }),
   });
 });
 

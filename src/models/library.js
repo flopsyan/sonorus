@@ -14,7 +14,7 @@ import { spreadByArtist } from '../../public/js/shuffle.js';
 // on a compilation ("Various") carries its own interpret, read off the file
 // name by the scanner, and then that one is the answer. Empty everywhere else,
 // so the expression costs nothing for an ordinary library.
-const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.name)";
+const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.name, au.name)";
 
 // The same question without the podcast fallback, for the one query that brings
 // its own FROM and never joins the podcasts table. It selects music only, so
@@ -32,9 +32,11 @@ export const TRACK_FIELDS = `
   t.artist_id AS artistId, ${TRACK_ARTIST} AS artist, t.track_artist AS trackArtist,
   t.album_id AS albumId, al.title AS album,
   t.podcast_id AS podcastId, pc.name AS podcast, t.episode_no AS episodeNo,
+  t.audiobook_id AS audiobookId, ab.title AS book, au.id AS authorId, au.name AS author,
+  t.part_no AS partNo,
   -- An episode has no cover of its own: the show carries one and every episode
   -- of it shows that, see storePodcastCover in the scanner.
-  COALESCE(NULLIF(al.cover, ''), NULLIF(t.cover, ''), pc.cover) AS cover,
+  COALESCE(NULLIF(al.cover, ''), NULLIF(t.cover, ''), pc.cover, ab.cover) AS cover,
   (SELECT group_concat(g.name, ', ')
      FROM track_genres tg JOIN genres g ON g.id = tg.genre_id
     WHERE tg.track_id = t.id) AS genres,
@@ -51,6 +53,8 @@ export const TRACK_FROM = `
   LEFT JOIN artists ar ON ar.id = t.artist_id
   LEFT JOIN albums  al ON al.id = t.album_id
   LEFT JOIN podcasts pc ON pc.id = t.podcast_id
+  LEFT JOIN audiobooks ab ON ab.id = t.audiobook_id
+  LEFT JOIN authors   au ON au.id = ab.author_id
 `;
 
 // Tracks whose file is gone are kept for their ratings and playlists, but they
@@ -69,9 +73,10 @@ export const PRESENT = "t.missing_at = ''";
 // The only ones that deliberately do not are those that look a track up by id -
 // streaming, the queue after a reload - where the caller already knows what it
 // asked for.
-export const MUSIC = 't.podcast_id IS NULL';
-// The other half of the same rule, for the podcast model.
+export const MUSIC = 't.podcast_id IS NULL AND t.audiobook_id IS NULL';
+// The other halves of the same rule, for the two spoken-word models.
 export const EPISODE = 't.podcast_id IS NOT NULL';
+export const BOOK_PART = 't.audiobook_id IS NOT NULL';
 const PRESENT_MUSIC = `${PRESENT} AND ${MUSIC}`;
 
 // What "sort by year" actually sorts by: the release date, as exactly as it is
@@ -127,6 +132,15 @@ export function shapeTrack(row) {
     podcastId: row.podcastId || null,
     podcast: row.podcast || '',
     episodeNo: row.episodeNo ?? null,
+    // A book part. The file name is never shown: `title` above is overridden
+    // with the book below, because to the listener the book is the one thing
+    // there is - the parts only decide the order it plays in.
+    audiobookId: row.audiobookId || null,
+    book: row.book || '',
+    author: row.author || '',
+    bookAuthorId: row.authorId || null,
+    partNo: row.partNo ?? null,
+    ...(row.audiobookId ? { title: row.book || row.title } : {}),
     cover: row.cover ? `/covers/${row.cover}` : null,
     trackNo: row.trackNo,
     discNo: row.discNo,

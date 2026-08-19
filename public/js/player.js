@@ -250,13 +250,28 @@ function resetListening() {
 // playback leaves the episode: pausing, skipping, closing the tab.
 
 const PROGRESS_EVERY = 15; // seconds of playback between two reports
-// Close enough to the end to call it heard. Without this an episode stopped
-// during the outro stays half-finished forever and keeps offering itself.
+// Close enough to the end to call it heard. Without it a track stopped during
+// the outro stays half-finished forever and keeps offering itself.
+//
+// Proportional, not a flat 30 s, and that difference is load-bearing: an
+// audiobook is cut into parts of whatever length the ripper chose, and against
+// a 40-second part a flat half minute would call everything past second ten
+// "finished". Five percent is half a minute of a ten-minute part and two
+// seconds of a forty-second one.
 const NEARLY_DONE = 30;
+const nearlyDone = (duration) => Math.min(NEARLY_DONE, (duration || 0) * 0.05);
+
+// Spoken word is anything that remembers where it stopped: a podcast episode
+// and a part of an audiobook alike. A song remembers nothing.
+const isSpoken = (track) => !!(track && (track.podcastId || track.audiobookId));
 
 let progressTrack = null;
 let progressSeconds = 0;
 let progressSent = 0;
+// Set once this track has been reported as heard, so the tail of it does not
+// send the same thing every second. Cleared the moment the playhead moves back
+// out of the tail - seeking back into a part is how you un-finish it.
+let progressComplete = false;
 
 // Keeps every copy of the episode in the queue in step, so the player bar and
 // the list behind it never disagree about how far it got.
@@ -271,14 +286,15 @@ export function applyEpisodeProgress(trackId, position, completed) {
 }
 
 function armProgress(track, at) {
-  progressTrack = track && track.podcastId ? track : null;
+  progressTrack = isSpoken(track) ? track : null;
   progressSeconds = at;
   progressSent = Math.floor(at);
+  progressComplete = false;
 }
 
 function sendProgress(track, position, completed, keepalive) {
   applyEpisodeProgress(track.id, position, completed);
-  api.episodeProgress(track.id, { position, completed }, keepalive).catch(() => {});
+  api.saveProgress(track.id, { position, completed }, keepalive).catch(() => {});
 }
 
 // Marks the episode finished. Called when it runs out, before the queue moves
@@ -295,16 +311,22 @@ function flushProgress(keepalive = false) {
   const track = progressTrack;
   if (!track) return;
   const at = Math.floor(progressSeconds);
-  if (at <= 0 || at === progressSent) return;
-  progressSent = at;
-  // Stopped in the outro: that counts as heard, and saying so here means the
-  // rule holds however playback left the episode.
   const total = track.duration || 0;
-  if (total && total - at <= NEARLY_DONE) {
-    progressTrack = null;
+  // Stopped in the tail: that counts as heard, and saying so here means the
+  // rule holds however playback left the track.
+  if (total > 0 && total - at <= nearlyDone(total)) {
+    // Already said so - the rest of the tail has nothing to add.
+    if (progressComplete) return;
+    progressComplete = true;
+    progressSent = at;
     sendProgress(track, 0, true, keepalive);
     return;
   }
+
+  // Back out of the tail: this is being listened to again, not finished.
+  progressComplete = false;
+  if (at <= 0 || at === progressSent) return;
+  progressSent = at;
   sendProgress(track, at, false, keepalive);
 }
 
@@ -316,7 +338,7 @@ function load(track, autoplay, startAt = 0) {
   resetListening();
   // An episode picks up where it was left. An explicit startAt wins: it comes
   // from the queue restore and describes this very session.
-  const at = startAt || (track.podcastId ? track.resumeAt || 0 : 0);
+  const at = startAt || (isSpoken(track) ? track.resumeAt || 0 : 0);
   armProgress(track, at);
   audio.src = `/api/stream/${track.id}`;
   if (at > 0) {
@@ -835,7 +857,12 @@ audio.addEventListener('timeupdate', () => {
   // question is "where do I carry on", not "how much did I hear".
   if (progressTrack) {
     progressSeconds = audio.currentTime;
-    if (Math.floor(progressSeconds) - progressSent >= PROGRESS_EVERY) flushProgress();
+    const moved = Math.abs(Math.floor(progressSeconds) - progressSent);
+    // Ordinary playback reports every PROGRESS_EVERY seconds. A jump backwards
+    // out of the tail is reported at once, which is what lets seeking back into
+    // a part undo the "heard" it had just earned.
+    if (moved >= PROGRESS_EVERY
+      || (progressComplete && Math.floor(progressSeconds) < progressSent)) flushProgress();
   }
 
   // Count a play once the track has run long enough to mean something.

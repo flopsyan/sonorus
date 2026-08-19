@@ -98,6 +98,10 @@ const APP_ROUTES = [
   // Spoken word: the shows, and one show with its episodes
   '/podcasts',
   '/podcasts/:id',
+  // Audiobooks: the authors, one author with their books, one book
+  '/audiobooks',
+  '/audiobooks/authors/:id',
+  '/audiobooks/books/:id',
   '/playlists/:id',
   '/stars/:stars',
   '/search',

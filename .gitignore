@@ -9,8 +9,11 @@ data/
 *.db-shm
 *.db-wal
 
-# Local music folder when running without Docker
+# Local music / spoken-word folders when running without Docker. Docker also
+# creates the two defaults next to the compose file when nothing is mounted.
 music/
+podcasts/
+audiobooks/
 
 # Environment variables
 .env

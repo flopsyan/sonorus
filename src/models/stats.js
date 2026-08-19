@@ -30,7 +30,7 @@ const SECONDS = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration
 // chart about podcasts.
 const FROM = `
   FROM plays p
-  JOIN tracks t ON t.id = p.track_id AND t.podcast_id IS NULL
+  JOIN tracks t ON t.id = p.track_id AND t.podcast_id IS NULL AND t.audiobook_id IS NULL
 `;
 
 // played_at is UTC. The day a play belongs to is a question about the listener,

@@ -64,8 +64,15 @@ export const api = {
   // stopped - the last one keepalive so the final report survives a closing tab.
   podcasts: () => request('GET', '/api/podcasts'),
   podcast: (id, sort) => request('GET', `/api/podcasts/${id}${query({ sort })}`),
-  episodeProgress: (id, body, keepalive = false) =>
-    request('PUT', `/api/episodes/${id}/progress`, body, keepalive ? { keepalive: true } : undefined),
+  // Hörbücher. Ein Buch ist eine Einheit - die Teile kommen nur mit, damit der
+  // Player weiß, was er einreihen soll.
+  audiobooks: () => request('GET', '/api/audiobooks'),
+  bookAuthor: (id) => request('GET', `/api/audiobooks/authors/${id}`),
+  book: (id) => request('GET', `/api/audiobooks/books/${id}`),
+  setBookHeard: (id, heard) => request('PUT', `/api/audiobooks/books/${id}/heard`, { heard }),
+  // Gilt fuer Podcast-Folgen und Hoerbuch-Teile gleichermassen.
+  saveProgress: (id, body, keepalive = false) =>
+    request('PUT', `/api/progress/${id}`, body, keepalive ? { keepalive: true } : undefined),
   // One id or a comma list of them - several genres are one combined list.
   genre: (ids) => request('GET', `/api/genres/${ids}`),
   starred: (stars) => request('GET', `/api/stars/${stars}`),

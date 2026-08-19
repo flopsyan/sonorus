@@ -786,6 +786,18 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .ep-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
 .ep-left { font-variant-numeric: tabular-nums; color: var(--text-faint); }
 
+/* How far into a book the listener is. One bar for the whole thing, because a
+   book is one thing - the files it is made of are never drawn. */
+.book-progress { max-width: 520px; margin: 0 0 18px; }
+.book-bar {
+  height: 5px; border-radius: 999px; background: var(--surface-3); overflow: hidden;
+}
+.book-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.book-place {
+  margin: 7px 0 0; font-size: 0.82rem; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 /* The show description and the line that says what is half-finished. Both are
    prose under the head, so they read at the width prose reads at. */
 .podcast-note {
