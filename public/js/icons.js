@@ -31,6 +31,10 @@ const STROKE = {
   // The lyrics: a sheet with lines of unequal length, the way a lyric is set.
   lyrics: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  // Moving the text against the song: the line that is moved, and the two
+  // directions it can go.
+  timing: '<path d="M12 4v16"/><path d="m7 9-3 3 3 3"/><path d="m17 9 3 3-3 3"/>',
   'plus-circle': '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="m6 7 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M9 7V4h6v3"/>',
   x: '<path d="m6 6 12 12M18 6 6 18"/>',

@@ -11,6 +11,7 @@ import {
   countTracks,
   getTrack,
   getLyrics,
+  setLyricsOffset,
   trackPath,
   tracksByIds,
   listArtists,
@@ -184,6 +185,17 @@ router.get('/tracks/:id/lyrics', (req, res) => {
   const lyrics = getLyrics(id(req.params.id));
   if (!lyrics) return fail(res, 'not_found', 404);
   res.json({ ok: true, lyrics });
+});
+
+// How far this song's text sits against the music. Not part of the PATCH above:
+// that one is about what the file failed to say, this is about the file being
+// wrong about *when* - and it is written from a slider that moves while the
+// song plays, so it wants an endpoint that does one thing and answers with the
+// value that was really stored.
+router.put('/tracks/:id/lyrics-offset', (req, res) => {
+  const offset = setLyricsOffset(id(req.params.id), req.body.offset);
+  if (offset === null) return fail(res, 'not_found', 404);
+  res.json({ ok: true, offset });
 });
 
 // A track can be edited where it has nobody to take the value from: release

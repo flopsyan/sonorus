@@ -332,6 +332,12 @@ addColumn('tracks', 'track_artist', "TEXT NOT NULL DEFAULT ''");
 // until a scan runs, because only the file knows them.
 addColumn('tracks', 'lyrics', "TEXT NOT NULL DEFAULT ''");
 addColumn('tracks', 'lyrics_sync', "TEXT NOT NULL DEFAULT ''");
+// How far the timed text has to be pushed against the song, in seconds, because
+// the file's own stamps are early or late. A fact about the file rather than
+// about a listener, so it sits on the track and not per account - the library is
+// shared, and a lyric that runs a second late runs a second late for everybody.
+// Positive means the words appear later. No scan writes it, so it needs no lock.
+addColumn('tracks', 'lyrics_offset', 'REAL NOT NULL DEFAULT 0');
 // The full release date next to the year. Filled by the next scan, which
 // re-reads every file after the scanner version bump.
 addColumn('albums', 'release_date', "TEXT NOT NULL DEFAULT ''");

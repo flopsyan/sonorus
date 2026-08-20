@@ -1190,6 +1190,56 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    Lyrics
    ========================================================================== */
 
+/* Moving the text against the song. It floats over the bottom right of whichever
+   text view is up - the side panel or the big view's Songtext tab - and has no
+   backdrop, because the lines behind it have to keep running while the number
+   moves. Above the panel it sits on (z 46) and clear of the transport. */
+.lyric-offset {
+  position: fixed; z-index: 47;
+  right: 16px; bottom: calc(var(--player-h) + 16px);
+  width: 292px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 12px 14px 11px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.lyric-offset[hidden] { display: none; }
+.lyric-offset-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.lyric-offset-set { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.lyric-offset-set .icon-btn {
+  width: 32px; height: 32px; flex: none;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+@media (hover: hover) {
+  .lyric-offset-set .icon-btn:hover { color: var(--accent); border-color: var(--accent-line); }
+}
+/* The number is the thing being read while the eye is really on the text, so it
+   is big, monospace and never moves - tabular figures and the minus sign U+2212,
+   which is as wide as a digit where a hyphen is not. */
+.lyric-offset-value {
+  flex: 1; text-align: center;
+  font-family: var(--font-mono); font-size: 1.15rem; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.lyric-offset-range { width: 100%; margin: 0; accent-color: var(--accent); }
+.lyric-offset-foot {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 0.76rem; color: var(--text-faint);
+}
+.lyric-offset-hint { flex: none; }
+.lyric-offset-reset {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--text-dim); font-size: 0.76rem; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+@media (hover: hover) {
+  .lyric-offset-reset:hover { color: var(--text); }
+}
+
 /* The panel is the queue panel: same place, same slide, same way out. It is the
    same kind of thing - a side panel about the track that is playing - and the
    two are mutually exclusive, so they can share the geometry outright. */
@@ -1296,6 +1346,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   .bigview-tab:hover { color: var(--text); }
 }
 .bigview-head .icon-btn { margin-left: auto; }
+/* Two buttons on the right of the head: only the first one needs pushing over. */
+.bigview-head .offset-toggle + .icon-btn { margin-left: 0; }
 
 .bigview-body { flex: 1; min-height: 0; display: flex; }
 .bigview-pane { flex: 1; min-height: 0; min-width: 0; }
@@ -1511,6 +1563,7 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
     transform: translateX(-100%); transition: transform 0.22s var(--sheet-ease);
     padding-top: var(--safe-top);
   }
+  .lyric-offset { left: 12px; right: 12px; width: auto; }
   .sidebar.open { transform: translateX(0); }
   .sidebar.open ~ .sidebar-backdrop { display: block; }
   .main { grid-column: 1; }

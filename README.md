@@ -238,9 +238,17 @@ one continuous file.
 - **Songtext** - the lyrics a file carries, in a panel next to the queue. When
   the file also says when each line is sung, the line being sung is highlighted
   and the panel scrolls along; it stops following for a few seconds after you
-  scroll somewhere else in it. Without timestamps the whole text simply stands
-  there. Nothing is fetched from anywhere - a file whose tags carry no lyrics
-  has none here.
+  scroll somewhere else in it. A line appears a second before it is sung, the
+  way a karaoke lead-in does, and clicking one jumps the song there. Without
+  timestamps the whole text simply stands there. Nothing is fetched from
+  anywhere - a file whose tags carry no lyrics has none here.
+- **Versatz** - files disagree about where a line belongs, so every song can be
+  corrected by itself, in tenths of a second and in both directions. The control
+  is an overlay over the running text rather than a dialog: nothing stops while
+  it is open, which is the only way to see whether the number is right. Zero is
+  the second of lead-in above, not the file's own stamp. The correction is saved
+  on the server per song, so it holds for every account, every client and every
+  next time.
 - A live level meter in the transport and a **big view** for what is playing,
   opened by clicking the title in the bar (or with `V`). It takes the content
   area and leaves the sidebar and the topbar standing, and carries three tabs:

@@ -51,6 +51,7 @@ export const api = {
 
   tracks: (params) => request('GET', `/api/tracks${query(params)}`),
   tracksByIds: (ids) => request('POST', '/api/tracks/by-ids', { ids }),
+  saveLyricsOffset: (id, offset) => request('PUT', `/api/tracks/${id}/lyrics-offset`, { offset }),
   artists: (params) => request('GET', `/api/artists${query(params)}`),
   artist: (id) => request('GET', `/api/artists/${id}`),
   updateArtist: (id, patch) => request('PATCH', `/api/artists/${id}`, patch),

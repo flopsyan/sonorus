@@ -66,6 +66,11 @@
           <button type="button" class="bigview-tab" role="tab" data-bigtab="lyrics">Songtext</button>
           <button type="button" class="bigview-tab" role="tab" data-bigtab="visual">Visualisierung</button>
         </div>
+        <!-- Only on the Songtext tab, and only for a text that is timed at
+             all: there is nothing to shift in a lyric that carries no seconds. -->
+        <button type="button" class="icon-btn offset-toggle" id="bigview-offset" hidden
+                aria-label="Songtext versetzen" title="Songtext versetzen"
+                aria-pressed="false" data-icon="timing" data-icon-size="18"></button>
         <button type="button" class="icon-btn" id="bigview-close" aria-label="Vollbild schließen"
                 title="Vollbild schließen" data-icon="minimize" data-icon-size="18"></button>
       </div>
@@ -176,10 +181,44 @@
         <span class="rack-label">Songtext</span>
         <h2 id="lyrics-title">Nichts ausgewählt</h2>
       </div>
+      <button type="button" class="icon-btn offset-toggle" id="lyrics-offset-toggle" hidden
+              aria-label="Songtext versetzen" title="Songtext versetzen"
+              aria-pressed="false" data-icon="timing"></button>
       <button type="button" class="icon-btn" id="lyrics-close" aria-label="Schließen" data-icon="x"></button>
     </div>
     <div class="lyrics-body" id="lyrics-body"></div>
   </aside>
+
+  <!-- Moving a song's text against the song. An overlay and deliberately not a
+       dialog: it has no backdrop and it takes nothing away, so the lines keep
+       running behind it while the number changes - which is the only way to
+       tell whether the number is right. Saved per song on the server, so the
+       correction holds on every client and every next time. -->
+  <div class="lyric-offset" id="lyric-offset" hidden role="group" aria-label="Songtext versetzen">
+    <div class="lyric-offset-head">
+      <span class="rack-label">Versatz</span>
+      <button type="button" class="icon-btn icon-btn-sm" id="lyric-offset-close"
+              aria-label="Schließen" data-icon="x" data-icon-size="14"></button>
+    </div>
+    <div class="lyric-offset-set">
+      <button type="button" class="icon-btn" id="lyric-offset-earlier"
+              aria-label="Eine Zehntelsekunde früher" title="Früher"
+              data-icon="minus" data-icon-size="16"></button>
+      <span class="lyric-offset-value num" id="lyric-offset-value">0,0 s</span>
+      <button type="button" class="icon-btn" id="lyric-offset-later"
+              aria-label="Eine Zehntelsekunde später" title="Später"
+              data-icon="plus" data-icon-size="16"></button>
+    </div>
+    <input type="range" class="lyric-offset-range" id="lyric-offset-range"
+           min="-5" max="5" step="0.1" value="0" aria-label="Versatz in Sekunden" />
+    <!-- The two ends of the slider named where they are, with the way back to
+         nothing between them. -->
+    <div class="lyric-offset-foot">
+      <span class="lyric-offset-hint">früher</span>
+      <button type="button" class="lyric-offset-reset" id="lyric-offset-reset">Zurücksetzen</button>
+      <span class="lyric-offset-hint">später</span>
+    </div>
+  </div>
 </div>
 
 <audio id="audio" preload="metadata"></audio>

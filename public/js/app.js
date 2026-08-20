@@ -2287,9 +2287,25 @@ el.queueList.addEventListener('drop', (e) => {
 // answers that too: `lines` comes back with a second per entry when it knows
 // when each one is sung, and empty when it only knows the words.
 
+// How far ahead of the singing a line is shown. A karaoke lead-in: by the time
+// the word is sung you have already read it, which is the whole point of a
+// lyric running along. The Android client has had this for a second since
+// 2026-08-06 and the web app did not, so the same song ran differently on the
+// phone and on the desktop - one product, one number.
+//
+// The trade, which is real: lines written closer together than a second show
+// the next one while the current is still being sung.
+const LYRICS_LEAD = 1;
+
 // What is known about the track that is playing. `lines` empty with `text` set
 // means "there, but not timed"; `loading` is the gap between asking and knowing.
-const lyricState = { trackId: null, text: '', lines: [], loading: false, at: -1 };
+//
+// `offset` is this song's own correction, in seconds and positive for later,
+// stored on the server: files disagree wildly about where a line belongs, and
+// no single lead can be right for all of them. It moves the text *against*
+// LYRICS_LEAD, so an offset of zero is the lead and nothing more - which is why
+// the control shows 0,0 rather than 1,0.
+const lyricState = { trackId: null, text: '', lines: [], loading: false, at: -1, offset: 0 };
 
 // Counts the fetches, so a slow answer for the previous track cannot land on
 // top of the current one - the same guard the router uses.
@@ -2321,7 +2337,7 @@ function loadLyrics(track) {
   const id = track ? track.id : null;
   if (lyricState.trackId === id) return;
 
-  Object.assign(lyricState, { trackId: id, text: '', lines: [], loading: false, at: -1 });
+  Object.assign(lyricState, { trackId: id, text: '', lines: [], loading: false, at: -1, offset: 0 });
   renderLyrics();
   if (!track || !track.hasLyrics) return;
 
@@ -2332,7 +2348,12 @@ function loadLyrics(track) {
     .lyrics(track.id)
     .then(({ lyrics }) => {
       if (seq !== lyricSeq) return;
-      Object.assign(lyricState, { text: lyrics.text, lines: lyrics.lines || [], loading: false });
+      Object.assign(lyricState, {
+        text: lyrics.text,
+        lines: lyrics.lines || [],
+        offset: Number(lyrics.offset) || 0,
+        loading: false,
+      });
       renderLyrics();
       paintLyricPosition(player.state.currentTime, true);
     })
@@ -2397,17 +2418,27 @@ function renderLyrics() {
   }
   lyricState.at = -1;
   paintLyricPosition(player.state.currentTime, true);
+  renderOffsetToggles();
+}
+
+// The playhead as the text sees it: a second ahead of the music, less whatever
+// this song was corrected by. One function, so the line under the artwork, the
+// side panel and the big view can never disagree about which line is current -
+// and so the seek below can invert exactly this and nothing else.
+function lyricTime(time) {
+  return time + LYRICS_LEAD - lyricState.offset;
 }
 
 // The line being sung at `time`, or -1 before the first one. The list is sorted,
 // so the walk stops at the first line that is still ahead.
 function lineAt(time) {
-  let at = -1;
+  const at = lyricTime(time);
+  let found = -1;
   for (let i = 0; i < lyricState.lines.length; i += 1) {
-    if (lyricState.lines[i].time > time) break;
-    at = i;
+    if (lyricState.lines[i].time > at) break;
+    found = i;
   }
-  return at;
+  return found;
 }
 
 // Called on every timeupdate, so it does nothing at all unless the line
@@ -2467,7 +2498,15 @@ lyricBoxes().forEach((box) => {
   box.addEventListener('click', (event) => {
     const line = event.target.closest('.lyric-line[data-at]');
     if (!line) return;
-    const at = Number(line.dataset.at) + SEEK_NUDGE;
+    // The playhead that puts *this* line on, which is not its own timestamp:
+    // the text runs LYRICS_LEAD ahead, so landing on the stamp itself hands the
+    // light straight to the next line on a densely sung song - you tap a line
+    // and watch it go dark. This is lyricTime() read backwards, clamped at the
+    // start of the song.
+    const at = Math.max(
+      0,
+      Number(line.dataset.at) - LYRICS_LEAD + lyricState.offset + SEEK_NUDGE
+    );
     player.seekToTime(at);
     // Naming the line to play is the reader saying where they want to be, so
     // the reading pause their scrolling earned is over: the text centres on the
@@ -2485,6 +2524,7 @@ function openLyrics() {
   el.lyricsBtn.setAttribute('aria-pressed', 'true');
   scrolledAt = 0;
   paintLyricPosition(player.state.currentTime, true);
+  renderOffsetToggles();
   pushOverlay('lyrics', closeLyrics);
 }
 
@@ -2493,6 +2533,7 @@ function closeLyrics() {
   el.lyrics.classList.remove('open');
   el.lyricsBtn.setAttribute('aria-pressed', 'false');
   forgetOverlay('lyrics');
+  renderOffsetToggles();
 }
 
 function toggleLyrics() {
@@ -2508,6 +2549,110 @@ el.nowLine.addEventListener('click', (e) => {
   openLyrics();
 });
 document.getElementById('lyrics-close').addEventListener('click', closeLyrics);
+
+// --- Moving the text against the song ---------------------------------------
+// Files disagree about where a line belongs: some stamp the first sung letter,
+// some the bar before it, some are a second out for the whole song. One lead
+// cannot be right for all of them, so every song carries its own correction -
+// on the server, so the phone and the desktop agree, and for good, because a
+// file that is out today is out tomorrow.
+//
+// The control is an overlay without a backdrop on purpose. Nothing behind it
+// stops: the lines keep running while the number moves, and watching them
+// against the music is the only way to find the right one.
+
+const OFFSET_STEP = 0.1;
+const OFFSET_MAX = 5;
+
+const offsetEl = {
+  panel: document.getElementById('lyric-offset'),
+  value: document.getElementById('lyric-offset-value'),
+  range: document.getElementById('lyric-offset-range'),
+  toggles: [
+    document.getElementById('lyrics-offset-toggle'),
+    document.getElementById('bigview-offset'),
+  ],
+};
+
+function offsetOpen() {
+  return !offsetEl.panel.hidden;
+}
+
+// Only a timed lyric has anything to shift, and only while one of the two text
+// views is up is there anything to watch it against.
+function offsetAvailable() {
+  return lyricState.lines.length > 0 && (lyricsOpen() || bigViewTab() === 'lyrics');
+}
+
+function formatOffset(seconds) {
+  const sign = seconds > 0 ? '+' : seconds < 0 ? '\u2212' : '';
+  return `${sign}${Math.abs(seconds).toFixed(1).replace('.', ',')} s`;
+}
+
+// The written value trails the slider by a moment: the point of the control is
+// to be dragged while the song plays, and a request per tenth of a second would
+// be a request per pixel.
+let offsetSaveTimer = null;
+function saveOffset(trackId, seconds) {
+  clearTimeout(offsetSaveTimer);
+  offsetSaveTimer = setTimeout(() => {
+    api.saveLyricsOffset(trackId, seconds).catch(() => toast('Versatz nicht gespeichert.', 'err'));
+  }, 500);
+}
+
+function setOffset(seconds, { write = true } = {}) {
+  const clamped = Math.max(-OFFSET_MAX, Math.min(OFFSET_MAX, seconds));
+  // A tenth, taken through integers: 0.1 + 0.2 is not 0.3 in binary, and the
+  // slider would come to rest between two notches.
+  const value = Math.round(clamped * 10) / 10;
+  const trackId = lyricState.trackId;
+  lyricState.offset = value;
+  offsetEl.value.textContent = formatOffset(value);
+  offsetEl.range.value = String(value);
+  // The line under the light changes with the number, which is the whole point.
+  paintLyricPosition(player.state.currentTime, true);
+  if (write && trackId) saveOffset(trackId, value);
+}
+
+function renderOffsetToggles() {
+  const usable = offsetAvailable();
+  offsetEl.toggles.forEach((btn) => {
+    btn.hidden = !usable;
+    btn.setAttribute('aria-pressed', String(offsetOpen()));
+    btn.classList.toggle('is-on', offsetOpen());
+  });
+  if (!usable && offsetOpen()) closeOffset();
+}
+
+function openOffset() {
+  if (offsetOpen() || !offsetAvailable()) return;
+  setOffset(lyricState.offset, { write: false });
+  offsetEl.panel.hidden = false;
+  renderOffsetToggles();
+  pushOverlay('lyric-offset', closeOffset);
+}
+
+function closeOffset() {
+  if (!offsetOpen()) return;
+  offsetEl.panel.hidden = true;
+  forgetOverlay('lyric-offset');
+  renderOffsetToggles();
+}
+
+offsetEl.toggles.forEach((btn) =>
+  btn.addEventListener('click', () => (offsetOpen() ? closeOffset() : openOffset()))
+);
+document.getElementById('lyric-offset-close').addEventListener('click', closeOffset);
+document
+  .getElementById('lyric-offset-earlier')
+  .addEventListener('click', () => setOffset(lyricState.offset - OFFSET_STEP));
+document
+  .getElementById('lyric-offset-later')
+  .addEventListener('click', () => setOffset(lyricState.offset + OFFSET_STEP));
+document
+  .getElementById('lyric-offset-reset')
+  .addEventListener('click', () => setOffset(0));
+offsetEl.range.addEventListener('input', () => setOffset(Number(offsetEl.range.value)));
 
 // ============================================================================
 // Level meter and visualizer
@@ -2620,6 +2765,7 @@ function setBigTab(tab) {
     scrolledAt = 0;
     paintLyricPosition(player.state.currentTime, true);
   }
+  renderOffsetToggles();
   startFrames();
 }
 
@@ -2641,6 +2787,7 @@ function closeBigView() {
   content.hidden = false;
   visualizerCanvas = null;
   forgetOverlay('bigview');
+  renderOffsetToggles();
 }
 
 function toggleBigView(tab) {

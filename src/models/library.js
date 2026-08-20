@@ -284,11 +284,16 @@ export function getTrack(id, userId) {
   return shapeTrack(row);
 }
 
+// How far the text may be pushed either way. Five seconds is far more than any
+// mis-stamped file needs and still small enough that the slider keeps a usable
+// resolution at a tenth of a second per step.
+export const LYRICS_OFFSET_MAX = 5;
+
 // The words of one song, and when each line is sung if the file said so.
 // Returns null for a track that does not exist; a track without lyrics answers
 // with empty ones, which is a different thing and the client draws it as such.
 export function getLyrics(id) {
-  const row = db.prepare('SELECT lyrics, lyrics_sync FROM tracks WHERE id = ?').get(id);
+  const row = db.prepare('SELECT lyrics, lyrics_sync, lyrics_offset FROM tracks WHERE id = ?').get(id);
   if (!row) return null;
   // A line list that cannot be read back is treated as "not timed" rather than
   // as an error - the plain text below it is still worth showing.
@@ -301,7 +306,29 @@ export function getLyrics(id) {
       lines = [];
     }
   }
-  return { text: row.lyrics || '', lines, synced: lines.length > 0 };
+  return {
+    text: row.lyrics || '',
+    lines,
+    synced: lines.length > 0,
+    offset: row.lyrics_offset || 0,
+  };
+}
+
+// How far this song's text is pushed against the music. Seconds, positive for
+// later. Clamped rather than rejected: the control cannot produce anything
+// outside the range, so a value that is has come from somewhere else and the
+// nearest sane number is a better answer than an error. Rounded to a tenth,
+// which is the step the control offers - storing 0.30000000000000004 would come
+// back as a slider that sits between two notches.
+export function setLyricsOffset(id, seconds) {
+  const row = db.prepare('SELECT id FROM tracks WHERE id = ?').get(id);
+  if (!row) return null;
+  const value = Number(seconds);
+  const offset = Number.isFinite(value)
+    ? Math.round(Math.max(-LYRICS_OFFSET_MAX, Math.min(LYRICS_OFFSET_MAX, value)) * 10) / 10
+    : 0;
+  db.prepare('UPDATE tracks SET lyrics_offset = ? WHERE id = ?').run(offset, id);
+  return offset;
 }
 
 // Path on disk, for streaming. Kept separate from the projection so a file
