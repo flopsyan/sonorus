@@ -157,6 +157,19 @@ function save() {
   }
 }
 
+// Where the playhead stood, written as it moves so that closing the app and
+// opening it again comes back to the second the song was left at instead of to
+// its beginning. Every few seconds is enough: being wrong costs a handful of
+// seconds of music, while saving on every `timeupdate` would write to
+// localStorage four times a second for the rest of the song.
+const SAVE_TIME_EVERY = 5; // seconds of playback between two writes
+let savedTimeAt = 0;
+
+function saveTime() {
+  savedTimeAt = audio.currentTime;
+  save();
+}
+
 let prefTimer = null;
 function savePrefs() {
   clearTimeout(prefTimer);
@@ -359,6 +372,7 @@ function load(track, autoplay, startAt = 0) {
   }
   state.duration = track.duration || 0;
   state.currentTime = at;
+  savedTimeAt = at;
   updateMediaSession(track);
   // The length is already known from the database, so the bar can show the new
   // track right away instead of staying on the previous one until it opens.
@@ -845,8 +859,10 @@ audio.addEventListener('pause', () => {
   state.playing = false;
   setPlaybackState('paused');
   // Pausing is the most common way to leave an episode, so it is the moment
-  // its position has to be safe.
+  // its position has to be safe. The same goes for the playhead of a song,
+  // which is what the next start of the app comes back to.
   flushProgress();
+  saveTime();
   // The notification stops interpolating from the last reported position, so
   // without this the bar would sit wherever the final update left it.
   updatePositionState(true);
@@ -868,6 +884,11 @@ audio.addEventListener('timeupdate', () => {
   if (step > 0 && step < 2) listened += step;
   lastTick = audio.currentTime;
   updatePositionState();
+
+  // Seeking counts as much as playing on, hence the absolute difference: a jump
+  // backwards has to be written down too, or the app reopens further along than
+  // it was left.
+  if (Math.abs(audio.currentTime - savedTimeAt) >= SAVE_TIME_EVERY) saveTime();
 
   // Where the episode stands, reported every PROGRESS_EVERY seconds. Unlike the
   // listening time this follows the playhead itself, seeking included - the
@@ -909,6 +930,9 @@ audio.addEventListener('timeupdate', () => {
 window.addEventListener('pagehide', () => {
   reportListening(true);
   flushProgress(true);
+  // The last seconds of the playhead, so the way back in is exact rather than
+  // up to SAVE_TIME_EVERY seconds old.
+  saveTime();
 });
 
 audio.addEventListener('durationchange', () => {
