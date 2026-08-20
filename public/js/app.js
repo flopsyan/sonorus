@@ -2696,14 +2696,29 @@ document.getElementById('sidebar-backdrop').addEventListener('click', closeSideb
 
 // Folding the sidebar away is a desktop thing - on a phone it is a drawer and
 // already out of the way. The state lives on the account like every other
-// preference, so it follows to another machine; the button to bring it back
-// sits in the topbar, because the one that folded it went with the sidebar.
+// preference, so it follows to another machine. Folded, the sidebar keeps a
+// rail with the brand mark and this one button on it, so there is a single
+// toggle in a single place rather than one button per direction.
 const shellEl = document.querySelector('.shell');
-const expandBtn = document.getElementById('sidebar-expand');
+const foldBtn = document.getElementById('sidebar-collapse');
 
-function applySidebarCollapsed(collapsed) {
+// `animate: false` is for the one application that must not be seen: the saved
+// state arrives with the account's preferences, which is after the first paint,
+// so without it the sidebar folds itself away in front of the user on every
+// single load. Two frames, because one is not enough - the class has to survive
+// the style recalculation that the width change itself causes.
+function applySidebarCollapsed(collapsed, { animate = true } = {}) {
+  if (!animate) {
+    shellEl.classList.add('fold-instant');
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => shellEl.classList.remove('fold-instant'))
+    );
+  }
   shellEl.classList.toggle('sidebar-folded', collapsed);
-  expandBtn.hidden = !collapsed;
+  const label = collapsed ? 'Seitenleiste einblenden' : 'Seitenleiste einklappen';
+  foldBtn.setAttribute('aria-label', label);
+  foldBtn.title = label;
+  foldBtn.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function setSidebarCollapsed(collapsed) {
@@ -2711,8 +2726,9 @@ function setSidebarCollapsed(collapsed) {
   setPref('sidebarCollapsed', collapsed);
 }
 
-document.getElementById('sidebar-collapse').addEventListener('click', () => setSidebarCollapsed(true));
-expandBtn.addEventListener('click', () => setSidebarCollapsed(false));
+foldBtn.addEventListener('click', () =>
+  setSidebarCollapsed(!shellEl.classList.contains('sidebar-folded'))
+);
 
 // Theme switch
 function applyTheme(choice) {
@@ -2904,7 +2920,7 @@ async function boot() {
   if (compact.matches) searchInput.placeholder = 'Suchen';
 
   paintIcons(document);
-  applySidebarCollapsed(!!shell.prefs.sidebarCollapsed);
+  applySidebarCollapsed(!!shell.prefs.sidebarCollapsed, { animate: false });
   initHistory();
   renderAccount();
   renderSidebar();

@@ -6,12 +6,14 @@
     <div class="sidebar-head">
       <%- include('partials/brand') %>
       <span class="brand-name"><%= siteName %></span>
-      <!-- Folds the sidebar away on a desktop; the topbar then shows the same
-           button to bring it back. On a phone the sidebar is a drawer and the
-           hamburger already does that job, so this one is hidden there. -->
+      <!-- Folds the sidebar away on a desktop and brings it back. Folded, the
+           sidebar is a narrow rail rather than nothing, so the mark stays put
+           and this button stays with it - which is why there is no second one
+           anywhere else. On a phone the sidebar is a drawer and the hamburger
+           already does that job, so this one is hidden there. -->
       <button type="button" class="icon-btn icon-btn-sm sidebar-toggle" id="sidebar-collapse"
               aria-label="Seitenleiste einklappen" title="Seitenleiste einklappen"
-              data-icon="panel-left" data-icon-size="17"></button>
+              aria-expanded="true" data-icon="panel-left" data-icon-size="17"></button>
     </div>
     <div class="sidebar-scroll" id="sidebar-nav"></div>
   </aside>
@@ -22,11 +24,6 @@
   <div class="main">
     <header class="topbar">
       <button type="button" class="icon-btn menu-toggle" id="menu-toggle" aria-label="Menü" data-icon="menu"></button>
-      <!-- Only there while the sidebar is folded away - the button that folded
-           it sits in the sidebar, which is exactly what is gone then. -->
-      <button type="button" class="icon-btn sidebar-toggle" id="sidebar-expand" hidden
-              aria-label="Seitenleiste einblenden" title="Seitenleiste einblenden"
-              data-icon="panel-left" data-icon-size="18"></button>
       <div class="nav-arrows">
         <button type="button" class="icon-btn" id="nav-back" aria-label="Zurück" data-icon="chevron-left"></button>
         <button type="button" class="icon-btn" id="nav-forward" aria-label="Vorwärts" data-icon="chevron-right"></button>

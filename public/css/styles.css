@@ -37,6 +37,16 @@
   --radius-sm: 8px;
   --radius-xs: 5px;
   --sidebar-w: 264px;
+  /* What is left of the sidebar when it is folded away: wide enough for
+     the brand mark and the button that brings the rest back. */
+  --sidebar-rail: 62px;
+  /* How long the fold takes, in one place so the width, the brand name and
+     the list underneath it all move together. Its own curve rather than
+     --sheet-ease: that one is built to shoot off the mark, which reads as a
+     snap on a 200 px move and is not what a panel folding away should look
+     like. This is the even one. */
+  --fold-ms: 0.26s;
+  --fold-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --player-h: 92px;
   /* What the phone's own bars cover. Zero everywhere else, so it can be added
      unconditionally - the transport is the one thing that must not end up under
@@ -248,7 +258,11 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
    toast host and the modal host into grid cells over the content. */
 .shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  /* `auto` rather than the width itself: the column follows the sidebar, and the
+     sidebar animates its own width. Animating the track directly would work in
+     Firefox but is the less portable of the two, and this way the drawer on a
+     phone - which is out of flow - changes nothing here. */
+  grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) var(--player-h);
   height: 100vh;
   height: 100dvh;
@@ -258,27 +272,52 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 
 .sidebar {
   grid-row: 1; grid-column: 1;
+  width: var(--sidebar-w);
   background: var(--surface);
   border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
   min-height: 0;
   z-index: 30;
+  transition: width var(--fold-ms) var(--fold-ease);
 }
 
 .sidebar-head {
   display: flex; align-items: center; gap: 11px;
   padding: 16px 18px 14px;
+  /* Wrapping is what carries the fold: as the rail narrows past the brand mark
+     plus the button, the button drops onto a line of its own under the mark
+     instead of being cut off. No second layout to switch to. */
+  flex-wrap: wrap; justify-content: center;
+  transition: padding var(--fold-ms) var(--fold-ease);
 }
 /* The fold button sits at the end of the brand row and only exists where the
    sidebar is a column - on a phone it is a drawer and the hamburger closes it. */
 .sidebar-head .sidebar-toggle { margin-left: auto; }
-.topbar .sidebar-toggle { display: inline-grid; }
 
-/* Folded away: the column goes to zero and the content takes the whole width.
-   `display: none` rather than a width of nothing, so nothing inside it can
-   still be tabbed into. */
-.shell.sidebar-folded { grid-template-columns: 0 minmax(0, 1fr); }
-.shell.sidebar-folded .sidebar { display: none; }
+/* Folded away: the sidebar narrows to a rail instead of disappearing, so the
+   mark stays where it was and the way back is where it went. The name and the
+   list fade out first, so nothing is still being read while the width moves. */
+.shell.sidebar-folded .sidebar { width: var(--sidebar-rail); }
+.shell.sidebar-folded .sidebar-head { padding: 16px 0 14px; }
+.shell.sidebar-folded .sidebar-head .sidebar-toggle { margin-left: 0; }
+.sidebar .brand-name {
+  overflow: hidden; white-space: nowrap;
+  transition: opacity calc(var(--fold-ms) * 0.6) ease, max-width var(--fold-ms) var(--fold-ease);
+  max-width: 12ch;
+}
+.shell.sidebar-folded .brand-name { opacity: 0; max-width: 0; }
+/* `visibility` and not `display`, or there would be nothing to animate - and it
+   is what keeps a folded list out of the tab order all the same. */
+.shell.sidebar-folded .sidebar-scroll {
+  opacity: 0; visibility: hidden;
+  transition: opacity calc(var(--fold-ms) * 0.5) ease, visibility 0s linear var(--fold-ms);
+}
+.sidebar-scroll { transition: opacity var(--fold-ms) ease var(--fold-ms); }
+/* Restoring the saved state is not a fold, so it does not get the animation. */
+.shell.fold-instant .sidebar,
+.shell.fold-instant .sidebar-head,
+.shell.fold-instant .brand-name,
+.shell.fold-instant .sidebar-scroll { transition: none; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 20px; }
 
 .nav-group { margin-bottom: 22px; }
@@ -1439,9 +1478,14 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 
 @media (max-width: 900px) {
   .shell, .shell.sidebar-folded { grid-template-columns: minmax(0, 1fr); }
-  /* Here the sidebar is a drawer, so folding it away is meaningless - and it
-     must not stay hidden, or the hamburger would open nothing. Both toggles go. */
-  .shell.sidebar-folded .sidebar { display: flex; }
+  /* Here the sidebar is a drawer, so folding it away is meaningless - and the
+     preference is the account's, so a phone can well arrive with it set. Every
+     part of the folded look is undone rather than only the toggle hidden. */
+  .shell.sidebar-folded .sidebar { display: flex; width: var(--sidebar-w); }
+  .shell.sidebar-folded .sidebar-head { padding: 16px 18px 14px; }
+  .shell.sidebar-folded .sidebar-head .sidebar-toggle { margin-left: auto; }
+  .shell.sidebar-folded .brand-name { opacity: 1; max-width: 12ch; }
+  .shell.sidebar-folded .sidebar-scroll { opacity: 1; visibility: visible; }
   .sidebar-toggle { display: none !important; }
   .sidebar {
     position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w);
