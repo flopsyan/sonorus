@@ -26,6 +26,11 @@
   --accent-soft: rgba(245, 165, 36, 0.14);
   --accent-line: rgba(245, 165, 36, 0.35);
   --accent-ink: #24170a;
+  /* The lamp turned down: what marks the song that is playing, in a list it is
+     not playing from. Deliberately the same hue - a second colour would say
+     "something else", and this is the same thing seen from further away. */
+  --accent-dim: rgba(245, 165, 36, 0.52);
+  --accent-ghost: rgba(245, 165, 36, 0.05);
   --danger: #f0705f;
   --danger-soft: rgba(240, 112, 95, 0.15);
   --ok: #63c98a;
@@ -74,6 +79,8 @@
   --accent-soft: rgba(168, 100, 0, 0.12);
   --accent-line: rgba(168, 100, 0, 0.3);
   --accent-ink: #ffffff;
+  --accent-dim: rgba(168, 100, 0, 0.55);
+  --accent-ghost: rgba(168, 100, 0, 0.06);
   --danger: #c0392b;
   --danger-soft: rgba(192, 57, 43, 0.12);
   --ok: #2e7d52;
@@ -770,6 +777,10 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 
 .track-row.item.playing { background: var(--accent-soft); }
 .track-row.item.playing .track-title { color: var(--accent); }
+/* The same song, in a list it is not playing from: still found at a glance, but
+   it never competes with the list that really is running. */
+.track-row.item.playing-elsewhere { background: var(--accent-ghost); }
+.track-row.item.playing-elsewhere .track-title { color: var(--accent-dim); }
 /* A list of a few thousand songs is a list the browser may skip most of: only
    what is near the viewport is laid out and painted, and the placeholder height
    is a row, so the scrollbar does not jump while it scrolls. */
@@ -860,6 +871,7 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .eq span:nth-child(2) { height: 100%; animation-delay: -0.15s; }
 .eq span:nth-child(3) { height: 45%; animation-delay: -0.7s; }
 .eq.paused span { animation-play-state: paused; }
+.eq.elsewhere span { background: var(--accent-dim); }
 @keyframes eq-bounce { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
 
 /* Star rating: five buttons. The stars sit in the DOM as 5..1 and are flipped

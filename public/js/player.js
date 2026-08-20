@@ -28,6 +28,15 @@ export const state = {
   duration: 0,
   buffered: 0,
   source: '',
+  // Where the queue was put on, as the route that was open at the time. `source`
+  // is the name for a human ("First Album"); this is the identity the lists ask
+  // about - a song sits in an album, in an interpret's page, in playlists and in
+  // the search at once, and only the list it is actually playing from should
+  // light up in full. Deliberately the path without its query: sorting or
+  // filtering "Alle Songs" rewrites the query and is still the same list. The
+  // price is that two different searches share a key, which marks one song a
+  // shade too strongly and breaks nothing.
+  sourceKey: '',
 };
 
 // What was actually played, most recent last, as positions in `queue`. "Back"
@@ -139,6 +148,7 @@ function save() {
         order: state.order,
         pos: state.pos,
         source: state.source,
+        sourceKey: state.sourceKey,
         time: Math.floor(state.currentTime),
       })
     );
@@ -191,6 +201,7 @@ export async function restore(prefs) {
         state.order = validOrder.length === tracks.length ? validOrder : tracks.map((_, i) => i);
         state.pos = Math.min(Math.max(stored.pos ?? 0, 0), state.order.length - 1);
         state.source = stored.source || '';
+        state.sourceKey = stored.sourceKey || '';
         load(currentTrack(), false, stored.time || 0);
       }
     } catch {
@@ -376,13 +387,14 @@ async function start() {
 // Replaces the queue and starts at `startIndex`. Tracks whose file is gone are
 // still listed (they keep their rating), but they never enter the queue - so
 // the index has to be mapped onto the filtered list.
-export function playTracks(tracks, startIndex = 0, source = '') {
+export function playTracks(tracks, startIndex = 0, source = '', sourceKey = '') {
   const all = (tracks || []).filter(Boolean);
   const wanted = all[startIndex];
   const list = all.filter((t) => !t.missing);
   if (!list.length) return;
   state.queue = list;
   state.source = source;
+  state.sourceKey = sourceKey;
   history = [];
   buildOrder(wanted ? Math.max(0, list.indexOf(wanted)) : 0);
   load(currentTrack(), true);
@@ -400,11 +412,11 @@ export function playTracks(tracks, startIndex = 0, source = '') {
 // Drawn from what can actually be played rather than from `tracks`: a missing
 // file never enters the queue, and drawing one would fall back to the front of
 // the list - exactly the song this is here to avoid.
-export function shuffleTracks(tracks, source = '') {
+export function shuffleTracks(tracks, source = '', sourceKey = '') {
   const pool = (tracks || []).filter((t) => t && !t.missing);
   if (!pool.length) return;
   if (!state.shuffle) setShuffle(true);
-  playTracks(pool, Math.floor(Math.random() * pool.length), source);
+  playTracks(pool, Math.floor(Math.random() * pool.length), source, sourceKey);
 }
 
 // Builds `order` for the current shuffle setting, keeping `startIndex` first
@@ -551,6 +563,10 @@ export function enqueue(tracks, source = '') {
   if (!state.queue.length) {
     state.queue = list;
     state.source = source;
+    // Nothing named a list here - the queue was built by hand out of single
+    // tracks, so there is no page it belongs to and every row marks itself as
+    // playing from somewhere else. Which is what happened.
+    state.sourceKey = '';
     // Through buildOrder, so a queue filled while shuffle is on is dealt
     // shuffled - the toggle is lit and the queue panel says "gemischt".
     buildOrder(0);
@@ -616,6 +632,7 @@ export function clearQueue() {
   state.pos = -1;
   state.playing = false;
   state.source = '';
+  state.sourceKey = '';
   state.currentTime = 0;
   state.duration = 0;
   clearMediaSession();

@@ -1222,6 +1222,13 @@ function addToPlaylistDialog(trackIds, { create = true } = {}) {
 // ============================================================================
 
 // Loads the track list behind a "play this collection" button.
+// The identity of the list on screen, handed to the player when something is
+// put on from here: it is what tells a row later whether the song it shows is
+// playing *from this list* or from another one that happens to hold it too.
+function currentSourceKey() {
+  return window.location.pathname;
+}
+
 async function tracksFor(el) {
   // The search page holds songs and podcast episodes in one list; the button
   // under "Songs" means the songs, so it says how far its own section reaches.
@@ -1283,7 +1290,7 @@ content.addEventListener('click', async (e) => {
     if (player.currentTrack() && player.currentTrack().id === track.id) {
       player.toggle();
     } else {
-      player.playTracks(view.tracks, index, document.title.split(' · ')[0]);
+      player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey());
     }
     return;
   }
@@ -1297,7 +1304,15 @@ content.addEventListener('click', async (e) => {
       const list = await tracksFor(play);
       if (!list || !list.length) return toast('Hier gibt es nichts zum Abspielen.', 'err');
       if (player.state.shuffle) player.setShuffle(false);
-      player.playTracks(list, 0, play.closest('.card')?.querySelector('.card-title')?.textContent || '');
+      const tile = play.closest('.card, .list-row');
+      player.playTracks(
+        list,
+        0,
+        tile?.querySelector('.card-title, .list-title')?.textContent || '',
+        // The card's own link: what was put on is the album or the interpret it
+        // points at, not the shelf it was picked off.
+        tile?.getAttribute('href') || ''
+      );
     } catch (err) {
       toast(err.message, 'err');
     }
@@ -1314,7 +1329,7 @@ content.addEventListener('click', async (e) => {
     if (!view.tracks.length) return toast('Hier gibt es nichts zum Abspielen.', 'err');
     // A book is read in its order, never shuffled.
     if (player.state.shuffle) player.setShuffle(false);
-    player.playTracks(view.tracks, at, document.title.split(' · ')[0]);
+    player.playTracks(view.tracks, at, document.title.split(' · ')[0], currentSourceKey());
     return;
   }
 
@@ -1336,7 +1351,7 @@ content.addEventListener('click', async (e) => {
 
   const shuffleAll = e.target.closest('[data-shuffle-all]');
   if (shuffleAll) {
-    player.shuffleTracks(view.tracks, document.title.split(' · ')[0]);
+    player.shuffleTracks(view.tracks, document.title.split(' · ')[0], currentSourceKey());
     return;
   }
 
@@ -1542,7 +1557,7 @@ function openTrackMenu(x, y, trackId, itemId) {
   // queue panel, and there the only sensible answer is the book it belongs to.
   if (track.audiobookId) {
     contextMenu(x, y, [
-      { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
+      { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
       { label: 'Zum Hörbuch', icon: 'book', onSelect: () => navigate(`/audiobooks/books/${track.audiobookId}`) },
     ]);
     return;
@@ -1552,7 +1567,7 @@ function openTrackMenu(x, y, trackId, itemId) {
     const items = track.missing
       ? []
       : [
-          { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
+          { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
           { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
           { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
           null,
@@ -1572,7 +1587,7 @@ function openTrackMenu(x, y, trackId, itemId) {
   const items = track.missing
     ? [{ label: 'Zu Playlist hinzufügen …', icon: 'list', onSelect: () => addToPlaylistDialog([trackId]) }]
     : [
-        { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index) },
+        { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
         { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
         { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
         null,
@@ -2140,18 +2155,32 @@ function starButtons(value, trackId) {
   return wrapper.firstElementChild.innerHTML;
 }
 
+// The same song can sit in an album, on its interpret's page, in three
+// playlists and in the search at once, and marking every one of them as "this
+// is playing" says less than marking none. So the list it is really playing
+// from keeps the full amber, and everywhere else the song is marked too - in
+// the same lamp colour turned down, which reads as "yes, that one, but it is
+// running somewhere else".
 function markPlayingRow() {
   const track = player.currentTrack();
+  const fromHere = player.state.sourceKey === currentSourceKey();
   content.querySelectorAll('.track-row.item').forEach((row) => {
     const isPlaying = track && Number(row.dataset.trackId) === track.id;
-    row.classList.toggle('playing', !!isPlaying);
+    const elsewhere = !!isPlaying && !fromHere;
+    row.classList.toggle('playing', !!isPlaying && fromHere);
+    row.classList.toggle('playing-elsewhere', elsewhere);
     const index = row.querySelector('.track-index');
     if (!index) return;
     const existing = index.querySelector('.eq');
     if (isPlaying && !existing) {
-      index.innerHTML = `<span class="eq${player.state.playing ? '' : ' paused'}"><span></span><span></span><span></span></span>`;
+      index.innerHTML = `<span class="eq${player.state.playing ? '' : ' paused'}${
+        elsewhere ? ' elsewhere' : ''
+      }"${elsewhere ? ' title="Läuft gerade - aus einer anderen Wiedergabeliste"' : ''}><span></span><span></span><span></span></span>`;
     } else if (isPlaying && existing) {
       existing.classList.toggle('paused', !player.state.playing);
+      existing.classList.toggle('elsewhere', elsewhere);
+      if (elsewhere) existing.title = 'Läuft gerade - aus einer anderen Wiedergabeliste';
+      else existing.removeAttribute('title');
     } else if (!isPlaying && existing) {
       const i = Number(row.dataset.index);
       // The number is not always the position in the list - an album numbers by
