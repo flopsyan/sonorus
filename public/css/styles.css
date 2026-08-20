@@ -325,6 +325,13 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px; padding: 0 9px 7px;
 }
+/* A group whose title was dropped keeps the room the title took, so the entries
+   under it still sit apart from the group above. The zero-width space is what
+   gives the empty row a line box, and the font is the label's own - so the gap
+   is the same height by construction rather than by a number copied off a
+   screenshot. */
+.nav-group-head.is-blank { font-family: var(--font-mono); font-size: 0.66rem; }
+.nav-group-head.is-blank::before { content: "\200b"; }
 .nav-item {
   display: flex; align-items: center; gap: 11px;
   padding: 8px 10px; border-radius: var(--radius-sm);

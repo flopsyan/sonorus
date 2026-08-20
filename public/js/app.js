@@ -395,7 +395,10 @@ function renderSidebar() {
     </nav>
 
     <nav class="nav-group">
-      <div class="nav-group-head"><span class="rack-label">Gesprochenes</span></div>
+      <!-- Deliberately without a title: "Gesprochenes" named nothing that
+           Podcasts and Hörbücher underneath it do not already say. The empty
+           head is what keeps the gap to the library above (see .is-blank). -->
+      <div class="nav-group-head is-blank" aria-hidden="true"></div>
       ${spoken}
     </nav>
 
