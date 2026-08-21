@@ -31,9 +31,11 @@ belong to the account that created them.
   sort is remembered on your account until you change it again.
 - **Interpreten** - all artists, with their albums, singles and tracks.
 - **Alben** - album grid with embedded cover art, track list per album. Sortable
-  by title, artist, year or number of songs, each in both directions ("Titel
-  Z-A", "Jahr, älteste zuerst"), and the choice is remembered like the one on
-  Alle Songs.
+  by title, artist, year, number of songs or your rating of the record, each in
+  both directions ("Titel Z-A", "Jahr, älteste zuerst"), and the choice is
+  remembered like the one on Alle Songs. Both the grid and the list show the
+  stars you gave the record; a record you have not rated sorts to the end of
+  either rating order.
 - **Cover groß ansehen** - clicking the artwork on an album or artist page opens
   it at full size; click anywhere or press Escape to close it again.
 - **Suche** - one question, not three. A query is cut into words and every word
@@ -317,6 +319,12 @@ dropping features.
   level. The order is stored on your account.
 - **Anpinnen** keeps a playlist at the top of its list, marked with a pin.
   Right-click it in the sidebar, or use the button on the playlist page.
+- **Alben bewerten** - a record carries its own 1 to 5 stars, set on the album
+  page next to "Abspielen" and clicked again to clear. It is **completely
+  independent of the songs on it**: a five-star record may hold a song you never
+  gave a star, and rating a song never changes the record or the other way
+  round. The rating belongs to your account like every other, and it feeds **no
+  automatic playlist** - it is there to show in the Alben tab and to sort by.
 - **Sterne-Playlists** - rate any track from 1 to 5 stars from any track list or
   from the transport; Sonorus keeps one automatic playlist per rating that
   always reflects the current ratings. Clicking a track's current rating again
