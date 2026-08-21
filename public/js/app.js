@@ -8,7 +8,7 @@ import { api } from './api.js';
 import { icon, paintIcons } from './icons.js';
 import * as fmt from './format.js';
 import {
-  esc, art, stars, toast, modal, closeModal, confirmDialog,
+  esc, art, stars, albumStars, toast, modal, closeModal, confirmDialog,
   contextMenu, closeContextMenu, lightbox, setOverlayHooks,
 } from './ui.js';
 import * as views from './views.js';
@@ -1277,6 +1277,15 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
+  // The same for a whole record. Its own attribute because an album and a track
+  // can carry the same id, and this must not be read as a song being rated.
+  const albumStar = e.target.closest('[data-rate-album]');
+  if (albumStar) {
+    e.preventDefault();
+    await rateAlbum(Number(albumStar.dataset.albumId), Number(albumStar.dataset.rateAlbum));
+    return;
+  }
+
   // Play a specific row. On a touch screen the whole row is that button: the
   // number column is 30 px wide, and the play symbol in it only appears under a
   // pointer that a phone does not have.
@@ -1662,6 +1671,26 @@ async function rate(trackId, value) {
     // but the user did not navigate anywhere, so they stay where they were. The
     // same goes for the ratings of one artist, which are that list narrowed down.
     if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+// The stars of a whole record, and deliberately a much smaller job than rate()
+// above: no star playlist reads this, so there is no sidebar to redraw and no
+// generated list the user might be standing in. Clicking the star it already has
+// clears it, the same way a song's rating is undone.
+async function rateAlbum(albumId, value) {
+  const shown = content.querySelector(`[data-stars-album="${albumId}"]:not(.readonly)`);
+  const current = shown ? shown.querySelectorAll('.star.on').length : 0;
+  try {
+    const res = await api.rateAlbum(albumId, current === value ? 0 : value);
+    // Only the interactive widget is on screen here - the read-only ones live in
+    // the Alben tab, which is a different page. Redrawn rather than patched, so
+    // the markup stays the one place that decides how a star looks.
+    content.querySelectorAll(`[data-stars-album="${albumId}"]`).forEach((node) => {
+      node.outerHTML = albumStars(res.stars, albumId, node.classList.contains('readonly'));
+    });
   } catch (err) {
     toast(err.message, 'err');
   }

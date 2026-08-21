@@ -871,26 +871,49 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
    back with row-reverse, so hovering star N can light N and everything before
    it through a plain sibling selector - no JavaScript for the hover state. */
 .stars { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 1px; }
-.stars button {
+.stars .star {
   background: none; border: none; padding: 1px; cursor: pointer;
   color: var(--text-faint); display: grid; place-items: center;
   line-height: 0;
 }
-.stars button .icon { width: 15px; height: 15px; }
-.stars button.on { color: var(--accent); }
-.stars.readonly button { cursor: default; pointer-events: none; }
+.stars .star .icon { width: 15px; height: 15px; }
+.stars .star.on { color: var(--accent); }
+/* A read-only widget is spans, so there is nothing to click anyway - but the
+   rule stays for the one that is buttons: the rating dialog renders the same
+   widget disabled. pointer-events is what lets a click through to the album
+   card underneath. */
+.stars.readonly .star { cursor: default; pointer-events: none; }
 @media (hover: hover) {
-  .stars:not(.readonly):hover button { color: var(--text-faint); }
-  .stars:not(.readonly) button:hover,
-  .stars:not(.readonly) button:hover ~ button { color: var(--accent-hi); }
+  .stars:not(.readonly):hover .star { color: var(--text-faint); }
+  .stars:not(.readonly) .star:hover,
+  .stars:not(.readonly) .star:hover ~ .star { color: var(--accent-hi); }
 }
+
+/* The record's own rating, shown on an album tile and on an album row. It is
+   never set from here - the album's own page is where the stars are clickable -
+   so this is a line of five and nothing more. */
+/* The alignment is inherited on purpose: .stars is row-reverse, so its own
+   justify-content: flex-end is what puts the first star on the left. Setting
+   flex-start here would push the row to the right edge of the tile. */
+.card-stars { display: block; margin-top: 3px; }
+/* Slightly smaller than in a track row: a tile is 164px wide and the title
+   under it has to stay the thing you read first. */
+.card-stars .stars .star .icon,
+.list-stars .stars .star .icon { width: 13px; height: 13px; }
+/* In a row the stars sit next to the count on the right, before the play
+   button, so a list of records reads title - stars - songs. */
+.list-stars { flex: none; }
+/* An unrated record shows five empty stars rather than nothing, so the column
+   does not go ragged down the list - but they stay quiet. */
+.card-stars .stars.readonly .star:not(.on),
+.list-stars .stars.readonly .star:not(.on) { opacity: 0.45; }
 
 /* The dialog behind "Bewerten …" in a track's menu: the same widget, at a size
    a thumb can hit. It exists because the rating column is dropped from the
    track list on a narrow screen. */
 .rate-picker { display: flex; justify-content: center; padding: 2px 0 14px; }
-.rate-picker .stars button { padding: 6px; }
-.rate-picker .stars button .icon { width: 30px; height: 30px; }
+.rate-picker .stars .star { padding: 6px; }
+.rate-picker .stars .star .icon { width: 30px; height: 30px; }
 
 /* Star playlists and genres can both be combined ("4 und 5 Sterne", "Rock und
    Jazz"), so what the list is made of is a row of switches, not links: the
@@ -963,7 +986,14 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .detail-text h1 { margin: 6px 0 8px; font-size: 2.1rem; line-height: 1.15; }
 .detail-facts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-dim); font-size: 0.88rem; }
 .detail-facts .dot { color: var(--text-faint); }
-.detail-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
+.detail-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; align-items: center; }
+/* The record's own stars, set from here and nowhere else. Set apart from the
+   buttons next to them by a gap of their own and their own little title: those
+   change the shared library, this one belongs to the account. */
+.detail-rating { display: flex; align-items: center; gap: 9px; margin-left: 7px; }
+.detail-rating .rack-label { white-space: nowrap; }
+.detail-rating .stars .star { padding: 3px; }
+.detail-rating .stars .star .icon { width: 19px; height: 19px; }
 
 /* Cover picker in the album editor: the artwork next to what it can be */
 .cover-edit { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; }
@@ -1090,7 +1120,7 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    do with a song you just heard: put it on a list. Deliberately nothing else -
    everything further lives in the track's own menu. */
 .now-actions { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
-.now .stars button .icon { width: 13px; height: 13px; }
+.now .stars .star .icon { width: 13px; height: 13px; }
 .now-add { width: 22px; height: 22px; border-radius: var(--radius-xs); color: var(--text-faint); }
 .now-add .icon { width: 15px; height: 15px; }
 @media (hover: hover) {
@@ -1717,8 +1747,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
      and this is the screen a listener rates from anyway. The plus next to them
      rides along, for the same reason - this is where a song is judged. */
   .player.expanded .now .now-actions { display: flex; justify-content: center; gap: 16px; margin-top: 10px; }
-  .player.expanded .now .stars button { padding: 5px; }
-  .player.expanded .now .stars button .icon { width: 26px; height: 26px; }
+  .player.expanded .now .stars .star { padding: 5px; }
+  .player.expanded .now .stars .star .icon { width: 26px; height: 26px; }
   .player.expanded .now-add { width: 40px; height: 40px; border-radius: var(--radius-sm); }
   .player.expanded .now-add .icon { width: 24px; height: 24px; }
 

@@ -87,6 +87,9 @@ export const api = {
   search: (q) => request('GET', `/api/search${query({ q })}`),
 
   rate: (trackId, stars) => request('PUT', `/api/tracks/${trackId}/rating`, { stars }),
+  // The stars on a whole record, which no song of it knows about. No counts come
+  // back: an album rating feeds no star playlist.
+  rateAlbum: (albumId, stars) => request('PUT', `/api/albums/${albumId}/rating`, { stars }),
   play: (trackId, seconds) => request('POST', '/api/plays', { trackId, seconds }),
   // keepalive lets the last report survive the page being closed.
   playTime: (playId, seconds, keepalive = false) =>

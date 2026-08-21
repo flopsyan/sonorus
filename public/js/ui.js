@@ -56,21 +56,51 @@ function albumCovers(tracks) {
   return covers;
 }
 
-// Five star buttons. Rendered 5..1 so CSS can light up "this one and lower"
-// on hover (see .stars in the stylesheet).
-export function stars(value, trackId, readonly = false) {
+// Five stars, rendered 5..1 so CSS can light up "this one and lower" on hover
+// (see .stars in the stylesheet). `attrs` is what a click has to carry to say
+// what is being rated.
+//
+// Read-only stars are spans and not buttons, and that is not cosmetic: they are
+// drawn inside the <a> of an album card, where a nested button is invalid markup
+// and swallows the click that should open the record.
+function starRow(value, attrs, readonly) {
   const current = Number(value) || 0;
-  const buttons = [];
+  const tag = readonly ? 'span' : 'button';
+  const parts = [];
   for (let n = 5; n >= 1; n -= 1) {
     const on = n <= current ? ' on' : '';
     const label = `${n} ${n === 1 ? 'Stern' : 'Sterne'}`;
-    buttons.push(
-      `<button type="button" class="star${on}" data-rate="${n}" data-track-id="${trackId}"
-         aria-label="${label}" title="${label}">${icon(n <= current ? 'star' : 'star-outline', 15)}</button>`
+    parts.push(
+      readonly
+        ? `<span class="star${on}" aria-hidden="true">${icon(n <= current ? 'star' : 'star-outline', 15)}</span>`
+        : `<${tag} type="button" class="star${on}" ${attrs(n)}
+             aria-label="${label}" title="${label}">${icon(n <= current ? 'star' : 'star-outline', 15)}</${tag}>`
     );
   }
+  return parts.join('');
+}
+
+// The stars of one song.
+export function stars(value, trackId, readonly = false) {
+  const inner = starRow(value, (n) => `data-rate="${n}" data-track-id="${trackId}"`, readonly);
   return `<div class="stars${readonly ? ' readonly' : ''}" data-stars-for="${trackId}"
-            role="group" aria-label="Bewertung">${buttons.join('')}</div>`;
+            role="group" aria-label="Bewertung">${inner}</div>`;
+}
+
+// The stars of a whole record. Its own attributes rather than the ones above,
+// because an album and a track can carry the same id - a click has to know which
+// of the two it means, and so does the redraw afterwards.
+//
+// A read-only one says its value in a label of its own: without buttons to read
+// there is nothing left for a screen reader to count.
+export function albumStars(value, albumId, readonly = false) {
+  const current = Number(value) || 0;
+  const inner = starRow(value, (n) => `data-rate-album="${n}" data-album-id="${albumId}"`, readonly);
+  const label = readonly
+    ? `aria-label="${current ? `Mit ${current} von 5 Sternen bewertet` : 'Nicht bewertet'}"`
+    : 'aria-label="Album bewerten"';
+  return `<div class="stars album-stars${readonly ? ' readonly' : ''}" data-stars-album="${albumId}"
+            role="${readonly ? 'img' : 'group'}" ${label}>${inner}</div>`;
 }
 
 // --- Track list -------------------------------------------------------------
@@ -245,7 +275,12 @@ export function episodeList(episodes, { offset = 0, showName = false } = {}) {
 
 // `covers` is the collection case: a card for something that has no artwork of
 // its own carries the covers of what is in it, the same mosaic as its page.
-export function card({ href, cover, covers, title, sub, round = false, playAction }) {
+//
+// `rating` is ready-made star markup rather than a number, because only the
+// caller knows what is being rated - a record has stars, an interpret and a
+// genre have none. It has to be the read-only widget: the tile is one link, and
+// a control inside it would eat the click that opens the record.
+export function card({ href, cover, covers, title, sub, round = false, playAction, rating = '' }) {
   return `<a class="card${round ? ' round' : ''}" href="${esc(href)}" data-link>
       <span class="card-art">
         ${covers ? coverMosaic(covers, title) : art(cover, title)}
@@ -253,19 +288,22 @@ export function card({ href, cover, covers, title, sub, round = false, playActio
       </span>
       <span class="card-title">${esc(title)}</span>
       ${sub ? `<span class="card-sub">${esc(sub)}</span>` : ''}
+      ${rating ? `<span class="card-stars">${rating}</span>` : ''}
     </a>`;
 }
 
 // The same thing as a row instead of a tile: one line per entry, built to the
 // height of a track row so a list of albums reads like a list of songs. Takes
-// exactly what `card` takes, plus the count that sits on the right.
-export function listRow({ href, cover, covers, title, sub, meta, round = false, playAction }) {
+// exactly what `card` takes, plus the count that sits on the right - and the
+// stars, when there are any, go between the two.
+export function listRow({ href, cover, covers, title, sub, meta, round = false, playAction, rating = '' }) {
   return `<a class="list-row" href="${esc(href)}" data-link>
       <span class="list-art${round ? ' round' : ''}">${covers ? coverMosaic(covers, title) : art(cover, title)}</span>
       <span class="list-text">
         <span class="list-title" data-clip>${esc(title)}</span>
         ${sub ? `<span class="list-sub">${esc(sub)}</span>` : ''}
       </span>
+      ${rating ? `<span class="list-stars">${rating}</span>` : ''}
       ${meta ? `<span class="list-meta">${esc(meta)}</span>` : ''}
       ${
         playAction
