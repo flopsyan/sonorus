@@ -801,10 +801,16 @@ const retireTracks = db.transaction((ids) => {
 // The albums go first, so an album that is gone takes its own genre list with it
 // (album_genres cascades) before the genres are counted - and a list that is
 // still standing keeps its genres, which the songs of that album carry anyway.
+//
+// An album someone has rated stays, for the same reason a rated track is only
+// marked missing instead of deleted: the rating is the user's and would cascade
+// away with the row. A record whose folder is gone keeps no songs, so no view
+// lists it any more - but rename the folder back and the stars are still on it.
 const prune = db.transaction(() => {
   db.exec(`
     DELETE FROM albums
-     WHERE id NOT IN (SELECT album_id FROM tracks WHERE album_id IS NOT NULL);
+     WHERE id NOT IN (SELECT album_id FROM tracks WHERE album_id IS NOT NULL)
+       AND id NOT IN (SELECT album_id FROM album_ratings);
     DELETE FROM artists
      WHERE id NOT IN (SELECT artist_id FROM tracks WHERE artist_id IS NOT NULL)
        AND id NOT IN (SELECT artist_id FROM albums WHERE artist_id IS NOT NULL);

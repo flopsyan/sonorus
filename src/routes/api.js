@@ -64,7 +64,13 @@ import {
   renameFolder,
   deleteFolder,
 } from '../models/playlists.js';
-import { setRating, recordPlay, updatePlaySeconds, clearHistory } from '../models/ratings.js';
+import {
+  setRating,
+  setAlbumRating,
+  recordPlay,
+  updatePlaySeconds,
+  clearHistory,
+} from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
 import { updateAlbum, updateSingle, updateArtistCover } from '../models/edits.js';
 import {
@@ -236,7 +242,12 @@ router.patch('/artists/:id', async (req, res) => {
 router.get('/albums', (req, res) => {
   res.json({
     ok: true,
-    albums: listAlbums({ q: req.query.q, sort: req.query.sort, dir: req.query.dir }),
+    albums: listAlbums({
+      userId: req.user.id,
+      q: req.query.q,
+      sort: req.query.sort,
+      dir: req.query.dir,
+    }),
   });
 });
 
@@ -391,6 +402,16 @@ router.put('/tracks/:id/rating', (req, res) => {
   const result = setRating(req.user.id, id(req.params.id), req.body.stars);
   if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
   res.json({ ok: true, stars: result.stars, counts: starCounts(req.user.id) });
+});
+
+// The stars on a whole record. Shaped like the track rating above, minus the
+// counts: those describe the star playlists, and an album rating feeds none.
+// Per account like every rating, so this is not the shared-library PATCH next
+// to it - two people may disagree about a record.
+router.put('/albums/:id/rating', (req, res) => {
+  const result = setAlbumRating(req.user.id, id(req.params.id), req.body.stars);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, stars: result.stars });
 });
 
 router.post('/plays', (req, res) => {

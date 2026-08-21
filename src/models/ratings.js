@@ -28,6 +28,32 @@ export function setRating(userId, trackId, stars) {
   return { ok: true, stars: value };
 }
 
+// The same for a whole record, and completely apart from the songs on it: the
+// stars of an album say nothing about the stars of its tracks and are never
+// derived from them. 0 clears it, like above.
+//
+// No star playlist reads this table, so unlike setRating nothing else has to be
+// kept out of it - a record is a record, there are no album-shaped podcasts.
+export function setAlbumRating(userId, albumId, stars) {
+  const value = Number(stars);
+  if (!Number.isInteger(value) || value < 0 || value > 5) return { error: 'invalid_stars' };
+
+  const album = db.prepare('SELECT id FROM albums WHERE id = ?').get(albumId);
+  if (!album) return { error: 'not_found' };
+
+  if (value === 0) {
+    db.prepare('DELETE FROM album_ratings WHERE user_id = ? AND album_id = ?').run(userId, albumId);
+    return { ok: true, stars: 0 };
+  }
+
+  db.prepare(
+    `INSERT INTO album_ratings (user_id, album_id, stars) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, album_id) DO UPDATE
+       SET stars = excluded.stars, updated_at = datetime('now')`
+  ).run(userId, albumId, value);
+  return { ok: true, stars: value };
+}
+
 // Records that a track was listened to. The client calls this once a track has
 // played far enough to count, not when playback merely started. The id comes
 // back so the player can keep reporting how long it really played.

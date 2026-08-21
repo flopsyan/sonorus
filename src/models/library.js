@@ -463,6 +463,11 @@ function shapeAlbum(row) {
     cover: row.cover ? `/covers/${row.cover}` : null,
     trackCount: row.trackCount || 0,
     duration: row.duration || 0,
+    // The account's stars on the record itself, unrelated to the stars on its
+    // songs. Only the queries that asked for it say anything: the ones that did
+    // not leave the field off rather than claim a 0, which would read as
+    // "not rated" on a record that is.
+    ...('stars' in row ? { stars: row.stars || 0 } : {}),
   };
 }
 
@@ -471,12 +476,21 @@ const ALBUM_SORTS = {
   artist: 'ar.name COLLATE NOCASE',
   year: ALBUM_DATE,
   tracks: 'trackCount',
+  // NULL for a record with no stars, which the ORDER BY below puts last in both
+  // directions - "schlechteste zuerst" means the worst rated one, not the ones
+  // nobody has judged yet.
+  stars: 'stars',
 };
 
+// The rating is a correlated subquery rather than a join, like the one in
+// TRACK_FIELDS: these queries GROUP BY al.id to count the tracks, and a joined
+// row would have to be squeezed through an aggregate to survive that.
 const ALBUM_ROW = `
   al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
   al.artist_id AS artistId, ar.name AS artist,
-  COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
+  COUNT(t.id) AS trackCount, SUM(t.duration) AS duration,
+  (SELECT r.stars FROM album_ratings r
+    WHERE r.album_id = al.id AND r.user_id = @userId) AS stars
 `;
 
 const ALBUM_FROM = `
@@ -489,7 +503,7 @@ const ALBUM_FROM = `
 // "Bowie Young Americans" is one query and not two.
 const ALBUM_SEARCH_FIELDS = ['al.title', 'ar.name'];
 
-export function listAlbums({ q = '', sort = 'title', dir = 'asc' } = {}) {
+export function listAlbums({ userId, q = '', sort = 'title', dir = 'asc' } = {}) {
   const order = ALBUM_SORTS[sort] || ALBUM_SORTS.title;
   const direction = String(dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
   const search = allWordsIn(ALBUM_SEARCH_FIELDS, searchWords(q));
@@ -502,7 +516,7 @@ export function listAlbums({ q = '', sort = 'title', dir = 'asc' } = {}) {
        HAVING trackCount > 0
         ORDER BY (${order}) IS NULL, ${order} ${direction}, al.title COLLATE NOCASE ASC`
     )
-    .all(search ? search.params : {})
+    .all({ userId, ...(search ? search.params : {}) })
     .map(shapeAlbum);
 }
 
@@ -511,14 +525,16 @@ export function getAlbum(id, userId) {
     .prepare(
       `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               al.artist_id AS artistId, ar.name AS artist, al.genres_locked AS genresLocked,
-              COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
+              COUNT(t.id) AS trackCount, SUM(t.duration) AS duration,
+              (SELECT r.stars FROM album_ratings r
+                WHERE r.album_id = al.id AND r.user_id = @userId) AS stars
          FROM albums al
          LEFT JOIN artists ar ON ar.id = al.artist_id
          LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT_MUSIC}
         WHERE al.id = @id
         GROUP BY al.id`
     )
-    .get({ id });
+    .get({ id, userId });
   if (!album || !album.id) return null;
 
   const tracks = db
@@ -855,7 +871,7 @@ export function searchLibrary({ userId, q = '', limit = 100 } = {}) {
        HAVING trackCount > 0
         ORDER BY score DESC, al.title COLLATE NOCASE ASC`
     )
-    .all({ ...albumWhere.params, ...whole })
+    .all({ userId, ...albumWhere.params, ...whole })
     .map(shapeAlbum);
 
   return { tracks, artists, albums };
