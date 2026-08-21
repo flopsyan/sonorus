@@ -394,11 +394,13 @@ function renderSidebar() {
       ${library}
     </nav>
 
+    <!-- Deliberately without a title: "Gesprochenes" named nothing that Podcasts
+         and Hörbücher underneath it do not already say. And without a stand-in
+         for it either - .nav-group's own margin is the gap between two groups,
+         so this one sits below Genres exactly the way Bewertung sits below
+         Hörbücher. A blank head used to hold the missing title's room open,
+         which made this one gap twice as tall as every other. -->
     <nav class="nav-group">
-      <!-- Deliberately without a title: "Gesprochenes" named nothing that
-           Podcasts and Hörbücher underneath it do not already say. The empty
-           head is what keeps the gap to the library above (see .is-blank). -->
-      <div class="nav-group-head is-blank" aria-hidden="true"></div>
       ${spoken}
     </nav>
 
