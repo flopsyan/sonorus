@@ -9,6 +9,7 @@
 
 import { api } from './api.js';
 import { spreadByArtist } from './shuffle.js';
+import { streamUrl } from './quality.js';
 
 /** What interpret a position in the queue belongs to, for the spread. */
 const artistAt = (i) => state.queue[i]?.artist;
@@ -364,7 +365,7 @@ function load(track, autoplay, startAt = 0) {
   // from the queue restore and describes this very session.
   const at = startAt || (isSpoken(track) ? track.resumeAt || 0 : 0);
   armProgress(track, at);
-  audio.src = `/api/stream/${track.id}`;
+  audio.src = streamUrl(track.id);
   if (at > 0) {
     audio.addEventListener('loadedmetadata', () => {
       audio.currentTime = Math.min(at, audio.duration || at);
@@ -736,6 +737,30 @@ export function toggleMute() {
 
 // Updates a rating that is already in the queue, so the player bar and the
 // queue panel stay in sync with the list the user rated from.
+/**
+ * Reopens the running track at the quality that is set now.
+ *
+ * Called when the setting is changed while something is playing. The position
+ * and whether it was playing are carried over, so the switch costs the buffer
+ * and nothing else - anything more would be a setting you have to stop the music
+ * to change.
+ */
+export function reopenAtCurrentQuality() {
+  const track = currentTrack();
+  if (!track) return;
+  const at = audio.currentTime || 0;
+  const wasPlaying = !audio.paused;
+  audio.src = streamUrl(track.id);
+  audio.addEventListener(
+    'loadedmetadata',
+    () => {
+      audio.currentTime = Math.min(at, audio.duration || at);
+      if (wasPlaying) audio.play().catch(() => {});
+    },
+    { once: true }
+  );
+}
+
 export function applyRating(trackId, starValue) {
   let touched = false;
   for (const track of state.queue) {

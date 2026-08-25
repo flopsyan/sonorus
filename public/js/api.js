@@ -120,6 +120,7 @@ export const api = {
   dismissIssue: (id) => request('DELETE', `/api/import/issues/${id}`),
   clearIssues: () => request('DELETE', '/api/import/issues'),
 
+  quality: () => request('GET', '/api/quality'),
   scanStatus: () => request('GET', '/api/scan'),
   startScan: () => request('POST', '/api/scan'),
 

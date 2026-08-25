@@ -28,6 +28,10 @@ services:
       # Reverse proxies in front of the app (see .env.example). Set to false
       # when the port is exposed directly without a reverse proxy.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # Where the smaller copies of the songs are kept, and how large that may
+      # grow before the least recently used ones are dropped.
+      TRANSCODE_DIR: /app/transcodes
+      TRANSCODE_MAX_GB: ${TRANSCODE_MAX_GB:-60}
     volumes:
       # Your music folder, mounted read-only: Sonorus never writes to it.
       - "${MUSIC_DIR:-./music}:/music:ro"
@@ -38,6 +42,10 @@ services:
       - "${AUDIOBOOK_DIR:-./audiobooks}:/audiobooks:ro"
       # Persistent data: SQLite database + extracted cover art
       - sonorus-data:/app/data
+      # The smaller copies, in a volume of their own: they are large, they are
+      # worthless in a backup, and every one of them can be made again from the
+      # file it came from.
+      - sonorus-transcodes:/app/transcodes
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -47,3 +55,4 @@ services:
 
 volumes:
   sonorus-data:
+  sonorus-transcodes:

@@ -263,6 +263,12 @@ one continuous file.
 - The queue, volume and the shuffle/repeat modes survive a reload. Volume,
   shuffle and repeat are stored on the account, so they follow you to another
   device; the queue itself stays in the browser you built it in.
+- **Qualität** - under Einstellungen you pick whether this device streams the
+  original file or a smaller copy at Opus 128 kbps. The choice is per **device**,
+  not per account: it lives in the browser, because a machine on your own network
+  and a laptop on hotel Wi-Fi do not want the same thing. Changing it reopens the
+  running track where it stands, so you can hear the difference without stopping
+  the music.
 
 ### On a phone
 
@@ -435,10 +441,37 @@ All settings are read from the environment (see `.env.example`):
 
 ## Supported formats
 
-Sonorus streams the original file - there is no transcoding, so playback depends
-on what your browser can decode. Tags are read for MP3, M4A/AAC/ALAC, FLAC, OGG,
-Opus, WAV, AIFF, WMA, APE, WavPack and Musepack; of those, current Firefox and
-Chromium play MP3, M4A/AAC, FLAC, OGG, Opus and WAV.
+Tags are read for MP3, M4A/AAC/ALAC, FLAC, OGG, Opus, WAV, AIFF, WMA, APE,
+WavPack and Musepack; of those, current Firefox and Chromium play MP3, M4A/AAC,
+FLAC, OGG, Opus and WAV.
+
+By default Sonorus streams the original file, so playback depends on what your
+browser can decode. The **Qualität** setting is the other option: it serves a
+copy at Opus 128 kbps instead, which every current browser and the Android app
+play whatever the source was.
+
+That copy is made once with ffmpeg and kept, so nothing is encoded while you
+wait for a song to start. Three rules decide what you actually get:
+
+- **Lossless always shrinks.** FLAC, WAV, AIFF, APE, WavPack and DSD are
+  re-encoded, which is where the setting earns its keep - a FLAC album is
+  ungefähr three times the size of the same album in Opus.
+- **A lossy file is never re-encoded upwards.** An MP3 that is already at or
+  near 128 kbps is handed over untouched, because a second generation of loss
+  would cost quality and save nothing worth having.
+- **You are told which of the two happened.** The app shows the format really
+  being played under the transport, not the one that was asked for.
+
+Without ffmpeg on the server the app runs exactly as before and serves originals
+only; Einstellungen says so instead of offering a choice that cannot work. The
+Docker image ships ffmpeg, so this only applies to a bare `npm start`.
+
+The copies are made in one batch at the end of every **Bibliothek scannen**, and
+the progress bar covers that phase like the others. They live in their own
+volume (`TRANSCODE_DIR`, `/app/transcodes`) rather than next to the database:
+they are large, they are worthless in a backup, and every one of them can be
+made again from the file it came from. `TRANSCODE_MAX_GB` caps the folder; past
+it, the least recently used copies are dropped.
 
 ## Data & backup
 
@@ -456,7 +489,10 @@ MUSIC_DIR=/path/to/music npm start
 ```
 
 Requires Node 20 or newer. The database and covers are written to `./data`
-(override with `DATA_DIR`).
+(override with `DATA_DIR`), and so are the re-encoded copies (override with
+`TRANSCODE_DIR`). Install `ffmpeg` and put it on `PATH` - or point `FFMPEG_PATH`
+at it - if you want the smaller streaming quality; without it the app serves
+originals only.
 
 ## License
 

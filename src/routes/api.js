@@ -5,6 +5,15 @@ import path from 'node:path';
 import { getMeta } from '../db.js';
 import { requireAuthApi, setSessionCookie } from '../lib/auth.js';
 import { runScan, scanState, isScanning } from '../lib/scanner.js';
+import {
+  PROFILES,
+  ORIGINAL,
+  profileOf,
+  ensure as ensureTranscode,
+  batchState,
+  cacheStats,
+  isFfmpegReady,
+} from '../lib/transcode.js';
 import { readPlaylistCsv } from '../lib/csv.js';
 import {
   listTracks,
@@ -12,7 +21,7 @@ import {
   getTrack,
   getLyrics,
   setLyricsOffset,
-  trackPath,
+  streamTrack,
   tracksByIds,
   listArtists,
   getArtist,
@@ -666,14 +675,80 @@ const AUDIO_MIME = {
   '.dff': 'audio/x-dff',
 };
 
-router.get('/stream/:id', (req, res) => {
-  const file = trackPath(id(req.params.id));
-  if (!file || !fs.existsSync(file)) return fail(res, 'not_found', 404);
-  const mime = AUDIO_MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
-  res.sendFile(file, { headers: { 'Content-Type': mime }, acceptRanges: true }, (err) => {
-    // A browser that seeks or skips aborts the request - that is not an error.
-    if (err && !res.headersSent) res.status(404).end();
+// `?q=` picks the quality. Absent, unknown or `original` all mean the file
+// itself; a profile name means the smaller copy - if there is one to be made.
+//
+// Deliberately the same route rather than a second endpoint: the app already
+// downloads through this one, so a new one would have to be taught to every
+// client and to the resume logic all over again.
+//
+// Two headers ride along, and they are what the clients draw: `X-Sonorus-Quality`
+// says what is really being served, which is not always what was asked for (see
+// `willTranscode`), and `X-Sonorus-Format` names the container so the format
+// under the transport is the format coming out of the speaker.
+router.get('/stream/:id', async (req, res) => {
+  const track = streamTrack(id(req.params.id));
+  if (!track || !track.path || !fs.existsSync(track.path)) return fail(res, 'not_found', 404);
+
+  const profile = profileOf(req.query.q);
+  let file = track.path;
+  let quality = ORIGINAL;
+
+  if (profile && isFfmpegReady()) {
+    try {
+      const cached = await ensureTranscode(track, profile);
+      if (cached) {
+        file = cached;
+        quality = profile.name;
+      }
+    } catch (err) {
+      // A failed encode is not a failed request: the original is still here and
+      // playing the song at full size beats not playing it at all.
+      console.warn(
+        `Sonorus: falling back to the original of ${track.path}:`,
+        err && err.message ? err.message : err
+      );
+    }
+  }
+
+  const extension = path.extname(file).toLowerCase();
+  const mime = AUDIO_MIME[extension] || 'application/octet-stream';
+  res.sendFile(
+    file,
+    {
+      headers: {
+        'Content-Type': mime,
+        'X-Sonorus-Quality': quality,
+        'X-Sonorus-Format': extension.replace('.', ''),
+      },
+      acceptRanges: true,
+    },
+    (err) => {
+      // A browser that seeks or skips aborts the request - that is not an error.
+      if (err && !res.headersSent) res.status(404).end();
+    }
+  );
+});
+
+// --- Quality ----------------------------------------------------------------
+
+// What the clients need to draw their quality picker: the profiles this server
+// can actually serve, and how much disk the cache is using. `ready` is false on
+// an instance without ffmpeg, and then `original` is the only honest answer.
+router.get('/quality', (req, res) => {
+  res.json({
+    ok: true,
+    ready: isFfmpegReady(),
+    profiles: Object.values(PROFILES).map((p) => ({
+      name: p.name,
+      label: p.label,
+      codec: p.codec,
+      bitrate: p.bitrate,
+    })),
+    cache: cacheStats(),
+    batch: batchState(),
   });
 });
+
 
 export default router;

@@ -44,6 +44,7 @@ import path from 'node:path';
 import { parseFile } from 'music-metadata';
 
 import db, { coversDir, musicDir, podcastDir, audiobookDir, getMeta, setMeta } from '../db.js';
+import { isFfmpegReady, pregenerate, PROFILES } from './transcode.js';
 import { normalize, loosen, primaryArtist } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
 import { extractLyrics } from './lyrics.js';
@@ -76,7 +77,7 @@ const COVER_MIME_EXT = {
 // Live progress of the running scan, polled by the settings page.
 const state = {
   running: false,
-  phase: 'idle', // idle | walking | reading | pruning | done | error
+  phase: 'idle', // idle | walking | reading | pruning | transcoding | done | error
   total: 0,
   done: 0,
   added: 0,
@@ -893,6 +894,15 @@ export async function runScan() {
 
     setMeta('scanner_version', SCANNER_VERSION);
     setMeta('last_scan', new Date().toISOString());
+
+    // The smaller copies, made in one batch rather than one at a time on the
+    // first play of every song. This is the last phase of the scan on purpose:
+    // it is the moment the library is known to be current, so it is also the
+    // moment a file that has just appeared can be encoded without asking again
+    // what is there. It is by far the longest phase, which is why it reports
+    // through the same progress the walk does.
+    await transcodeBatch();
+
     state.phase = 'done';
   } catch (err) {
     state.phase = 'error';
@@ -904,6 +914,28 @@ export async function runScan() {
   }
 
   return scanState();
+}
+
+// Encodes what the smaller quality needs, and reports through the scan's own
+// progress so the settings page draws one bar for the whole job.
+//
+// Skipped without ffmpeg rather than failing: an instance without it serves the
+// original and nothing else, which is a smaller instance and not a broken one.
+async function transcodeBatch() {
+  if (!isFfmpegReady()) return;
+  // Read straight from the database rather than through the library model: the
+  // model imports nothing of the scanner today, and a scanner that imports it
+  // back is one refactor away from a cycle.
+  const tracks = db
+    .prepare("SELECT id, path, size, mtime, bitrate, lossless, duration FROM tracks WHERE missing_at = '' ORDER BY id")
+    .all();
+  state.phase = 'transcoding';
+  state.total = tracks.length;
+  state.done = 0;
+  await pregenerate(tracks, PROFILES.opus128, (done, total) => {
+    state.done = done;
+    state.total = total;
+  });
 }
 
 // Kicks off a scan on start according to SCAN_ON_START (auto | always | never).

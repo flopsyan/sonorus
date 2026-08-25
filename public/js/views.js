@@ -6,6 +6,7 @@ import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
 import { esc, art, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import * as qualityPref from './quality.js';
 
 // --- Shared bits ------------------------------------------------------------
 
@@ -355,10 +356,6 @@ const ALBUM_SORTS = [
   ['year', 'asc', 'Jahr, älteste zuerst'],
   ['tracks', 'desc', 'Songs, meiste zuerst'],
   ['tracks', 'asc', 'Songs, wenigste zuerst'],
-  // Unrated records land at the end of both, which is why neither says
-  // "unbewertet zuerst": they are not the worst, they were never judged.
-  ['stars', 'desc', 'Bewertung, beste zuerst'],
-  ['stars', 'asc', 'Bewertung, schlechteste zuerst'],
 ];
 
 export async function albums(params, ctx) {
@@ -1583,7 +1580,14 @@ function scanBlock(scan, lastScan) {
   // is no honest percentage yet and the bar runs indeterminate.
   const measured = running && scan.total > 0;
   const percent = measured ? Math.round((scan.done / scan.total) * 100) : 0;
-  const phases = { walking: 'Ordner wird gelesen', reading: 'Dateien werden ausgelesen', pruning: 'Aufräumen' };
+  const phases = {
+    walking: 'Ordner wird gelesen',
+    reading: 'Dateien werden ausgelesen',
+    pruning: 'Aufräumen',
+    // By far the longest of the four, and the reason the bar is worth watching:
+    // the whole library is re-encoded once so no phone ever waits for one.
+    transcoding: 'Kleinere Qualität wird erzeugt',
+  };
 
   return `<div id="scan-block">
       <div class="setting-row">
@@ -1661,7 +1665,13 @@ function issueRows(issues) {
 }
 
 export async function settings(_params, ctx) {
-  const [status, issueData] = await Promise.all([api.scanStatus(), api.issues()]);
+  const [status, issueData, quality] = await Promise.all([
+    api.scanStatus(),
+    api.issues(),
+    // An instance without ffmpeg can only serve the original, and the picker has
+    // to say so rather than offer a choice that quietly does nothing.
+    api.quality().catch(() => null),
+  ]);
 
   return {
     title: 'Einstellungen',
@@ -1705,6 +1715,14 @@ export async function settings(_params, ctx) {
       </div>
 
       <div class="panel">
+        <h2>Qualität</h2>
+        <p class="panel-hint">Gilt nur für <strong>dieses Gerät</strong> und nur fürs Streamen -
+          die Einstellung liegt im Browser, nicht im Konto. Ein Rechner im eigenen Netz
+          und ein Laptop im Hotel-WLAN wollen nicht dasselbe.</p>
+        ${qualityBlock(quality)}
+      </div>
+
+      <div class="panel">
         <h2>Darstellung</h2>
         <p class="panel-hint">Sonorus ist für dunkel gebaut; hell gibt es für den Tag.</p>
         <div class="setting-row">
@@ -1719,6 +1737,50 @@ export async function settings(_params, ctx) {
       return wireSettings(root, ctx2);
     },
   };
+}
+
+// The quality switch and what the cache behind it currently holds.
+//
+// Deliberately a picker and a readout and nothing else: the choice is the whole
+// feature, and the size is there so a "warum ist die Platte voll" has an answer
+// on the page rather than in a shell.
+function qualityBlock(quality) {
+  if (!quality || !quality.ready) {
+    return `<div class="setting-row">
+        <div>
+          <div class="setting-label">Nur Original</div>
+          <div class="setting-sub">Auf diesem Server ist kein ffmpeg installiert, also gibt es
+            nichts umzurechnen. Sonorus liefert die Dateien so aus, wie sie im Musikordner liegen.</div>
+        </div>
+      </div>`;
+  }
+
+  const chosen = qualityPref.current();
+  const buttons = qualityPref.QUALITIES.map(
+    (q) =>
+      `<button type="button" data-quality-choice="${q.value}"${
+        chosen === q.value ? ' class="active"' : ''
+      }>${esc(q.label)}</button>`
+  ).join('');
+  const hint = qualityPref.QUALITIES.find((q) => q.value === chosen)?.hint || '';
+  const cache = quality.cache || {};
+  const batch = quality.batch || {};
+
+  return `<div class="setting-row">
+      <div>
+        <div class="setting-label">Streaming-Qualität</div>
+        <div class="setting-sub" data-quality-hint>${esc(hint)}</div>
+      </div>
+      <div class="seg-switch" role="group" aria-label="Streaming-Qualität">${buttons}</div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Zwischenspeicher</div>
+        <div class="setting-sub">${fmt.number(cache.files || 0)} Dateien · ${fmt.bytes(cache.bytes || 0)}${
+          batch.running ? ` · wird gerade erzeugt (${fmt.number(batch.done)} von ${fmt.number(batch.total)})` : ''
+        }</div>
+      </div>
+    </div>`;
 }
 
 // The same three buttons as in the topbar, for the screens the topbar drops

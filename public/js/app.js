@@ -13,6 +13,7 @@ import {
 } from './ui.js';
 import * as views from './views.js';
 import * as player from './player.js';
+import * as qualityPref from './quality.js';
 
 const content = document.getElementById('content');
 const sidebarNav = document.getElementById('sidebar-nav');
@@ -2934,6 +2935,28 @@ function applyTheme(choice) {
 document.addEventListener('click', (e) => {
   const choice = e.target.closest('[data-theme-choice]');
   if (choice) applyTheme(choice.dataset.themeChoice);
+});
+
+// The streaming quality, and delegated for the same reason: the switch belongs
+// to a view that is drawn long after this file runs.
+//
+// The running track is reopened at the new quality instead of waiting for the
+// next one. A setting you have to stop the music to try out is a setting nobody
+// tries out, and the position is carried over so it costs the buffer and
+// nothing else.
+document.addEventListener('click', (e) => {
+  const button = e.target.closest('[data-quality-choice]');
+  if (!button) return;
+  const chosen = qualityPref.set(button.dataset.qualityChoice);
+  document.querySelectorAll('[data-quality-choice]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.qualityChoice === chosen)
+  );
+  const hint = document.querySelector('[data-quality-hint]');
+  if (hint) {
+    hint.textContent = qualityPref.QUALITIES.find((q) => q.value === chosen)?.hint || '';
+  }
+  player.reopenAtCurrentQuality();
+  toast(`Qualität: ${qualityPref.labelOf(chosen)}`);
 });
 
 // Account menu

@@ -30,7 +30,16 @@ const podcastDir = path.resolve(process.env.PODCAST_DIR || path.join(projectRoot
 // one thing to the listener, and the parts only decide the order it plays in.
 const audiobookDir = path.resolve(process.env.AUDIOBOOK_DIR || path.join(projectRoot, 'audiobooks'));
 
+// The smaller copies of the songs, made on demand and kept. A root of its own
+// rather than a folder in dataDir, because it is the one directory here that
+// grows with the size of the library rather than with the number of rows: the
+// whole music folder re-encoded is measured in tens of gigabytes, and it has no
+// business sitting in the same volume as the database and the covers, which a
+// backup wants and this one does not.
+const transcodeDir = path.resolve(process.env.TRANSCODE_DIR || path.join(dataDir, 'transcodes'));
+
 fs.mkdirSync(coversDir, { recursive: true });
+fs.mkdirSync(transcodeDir, { recursive: true });
 
 const dbPath = path.join(dataDir, 'sonorus.sqlite');
 const db = new Database(dbPath);
@@ -444,5 +453,5 @@ export function setMeta(key, value) {
   ).run(key, String(value));
 }
 
-export { dbPath, dataDir, coversDir, musicDir, podcastDir, audiobookDir };
+export { dbPath, dataDir, coversDir, transcodeDir, musicDir, podcastDir, audiobookDir };
 export default db;

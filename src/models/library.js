@@ -338,6 +338,17 @@ export function trackPath(id) {
   return row ? row.path : null;
 }
 
+// Everything the transcode cache has to know about a song, and nothing a
+// response may carry. `size` and `mtime` are what makes a cache entry invalid
+// by itself when the file behind it changes; the rest decides whether the file
+// is re-encoded at all (see `willTranscode` in lib/transcode.js).
+const STREAM_FIELDS =
+  'id, path, size, mtime, bitrate, lossless, duration';
+
+export function streamTrack(id) {
+  return db.prepare(`SELECT ${STREAM_FIELDS} FROM tracks WHERE id = ?`).get(id) || null;
+}
+
 // Tracks for a list of ids, returned in the order the ids were given. Used to
 // restore the playback queue after a reload.
 export function tracksByIds(ids, userId) {
@@ -463,11 +474,6 @@ function shapeAlbum(row) {
     cover: row.cover ? `/covers/${row.cover}` : null,
     trackCount: row.trackCount || 0,
     duration: row.duration || 0,
-    // The account's stars on the record itself, unrelated to the stars on its
-    // songs. Only the queries that asked for it say anything: the ones that did
-    // not leave the field off rather than claim a 0, which would read as
-    // "not rated" on a record that is.
-    ...('stars' in row ? { stars: row.stars || 0 } : {}),
   };
 }
 

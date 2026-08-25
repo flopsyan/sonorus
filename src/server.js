@@ -8,6 +8,7 @@ import apiRouter from './routes/api.js';
 import { attachAuth, bootstrapAdmin, setupRequired } from './lib/auth.js';
 import { securityHeaders, rejectCrossSite } from './lib/security.js';
 import { scanOnStart } from './lib/scanner.js';
+import { probeFfmpeg } from './lib/transcode.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -130,5 +131,15 @@ app.listen(port, () => {
   } else {
     console.log('Login required. Manage accounts from the account menu (admins only).');
   }
-  scanOnStart();
+  // Asked once here rather than on every stream. Without ffmpeg the app is not
+  // broken, it simply has one quality instead of two - and the clients are told
+  // so through GET /api/quality, so nothing offers a setting that cannot work.
+  probeFfmpeg().then((ready) => {
+    console.log(
+      ready
+        ? 'ffmpeg found - the smaller quality can be served.'
+        : 'ffmpeg missing - only the original quality is served.'
+    );
+    scanOnStart();
+  });
 });
