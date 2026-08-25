@@ -476,21 +476,12 @@ const ALBUM_SORTS = {
   artist: 'ar.name COLLATE NOCASE',
   year: ALBUM_DATE,
   tracks: 'trackCount',
-  // NULL for a record with no stars, which the ORDER BY below puts last in both
-  // directions - "schlechteste zuerst" means the worst rated one, not the ones
-  // nobody has judged yet.
-  stars: 'stars',
 };
 
-// The rating is a correlated subquery rather than a join, like the one in
-// TRACK_FIELDS: these queries GROUP BY al.id to count the tracks, and a joined
-// row would have to be squeezed through an aggregate to survive that.
 const ALBUM_ROW = `
   al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
   al.artist_id AS artistId, ar.name AS artist,
-  COUNT(t.id) AS trackCount, SUM(t.duration) AS duration,
-  (SELECT r.stars FROM album_ratings r
-    WHERE r.album_id = al.id AND r.user_id = @userId) AS stars
+  COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
 `;
 
 const ALBUM_FROM = `
@@ -525,9 +516,7 @@ export function getAlbum(id, userId) {
     .prepare(
       `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               al.artist_id AS artistId, ar.name AS artist, al.genres_locked AS genresLocked,
-              COUNT(t.id) AS trackCount, SUM(t.duration) AS duration,
-              (SELECT r.stars FROM album_ratings r
-                WHERE r.album_id = al.id AND r.user_id = @userId) AS stars
+              COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
          LEFT JOIN artists ar ON ar.id = al.artist_id
          LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT_MUSIC}

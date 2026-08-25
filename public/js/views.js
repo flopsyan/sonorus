@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, mosaic, trackList, episodeList, card, listRow, albumStars, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
 
 // --- Shared bits ------------------------------------------------------------
 
@@ -399,11 +399,6 @@ export async function albums(params, ctx) {
                 sub: a.year ? `${a.artist} · ${a.year}` : a.artist,
                 meta: fmt.plural(a.trackCount, 'Song', 'Songs'),
                 playAction: `data-play-album="${a.id}"`,
-                // Shown, never set: a tile and a row are one link each, and the
-                // record's own page is where it is rated. Deliberately its own
-                // rating and not an average of the songs - the two say different
-                // things and neither stands in for the other.
-                rating: albumStars(a.stars, a.id, true),
               }))
             )
           : empty('Keine Alben', 'Ein Album ist ein Unterordner im Ordner eines Interpreten. Dateien, die direkt beim Interpreten liegen, sind Singles.')
@@ -447,14 +442,7 @@ export async function album(params) {
       actions: `${playActions('view')}
         <button type="button" class="btn btn-ghost" data-edit-album="${data.id}">
           ${icon('edit', 16)} Bearbeiten
-        </button>
-        <!-- The one place a record is rated. Not next to "Bearbeiten" by
-             accident: that button edits the shared library, this belongs to the
-             account alone, so the two must not read as one pair of controls. -->
-        <span class="detail-rating">
-          <span class="rack-label">Album bewerten</span>
-          ${albumStars(data.stars, data.id)}
-        </span>`,
+        </button>`,
     })}
       ${trackList(data.tracks, { numbering: 'track' })}`,
   };

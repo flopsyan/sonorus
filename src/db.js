@@ -256,23 +256,6 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_ratings_stars ON ratings(user_id, stars);
 
-  -- The stars on a whole record, and deliberately a table of its own rather
-  -- than a column next to the track ratings: an album is rated as an album and
-  -- knows nothing about how its songs were rated. A 5-star record may hold a
-  -- song nobody ever gave a star, and both statements stay true side by side.
-  --
-  -- Unlike the track ratings this feeds no playlist. There is no star playlist
-  -- for records, on purpose - the rating is there to sort the Alben tab by, and
-  -- that is all it is for.
-  CREATE TABLE IF NOT EXISTS album_ratings (
-    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    album_id   INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
-    stars      INTEGER NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (user_id, album_id)
-  );
-  CREATE INDEX IF NOT EXISTS idx_album_ratings_stars ON album_ratings(user_id, stars);
-
   CREATE TABLE IF NOT EXISTS plays (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -439,6 +422,14 @@ once('album_owns_genres_and_date', () => {
      WHERE id NOT IN (SELECT genre_id FROM track_genres)
        AND id NOT IN (SELECT genre_id FROM album_genres);
   `);
+});
+
+// A record could be rated as a whole for a while, apart from the songs on it.
+// It was never used - not once, on the instance it was built for - so the whole
+// mechanic is gone, and with it its table. The stars on the *songs* are a
+// different feature entirely and stay exactly as they were.
+once('drop_album_ratings', () => {
+  db.exec('DROP TABLE IF EXISTS album_ratings;');
 });
 
 export function getMeta(key) {

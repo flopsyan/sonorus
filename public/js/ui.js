@@ -87,22 +87,6 @@ export function stars(value, trackId, readonly = false) {
             role="group" aria-label="Bewertung">${inner}</div>`;
 }
 
-// The stars of a whole record. Its own attributes rather than the ones above,
-// because an album and a track can carry the same id - a click has to know which
-// of the two it means, and so does the redraw afterwards.
-//
-// A read-only one says its value in a label of its own: without buttons to read
-// there is nothing left for a screen reader to count.
-export function albumStars(value, albumId, readonly = false) {
-  const current = Number(value) || 0;
-  const inner = starRow(value, (n) => `data-rate-album="${n}" data-album-id="${albumId}"`, readonly);
-  const label = readonly
-    ? `aria-label="${current ? `Mit ${current} von 5 Sternen bewertet` : 'Nicht bewertet'}"`
-    : 'aria-label="Album bewerten"';
-  return `<div class="stars album-stars${readonly ? ' readonly' : ''}" data-stars-album="${albumId}"
-            role="${readonly ? 'img' : 'group'}" ${label}>${inner}</div>`;
-}
-
 // --- Track list -------------------------------------------------------------
 
 const COLUMNS = [

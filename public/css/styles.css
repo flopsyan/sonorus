@@ -990,10 +990,6 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 /* The record's own stars, set from here and nowhere else. Set apart from the
    buttons next to them by a gap of their own and their own little title: those
    change the shared library, this one belongs to the account. */
-.detail-rating { display: flex; align-items: center; gap: 9px; margin-left: 7px; }
-.detail-rating .rack-label { white-space: nowrap; }
-.detail-rating .stars .star { padding: 3px; }
-.detail-rating .stars .star .icon { width: 19px; height: 19px; }
 
 /* Cover picker in the album editor: the artwork next to what it can be */
 .cover-edit { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; }
