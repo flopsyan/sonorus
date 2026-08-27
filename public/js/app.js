@@ -2083,7 +2083,11 @@ function renderPlayer(s) {
     s.muted,
     Math.round(s.volume * 100),
     s.pos,
-    s.order.length,
+    // The whole order, not just its length: the queue panel draws this list, so
+    // a reorder has to reach it - and a reorder changes neither the length nor
+    // `pos` (that one follows the running track). The panel therefore stayed
+    // exactly as it was while the queue behind it had already moved.
+    s.order.join(','),
     s.source,
   ].join('|');
   if (key === lastPlayerKey) return;
