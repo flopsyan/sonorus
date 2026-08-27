@@ -267,7 +267,7 @@ export function episodeList(episodes, { offset = 0, showName = false } = {}) {
 export function card({ href, cover, covers, title, sub, round = false, playAction, rating = '' }) {
   return `<a class="card${round ? ' round' : ''}" href="${esc(href)}" data-link>
       <span class="card-art">
-        ${covers ? coverMosaic(covers, title) : art(cover, title)}
+        ${covers?.length ? coverMosaic(covers, title) : art(cover, title)}
         ${playAction ? `<button type="button" class="card-play" ${playAction} aria-label="${esc(title)} abspielen">${icon('play', 17)}</button>` : ''}
       </span>
       <span class="card-title">${esc(title)}</span>
@@ -282,7 +282,7 @@ export function card({ href, cover, covers, title, sub, round = false, playActio
 // stars, when there are any, go between the two.
 export function listRow({ href, cover, covers, title, sub, meta, round = false, playAction, rating = '' }) {
   return `<a class="list-row" href="${esc(href)}" data-link>
-      <span class="list-art${round ? ' round' : ''}">${covers ? coverMosaic(covers, title) : art(cover, title)}</span>
+      <span class="list-art${round ? ' round' : ''}">${covers?.length ? coverMosaic(covers, title) : art(cover, title)}</span>
       <span class="list-text">
         <span class="list-title" data-clip>${esc(title)}</span>
         ${sub ? `<span class="list-sub">${esc(sub)}</span>` : ''}

@@ -62,3 +62,13 @@ export function primaryArtist(value) {
 function stripLeadingArticle(value) {
   return String(value).replace(/^\s*(the|der|die|das|le|la|les|el|los)\s+/i, '');
 }
+
+// The one artist folder that is read differently: its albums are compilations,
+// so the interpret is per song and not per folder, and the artist itself has no
+// face of its own to show. Compared in lower case, because artists.name is
+// UNIQUE COLLATE NOCASE and "various" is that folder.
+export const VARIOUS = 'various';
+
+export function isVarious(name) {
+  return String(name ?? '').trim().toLowerCase() === VARIOUS;
+}

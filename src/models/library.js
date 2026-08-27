@@ -5,7 +5,7 @@
 // library rows themselves are shared by all accounts.
 
 import db from '../db.js';
-import { normalize, loosen, primaryArtist } from '../lib/normalize.js';
+import { normalize, loosen, primaryArtist, isVarious } from '../lib/normalize.js';
 // Out of `public/` on purpose: the browser player deals the same way and can
 // only import what is served, so this is the one module both sides run.
 import { spreadByArtist } from '../../public/js/shuffle.js';
@@ -380,7 +380,9 @@ const ARTIST_ROW = `
   ar.id, ar.name,
   COUNT(DISTINCT t.id)       AS trackCount,
   COUNT(DISTINCT t.album_id) AS albumCount,
-  ${ARTIST_COVER} AS cover
+  ${ARTIST_COVER} AS cover,
+  -- Only to decide whether a mosaic is drawn; dropped again by shapeArtistRow.
+  ar.cover AS ownCover
 `;
 
 const ARTIST_FROM = `
@@ -388,7 +390,45 @@ const ARTIST_FROM = `
   LEFT JOIN tracks t ON t.artist_id = ar.id AND ${PRESENT_MUSIC}
 `;
 
-const shapeArtistRow = (a) => ({ ...a, cover: a.cover ? `/covers/${a.cover}` : null });
+const shapeArtistRow = ({ ownCover, ...a }) => ({
+  ...a,
+  cover: a.cover ? `/covers/${a.cover}` : null,
+});
+
+// Up to four covers for the one interpret that is not a person: "Various" is
+// the compilation folder, so a single cover there is the artwork of whichever
+// compilation happens to be newest and says nothing about the rest. Its albums
+// are what it is made of, and the clients draw them as a 2x2 mosaic - the same
+// picture a genre or a playlist without artwork of its own gets.
+//
+// Deliberately for that one name and no other: every other interpret has a face
+// of their own, and their newest record standing for them is exactly right.
+//
+// The order is the one the artist page lists its albums in - newest first - so
+// the mosaic and the album grid below it read the same way, and a single is
+// taken too (`t.cover`) once the albums run out. `COALESCE(t.album_id, -t.id)`
+// buckets by record and not by song, the same trick GENRE_COVERS uses.
+const VARIOUS_COVERS = `
+  SELECT COALESCE(NULLIF(al.cover, ''), t.cover) AS cover
+    FROM tracks t
+    LEFT JOIN albums al ON al.id = t.album_id
+   WHERE t.artist_id = @id AND ${PRESENT_MUSIC}
+     AND COALESCE(NULLIF(al.cover, ''), t.cover) <> ''
+   GROUP BY COALESCE(t.album_id, -t.id)
+   ORDER BY (${ALBUM_DATE}) IS NULL, ${ALBUM_DATE} DESC, al.title COLLATE NOCASE
+   LIMIT 4
+`;
+
+// The mosaic covers of an artist, which is an empty list for all but Various.
+// Empty for it as well when a picture was picked for it by hand - that answers
+// the question the mosaic exists to answer - and when it holds fewer than four
+// records with artwork: the clients fall back to the single cover then, and
+// four half-filled tiles would only look broken.
+function mosaicCovers({ id, name, ownCover }) {
+  if (!isVarious(name) || ownCover) return [];
+  const covers = db.prepare(VARIOUS_COVERS).all({ id });
+  return covers.length === 4 ? covers.map((c) => `/covers/${c.cover}`) : [];
+}
 
 export function listArtists({ q = '' } = {}) {
   const search = allWordsIn(['ar.name'], searchWords(q));
@@ -401,7 +441,7 @@ export function listArtists({ q = '' } = {}) {
         ORDER BY ar.name COLLATE NOCASE ASC`
     )
     .all(search ? search.params : {})
-    .map(shapeArtistRow);
+    .map((a) => ({ ...shapeArtistRow(a), covers: mosaicCovers(a) }));
 }
 
 export function getArtist(id, userId) {
@@ -455,7 +495,15 @@ export function getArtist(id, userId) {
     ? `/covers/${artist.cover}`
     : (albums.find((a) => a.cover) || singles.find((t) => t.cover) || {}).cover || null;
 
-  return { ...artist, cover, hasOwnCover: !!artist.cover, albums, tracks, singles };
+  return {
+    ...artist,
+    cover,
+    covers: mosaicCovers({ ...artist, ownCover: artist.cover }),
+    hasOwnCover: !!artist.cover,
+    albums,
+    tracks,
+    singles,
+  };
 }
 
 // --- Albums -----------------------------------------------------------------
@@ -855,7 +903,7 @@ export function searchLibrary({ userId, q = '', limit = 100 } = {}) {
         ORDER BY score DESC, ar.name COLLATE NOCASE ASC`
     )
     .all({ ...artistWhere.params, ...whole })
-    .map(shapeArtistRow);
+    .map((a) => ({ ...shapeArtistRow(a), covers: mosaicCovers(a) }));
 
   const albumWhere = allWordsIn(ALBUM_SEARCH_FIELDS, list);
   const albums = db

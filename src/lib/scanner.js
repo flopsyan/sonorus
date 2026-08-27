@@ -45,7 +45,7 @@ import { parseFile } from 'music-metadata';
 
 import db, { coversDir, musicDir, podcastDir, audiobookDir, getMeta, setMeta } from '../db.js';
 import { isFfmpegReady, pregenerate, PROFILES } from './transcode.js';
-import { normalize, loosen, primaryArtist } from './normalize.js';
+import { normalize, loosen, primaryArtist, isVarious } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
 import { extractLyrics } from './lyrics.js';
 import { resolveIssuesForUser } from '../models/issues.js';
@@ -208,11 +208,6 @@ function audiobookId(title, aId) {
 
 const UNKNOWN_ARTIST = 'Unbekannter Interpret';
 
-// The one artist folder that is read differently: its albums are compilations,
-// so the interpret is per song and not per folder. Compared in lower case,
-// because artists.name is UNIQUE COLLATE NOCASE and "various" is that folder.
-const VARIOUS = 'various';
-
 // A folder inside an album that only groups one disc of it ("CD1", "Disc 2").
 const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
 
@@ -270,7 +265,7 @@ function describeFile(filePath) {
   // Only under "Various" does the rest of the name start with an interpret.
   // Everywhere else a dash in a title is just part of the title, so nothing is
   // taken off it - the whole point of restricting this to the one folder.
-  const named = artist.toLowerCase() === VARIOUS
+  const named = isVarious(artist)
     ? splitTrackArtist(parsed.title)
     : { trackArtist: '', title: parsed.title };
   // A disc folder carries the disc number the file name usually leaves out.

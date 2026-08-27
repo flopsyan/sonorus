@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, coverMosaic, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
 import * as qualityPref from './quality.js';
 
 // --- Shared bits ------------------------------------------------------------
@@ -226,6 +226,9 @@ export async function artists(_params, ctx) {
               list.map((a) => ({
                 href: `/artists/${a.id}`,
                 cover: a.cover,
+                // Empty for every interpret but Various, which has no face of
+                // its own and shows what it is made of instead.
+                covers: a.covers,
                 title: a.name,
                 // Name over count, the two lines a track row has - which is
                 // what makes a row here exactly as tall as a song there.
@@ -241,6 +244,12 @@ export async function artists(_params, ctx) {
 export async function artist(params) {
   const { artist: data } = await api.artist(params.id);
   const total = data.tracks.reduce((sum, t) => sum + t.duration, 0);
+
+  // Filled for Various and nothing else: the compilation folder is no person,
+  // so it shows the four records it is made of instead of the artwork of
+  // whichever one happens to be newest. The server decides that - see
+  // mosaicCovers() - and hands out an empty list for every other interpret.
+  const covers = data.covers || [];
 
   // The way into "nur die 5-Sterne-Songs von diesem Interpreten": one switch per
   // rating this artist has, each one click away from its list, where they can be
@@ -266,8 +275,10 @@ export async function artist(params) {
       label: 'Interpret',
       title: data.name,
       round: true,
-      artHtml: art(data.cover, data.name),
-      zoom: data.cover,
+      artHtml: covers.length ? coverMosaic(covers, data.name) : art(data.cover, data.name),
+      // A mosaic is four pictures and none of them is the interpret, so there
+      // is nothing to open at full size.
+      zoom: covers.length ? '' : data.cover,
       meta: facts([
         fmt.plural(data.albums.length, 'Album', 'Alben'),
         data.singles.length ? fmt.plural(data.singles.length, 'Single', 'Singles') : '',
@@ -1068,6 +1079,7 @@ export async function search(params) {
                     card({
                       href: `/artists/${a.id}`,
                       cover: a.cover,
+                      covers: a.covers,
                       title: a.name,
                       sub: fmt.plural(a.trackCount, 'Song', 'Songs'),
                       round: true,
