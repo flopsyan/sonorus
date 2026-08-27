@@ -1201,6 +1201,13 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .queue-text { min-width: 0; }
 .queue-title { font-size: 0.87rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-artist { font-size: 0.78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-actions { display: flex; align-items: center; }
+/* The handle is the only part of the row a drag may start on. On a touch screen
+   a drag anywhere else is the list being scrolled - the same gesture - and
+   `touch-action: none` is what hands this one to the app instead of to the
+   browser's own panning. */
+.queue-drag { cursor: grab; touch-action: none; }
+.queue-drag:active { cursor: grabbing; }
 .queue-item.dragging { opacity: 0.4; }
 .queue-item.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
 .queue-item.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -1808,6 +1815,9 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   .btn:active, .icon-btn:active, .play-btn:active, .card-play:active, .avatar-btn:active {
     transform: scale(0.94);
   }
+  /* Except the queue handle: it is held down for the whole drag, and a button
+     that stays pressed-in that long reads as stuck rather than as pressed. */
+  .queue-drag:active { transform: none; }
   .btn, .icon-btn, .play-btn, .card-play, .avatar-btn { transition: transform 0.08s ease; }
   .track-row.item:active, .queue-item:active, .picker-item:active,
   .dropdown-item:active, .nav-item:active, .issue:active, .top-row:active {

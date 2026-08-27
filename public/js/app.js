@@ -2213,33 +2213,53 @@ function renderQueue(s) {
     return;
   }
 
-  // "Als Nächstes" is a label between the current track and the rest, so the
-  // panel reads as: what is playing, then what follows - in the real order,
-  // shuffled or not.
+  // The panel starts at the track that is running. What was played before it is
+  // behind you and there is nothing left to do with it - it could not be moved
+  // (a queue only moves forwards) and removing it would change nothing that is
+  // still going to be heard.
+  const start = Math.max(0, s.pos);
   const nextIndex = s.pos + 1;
-  const header = `<div class="queue-section rack-label">Als Nächstes${s.shuffle ? ' (gemischt)' : ''}</div>`;
+  const header = (text) => `<div class="queue-section rack-label">${text}</div>`;
 
   el.queueList.innerHTML = list
-    .map((track, i) => {
+    .slice(start)
+    .map((track, offset) => {
+      // The index of the row *in the play order*, which is what every queue
+      // call takes. Slicing the list off the front must not renumber it.
+      const i = start + offset;
       const isCurrent = i === s.pos;
       const position = isCurrent
         ? `<span class="eq${s.playing ? '' : ' paused'}"><span></span><span></span><span></span></span>`
-        : i + 1;
-      const item = `<div class="queue-item${isCurrent ? ' playing' : ''}" data-queue-index="${i}" draggable="true">
+        : i - s.pos;
+      // Only what is still to come can be moved: dragging the running track
+      // would mean dropping it into a past it has already left.
+      const grip = isCurrent
+        ? ''
+        : `<button type="button" class="icon-btn icon-btn-sm queue-drag" data-queue-drag="${i}"
+            aria-label="Verschieben - mit den Pfeiltasten oder gezogen">${icon('grip', 15)}</button>`;
+      const item = `<div class="queue-item${isCurrent ? ' playing' : ''}" data-queue-index="${i}">
           <span class="queue-pos">${position}</span>
           <span class="queue-text">
             <span class="queue-title">${esc(track.title)}</span>
             <span class="queue-artist">${esc(track.artist)}</span>
           </span>
-          <button type="button" class="icon-btn icon-btn-sm" data-queue-remove="${i}"
-            aria-label="Aus der Warteschlange entfernen">${icon('x', 14)}</button>
+          <span class="queue-actions">
+            ${grip}
+            <button type="button" class="icon-btn icon-btn-sm" data-queue-remove="${i}"
+              aria-label="Aus der Warteschlange entfernen">${icon('x', 14)}</button>
+          </span>
         </div>`;
-      return i === nextIndex ? header + item : item;
+      if (isCurrent) return header('Jetzt läuft') + item;
+      return i === nextIndex ? header(`Als Nächstes${s.shuffle ? ' (gemischt)' : ''}`) + item : item;
     })
     .join('');
 }
 
 el.queueList.addEventListener('click', (e) => {
+  // The handle is a button of its own and its press is a drag or an arrow key,
+  // never a jump - without this every drop would also start the track it landed
+  // on.
+  if (e.target.closest('[data-queue-drag]')) return;
   const remove = e.target.closest('[data-queue-remove]');
   if (remove) {
     e.stopPropagation();
@@ -2250,36 +2270,127 @@ el.queueList.addEventListener('click', (e) => {
   if (item) player.jumpTo(Number(item.dataset.queueIndex));
 });
 
+// --- Moving an entry --------------------------------------------------------
+// Pointer events off a handle, not HTML5 drag-and-drop on the whole row. Two
+// reasons: drag-and-drop does not exist on a touch screen at all, so on a phone
+// the queue could not be sorted; and a drag that may start anywhere on the row
+// is the same gesture as scrolling the list, which on a phone can only be told
+// apart by a handle. One code path now covers mouse, pen and finger.
+
+// The lowest position an entry may be dropped on: everything before the running
+// track has already been played.
+const firstMovable = () => player.state.pos + 1;
+
+// Where a drop at `clientY` would land, as { index, below } of the row it is
+// over. Past the last row it is the last row's underside.
+function queueDropAt(clientY) {
+  const rows = [...el.queueList.querySelectorAll('[data-queue-index]')];
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    if (clientY < rect.bottom) {
+      return { row, below: clientY > rect.top + rect.height / 2 };
+    }
+  }
+  const last = rows[rows.length - 1];
+  return last ? { row: last, below: true } : null;
+}
+
+// The index the entry ends up at, from the row it was dropped on. Dropping
+// below a row means "after it", and taking the entry out first shifts
+// everything behind it up by one.
+function queueTargetIndex(from, drop) {
+  let target = Number(drop.row.dataset.queueIndex) + (drop.below ? 1 : 0);
+  if (from < target) target -= 1;
+  return Math.max(firstMovable(), target);
+}
+
+// The line showing where the entry will land, drawn from the index it would
+// really get rather than from the row the pointer happens to be over - so a
+// drop that the clamp turns into something else cannot promise otherwise, and a
+// drop that changes nothing promises nothing.
+function markDrop(from, drop) {
+  el.queueList.querySelectorAll('.drop-above, .drop-below')
+    .forEach((r) => r.classList.remove('drop-above', 'drop-below'));
+  if (!drop) return;
+  const to = queueTargetIndex(from, drop);
+  if (to === from) return;
+  const row = el.queueList.querySelector(`[data-queue-index="${to}"]`);
+  if (row) row.classList.add(to > from ? 'drop-below' : 'drop-above');
+}
+
+// How close to the edge of the panel a drag has to come before the list follows
+// it, and how fast it then does, in pixels per frame.
+const EDGE_SCROLL_ZONE = 44;
+const EDGE_SCROLL_STEP = 6;
+
 let queueDrag = null;
-el.queueList.addEventListener('dragstart', (e) => {
-  const item = e.target.closest('[data-queue-index]');
-  if (!item) return;
-  queueDrag = Number(item.dataset.queueIndex);
-  item.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-});
-el.queueList.addEventListener('dragover', (e) => {
-  const item = e.target.closest('[data-queue-index]');
-  if (!item || queueDrag === null) return;
+
+// Dragging against the edge of a long queue has to bring the rest of it into
+// view, or an entry could only ever be moved within the visible window. Driven
+// by a frame loop rather than by pointermove, so a finger held still at the
+// edge keeps scrolling.
+function edgeScroll() {
+  if (!queueDrag || !queueDrag.speed) return;
+  el.queueList.scrollTop += queueDrag.speed;
+  markDrop(queueDrag.from, queueDropAt(queueDrag.clientY));
+  requestAnimationFrame(edgeScroll);
+}
+
+el.queueList.addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-queue-drag]');
+  if (!handle || e.button > 0) return;
+  // Or the browser starts selecting text instead of following the finger.
   e.preventDefault();
-  const rect = item.getBoundingClientRect();
-  el.queueList.querySelectorAll('.drop-above, .drop-below').forEach((r) => r.classList.remove('drop-above', 'drop-below'));
-  item.classList.add(e.clientY > rect.top + rect.height / 2 ? 'drop-below' : 'drop-above');
+  const row = handle.closest('[data-queue-index]');
+  queueDrag = { from: Number(row.dataset.queueIndex), speed: 0, clientY: e.clientY };
+  handle.setPointerCapture(e.pointerId);
+  row.classList.add('dragging');
 });
-el.queueList.addEventListener('dragend', () => {
-  el.queueList.querySelectorAll('.dragging, .drop-above, .drop-below')
-    .forEach((r) => r.classList.remove('dragging', 'drop-above', 'drop-below'));
+
+el.queueList.addEventListener('pointermove', (e) => {
+  if (!queueDrag) return;
+  queueDrag.clientY = e.clientY;
+  markDrop(queueDrag.from, queueDropAt(e.clientY));
+
+  const rect = el.queueList.getBoundingClientRect();
+  const wasScrolling = queueDrag.speed !== 0;
+  queueDrag.speed = e.clientY < rect.top + EDGE_SCROLL_ZONE
+    ? -EDGE_SCROLL_STEP
+    : e.clientY > rect.bottom - EDGE_SCROLL_ZONE
+      ? EDGE_SCROLL_STEP
+      : 0;
+  if (queueDrag.speed && !wasScrolling) edgeScroll();
+});
+
+el.queueList.addEventListener('pointerup', (e) => {
+  if (!queueDrag) return;
+  const { from } = queueDrag;
+  const drop = queueDropAt(e.clientY);
+  endQueueDrag();
+  if (drop) player.moveInQueue(from, queueTargetIndex(from, drop));
+});
+
+el.queueList.addEventListener('pointercancel', endQueueDrag);
+
+function endQueueDrag() {
   queueDrag = null;
-});
-el.queueList.addEventListener('drop', (e) => {
-  const item = e.target.closest('[data-queue-index]');
-  if (!item || queueDrag === null) return;
+  markDrop(-1, null);
+  el.queueList.querySelectorAll('.dragging').forEach((r) => r.classList.remove('dragging'));
+}
+
+// The handle is a button, so it answers the keyboard too - and "one step up,
+// one step down" is what a keyboard can express about a list. The row is
+// redrawn under the press, so the focus has to be put back by hand or every
+// second step would go nowhere.
+el.queueList.addEventListener('keydown', (e) => {
+  const handle = e.target.closest('[data-queue-drag]');
+  if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
   e.preventDefault();
-  const rect = item.getBoundingClientRect();
-  let target = Number(item.dataset.queueIndex) + (e.clientY > rect.top + rect.height / 2 ? 1 : 0);
-  if (queueDrag < target) target -= 1;
-  player.moveInQueue(queueDrag, target);
-  queueDrag = null;
+  const from = Number(handle.dataset.queueDrag);
+  const to = Math.max(firstMovable(), Math.min(player.state.order.length - 1, from + (e.key === 'ArrowUp' ? -1 : 1)));
+  if (to === from) return;
+  player.moveInQueue(from, to);
+  el.queueList.querySelector(`[data-queue-drag="${to}"]`)?.focus();
 });
 
 // ============================================================================
