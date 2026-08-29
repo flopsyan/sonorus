@@ -412,8 +412,11 @@ router.put('/tracks/:id/rating', (req, res) => {
   res.json({ ok: true, stars: result.stars, counts: starCounts(req.user.id) });
 });
 
+// `playedAt` is optional and only a client that could not report the play when
+// it happened sends one - see recordPlay. A play that arrives with the request
+// carries no timestamp and is stamped on arrival, as it always was.
 router.post('/plays', (req, res) => {
-  const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds);
+  const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds, req.body.playedAt);
   if (result.error) return fail(res, result.error, 404);
   res.json({ ok: true, playId: result.id });
 });
