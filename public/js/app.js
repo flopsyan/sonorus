@@ -168,10 +168,13 @@ function navigate(url, { replace = false } = {}) {
 //     `popstate` steps over them, which is what the serial is for.
 const overlays = [];
 
-function pushOverlay(name, close) {
-  // A desktop closes with Escape or a click next to it, and its history stays a
-  // list of pages.
-  if (!compact.matches) return;
+// `onDesktop` is for the one overlay that takes the whole content area: a mouse
+// has a back button too, and while the big view is up "zurück" means close it,
+// exactly the way it does on a phone. Everything else keeps the old rule - a
+// desktop closes a dialog or a menu with Escape or a click next to it, and its
+// history stays a list of pages.
+function pushOverlay(name, close, { onDesktop = false } = {}) {
+  if (!compact.matches && !onDesktop) return;
   overlays.push({ name, close });
   entrySeq += 1;
   window.history.pushState({ idx: historyIndex, seq: entrySeq, ov: overlays.length }, '');
@@ -2896,7 +2899,7 @@ function openBigView(tab) {
   content.hidden = true;
   setBigTab(tab || bigTab);
   renderBigView(player.state);
-  if (!wasOpen) pushOverlay('bigview', closeBigView);
+  if (!wasOpen) pushOverlay('bigview', closeBigView, { onDesktop: true });
 }
 
 function closeBigView() {
@@ -2935,14 +2938,22 @@ document.getElementById('bigview-close').addEventListener('click', closeBigView)
 // The title in the bar is the way in, the way it is in a streaming client. On a
 // phone the same tap belongs to the sheet that blows the whole transport up, so
 // this one only answers where there is room for both.
+// Closing is deliberately not toggleBigView('player'): from the Songtext or the
+// Visualisierung that call switches tabs instead of closing, and the title in
+// the bar is the way *out* of the big view no matter which of the three is up.
+function toggleFromBar() {
+  if (bigViewOpen()) closeBigView();
+  else openBigView('player');
+}
+
 el.nowTitle.addEventListener('click', () => {
   if (compact.matches) return;
-  toggleBigView('player');
+  toggleFromBar();
 });
 el.nowTitle.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   e.preventDefault();
-  if (!compact.matches) toggleBigView('player');
+  if (!compact.matches) toggleFromBar();
 });
 
 // ============================================================================
