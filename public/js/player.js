@@ -463,6 +463,14 @@ export function toggle() {
 export function next(manual = false) {
   if (!state.order.length) return;
 
+  // Only when somebody pressed it. A file that simply ended has to move on to
+  // the next part of the book, not to the next chapter of the one that just
+  // finished - there is none.
+  if (manual && skipChapter(1)) {
+    resetListening();
+    return;
+  }
+
   if (state.repeat === 'one' && !manual) {
     // Playing it again is a second listen. Without closing the running play
     // here, a track on loop would report ever more seconds into the one row it
@@ -502,6 +510,109 @@ export function next(manual = false) {
   emit();
 }
 
+// --- Chapters ---------------------------------------------------------------
+// The marks inside the book that is playing. An audiobook is one enormous file
+// and the transport has always described it as one - so "back" and "forward"
+// had nothing to move between, and the notification's two buttons did nothing
+// a listener would want. The chapters are what they move between now.
+//
+// Held per *track* rather than per book, because that is the unit the transport
+// works in: the playhead is a second inside a file, and matching a chapter to
+// it must not depend on how many parts came before. `app.js` fills this in
+// whenever the running track belongs to a different book (see loadChapters).
+
+let chapterBook = null;
+let chapterTotal = 0;
+let chaptersByTrack = new Map();
+
+/**
+ * `list` is what `GET /api/audiobooks/books/:id` returns: chapters numbered
+ * across the whole book, each saying which part it sits in and how far into it.
+ * `parts` is the book's parts in the same order, so a part index becomes a
+ * track id here and nothing downstream has to know about the indexing.
+ */
+export function setChapters(bookId, list, parts) {
+  chapterBook = bookId;
+  chapterTotal = (list || []).length;
+  chaptersByTrack = new Map();
+  for (const chapter of list || []) {
+    const part = (parts || [])[chapter.part];
+    if (!part) continue;
+    const forTrack = chaptersByTrack.get(part.id) || [];
+    forTrack.push({ index: chapter.index, title: chapter.title, start: chapter.offset });
+    chaptersByTrack.set(part.id, forTrack);
+  }
+}
+
+export function clearChapters() {
+  chapterBook = null;
+  chapterTotal = 0;
+  chaptersByTrack = new Map();
+}
+
+/** Which book the chapters in hand belong to, so app.js can skip a re-fetch. */
+export function chapterBookId() {
+  return chapterBook;
+}
+
+/** The chapters inside the running file, in order. Empty for anything else. */
+export function chaptersHere() {
+  const track = currentTrack();
+  if (!track || track.audiobookId !== chapterBook) return [];
+  return chaptersByTrack.get(track.id) || [];
+}
+
+/** How many chapters the whole book has - "Kapitel 12 von 59". */
+export function chapterCount() {
+  return chapterTotal;
+}
+
+/** The one the playhead is inside, or null. */
+export function currentChapter() {
+  const list = chaptersHere();
+  if (!list.length) return null;
+  const at = audio.currentTime || state.currentTime || 0;
+  let found = list[0];
+  for (const chapter of list) {
+    if (chapter.start <= at + 0.01) found = chapter;
+    else break;
+  }
+  return found;
+}
+
+/**
+ * One chapter back or forward.
+ *
+ * Back mirrors what "back" already does to a track: it puts the playhead at the
+ * start of the chapter that is running, and only a second press inside
+ * [RESTART_AFTER] leaves it. That is the behaviour a listener wants from a book
+ * - the usual reason to press it is having missed the last minute.
+ *
+ * Running out of chapters at either end falls through to the queue, so a book
+ * of several parts carries on into the next file instead of stopping dead.
+ */
+export function skipChapter(delta) {
+  const list = chaptersHere();
+  if (!list.length) return false;
+  const here = currentChapter();
+  const at = list.indexOf(here);
+  const into = (audio.currentTime || 0) - (here ? here.start : 0);
+
+  if (delta < 0) {
+    if (into > RESTART_AFTER || at <= 0) {
+      if (at <= 0 && into <= RESTART_AFTER) return false; // let previous() decide
+      seekToTime(here.start);
+      return true;
+    }
+    seekToTime(list[at - 1].start);
+    return true;
+  }
+
+  if (at + 1 >= list.length) return false; // let next() move on to the next part
+  seekToTime(list[at + 1].start);
+  return true;
+}
+
 // Seconds after which "back" starts the running track over instead of leaving
 // it. The second press then falls inside this window and goes back for real.
 const RESTART_AFTER = 3;
@@ -516,6 +627,13 @@ const RESTART_AFTER = 3;
 // before and, once its entries ran out, landed on the track that run started on.
 export function previous() {
   if (!state.order.length) return;
+
+  // Inside a book "back" means one chapter, not one file - there is only ever
+  // the one file, so the old meaning had nothing to do.
+  if (skipChapter(-1)) {
+    resetListening();
+    return;
+  }
 
   if (audio.currentTime > RESTART_AFTER) {
     resetListening();
@@ -536,11 +654,14 @@ export function previous() {
   emit();
 }
 
-export function jumpTo(orderIndex) {
+// `startAt` is for a chapter that lies in another part of the same book: the
+// file has to be opened *and* seeked, and doing the seek afterwards would race
+// the load. `load` already takes an offset for the queue restore.
+export function jumpTo(orderIndex, startAt = 0) {
   if (orderIndex < 0 || orderIndex >= state.order.length) return;
   pushHistory();
   state.pos = orderIndex;
-  load(currentTrack(), true);
+  load(currentTrack(), true, startAt);
   save();
   emit();
 }
@@ -787,16 +908,35 @@ function updateMediaSession(track) {
   const artwork = track.cover
     ? [{ src: track.cover, sizes: '512x512', type: 'image/jpeg' }]
     : [];
+  // A book on a lock screen: the chapter where a song has its title, the book
+  // where it has its interpret, the author where it has its album. The three
+  // lines say something that moves while the file does not, which is the whole
+  // reason the notification was useless for a book before.
+  const chapter = track.audiobookId ? currentChapter() : null;
+  const meta = chapter
+    ? { title: chapter.title || `Kapitel ${chapter.index + 1}`, artist: track.book || track.title, album: track.author || '' }
+    : track.audiobookId
+      ? { title: track.title, artist: track.author || track.artist, album: '' }
+      : { title: track.title, artist: track.artist, album: track.album || '' };
+  shownChapter = chapter ? chapter.index : -1;
   try {
-    session.metadata = new window.MediaMetadata({
-      title: track.title,
-      artist: track.artist,
-      album: track.album || '',
-      artwork,
-    });
+    session.metadata = new window.MediaMetadata({ ...meta, artwork });
   } catch {
     // MediaMetadata unavailable - the lock screen just shows less
   }
+}
+
+// Which chapter the notification currently names, so it is rebuilt when the
+// playhead crosses into the next one and not on every timeupdate.
+let shownChapter = -1;
+
+function followChapter() {
+  const track = currentTrack();
+  if (!session || !track || !track.audiobookId) return;
+  const chapter = currentChapter();
+  const index = chapter ? chapter.index : -1;
+  if (index === shownChapter) return;
+  updateMediaSession(track);
 }
 
 function setPlaybackState(value) {
@@ -909,6 +1049,7 @@ audio.addEventListener('timeupdate', () => {
   if (step > 0 && step < 2) listened += step;
   lastTick = audio.currentTime;
   updatePositionState();
+  followChapter();
 
   // Seeking counts as much as playing on, hence the absolute difference: a jump
   // backwards has to be written down too, or the app reopens further along than

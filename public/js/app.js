@@ -990,6 +990,111 @@ async function editAlbumDialog(albumId) {
   });
 }
 
+// "Autor bearbeiten": the picture, and nothing else - the artist dialog word
+// for word, because an author stands in exactly the artist's position. Kept as
+// its own function rather than a shared one with a table name passed in: the
+// two are alike today and an author is not an interpret, so the moment one of
+// them grows a field the shared version would have to be pulled apart again.
+async function editAuthorDialog(authorId) {
+  let author;
+  try {
+    author = (await api.bookAuthor(authorId)).author;
+  } catch (err) {
+    return toast(err.message, 'err');
+  }
+
+  let cover;
+
+  modal({
+    title: 'Autor bearbeiten',
+    body: `<form id="author-form">
+        ${coverField('au-cover', {
+          label: 'Profilbild',
+          cover: author.cover,
+          title: author.name,
+          hint: `${COVER_HINT} Ohne eigenes Bild zeigt Sonorus das Cover eines Buchs.`,
+        })}
+        <p class="panel-hint">Der Name kommt aus dem Ordnernamen und lässt sich hier nicht ändern -
+          ein späterer Scan würde ihn ohnehin wieder von der Festplatte lesen.</p>
+        ${EDIT_NOTE}
+      </form>`,
+    footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+             <button type="submit" form="author-form" class="btn btn-primary">Speichern</button>`,
+    onOpen(root) {
+      wireCoverField(root, 'au-cover', author.name, (picked) => {
+        cover = picked;
+      });
+
+      root.querySelector('#author-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (cover === undefined) return closeModal();
+        try {
+          await api.updateAuthor(authorId, { cover });
+          closeModal();
+          toast('Profilbild gespeichert.');
+          render();
+        } catch (err) {
+          toast(err.message, 'err');
+        }
+      });
+    },
+  });
+}
+
+// "Hörbuch bearbeiten": who reads it and when it came out.
+//
+// Both are read from the file already - `composer` and `date` on an Audible
+// m4b - so this is not where the answer comes from, it is where it is corrected.
+// The date is the one that usually needs it: the tag holds a bare year, the
+// listener may know the day, and Sonorus asks nothing on the internet.
+async function editBookDialog(bookId) {
+  let book;
+  try {
+    book = (await api.book(bookId)).book;
+  } catch (err) {
+    return toast(err.message, 'err');
+  }
+
+  modal({
+    title: 'Hörbuch bearbeiten',
+    body: `<form id="book-form">
+        <div class="field">
+          <label for="bk-narrator">Sprecher</label>
+          <input type="text" id="bk-narrator" value="${esc(book.narrator)}" placeholder="z. B. Simon Jäger" />
+          <p class="panel-hint">Steht als „Gesprochen von“ auf der Buchseite. Mehrere durch Komma
+            trennen. Leer lassen blendet die Zeile aus.</p>
+        </div>
+        <div class="field">
+          <label for="bk-date">Erscheinungsdatum</label>
+          <input type="text" id="bk-date" inputmode="numeric"
+                 value="${esc(fmt.releaseDateInput(book.releaseDate))}" placeholder="z. B. 26.10.2016" />
+          <p class="panel-hint">${DATE_HINT}</p>
+        </div>
+        <p class="panel-hint">Titel und Autor kommen aus den Ordnernamen und lassen sich hier nicht
+          ändern - ein späterer Scan würde sie ohnehin wieder von der Festplatte lesen.</p>
+        ${EDIT_NOTE}
+      </form>`,
+    footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+             <button type="submit" form="book-form" class="btn btn-primary">Speichern</button>`,
+    onOpen(root) {
+      root.querySelector('#book-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await api.updateBook(bookId, {
+            narrator: root.querySelector('#bk-narrator').value,
+            date: root.querySelector('#bk-date').value.trim(),
+          });
+          closeModal();
+          toast('Hörbuch gespeichert.');
+          render();
+        } catch (err) {
+          toast(err.message, 'err');
+        }
+      });
+    },
+  });
+}
+
 // "Interpret bearbeiten": the profile picture, and nothing else. The name is
 // the name of the folder, so editing it would last until the next scan.
 async function editArtistDialog(artistId) {
@@ -1459,6 +1564,18 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
+  const editAuthor = e.target.closest('[data-edit-author]');
+  if (editAuthor) {
+    editAuthorDialog(Number(editAuthor.dataset.editAuthor));
+    return;
+  }
+
+  const editBook = e.target.closest('[data-edit-book]');
+  if (editBook) {
+    editBookDialog(Number(editBook.dataset.editBook));
+    return;
+  }
+
   const pin = e.target.closest('[data-pin-playlist]');
   if (pin) {
     setPinned(Number(pin.dataset.pinPlaylist), pin.getAttribute('aria-pressed') !== 'true');
@@ -1792,6 +1909,11 @@ const el = {
   now: document.querySelector('.now'),
   nowSource: document.getElementById('now-source'),
   collapseBtn: document.getElementById('now-collapse'),
+  seekChapters: document.getElementById('seek-chapters'),
+  chaptersBtn: document.getElementById('btn-chapters'),
+  chapters: document.getElementById('chapters'),
+  chaptersList: document.getElementById('chapters-list'),
+  chaptersTitle: document.getElementById('chapters-title'),
 };
 
 el.playBtn.addEventListener('click', () => player.toggle());
@@ -1839,6 +1961,7 @@ function openQueue() {
   if (el.queue.classList.contains('open')) return;
   // The lyrics panel sits in the same place; two of them would stack.
   closeLyrics();
+  closeChapters();
   el.queue.classList.add('open');
   pushOverlay('queue', closeQueue);
 }
@@ -1856,6 +1979,166 @@ function toggleQueue() {
 
 el.queueBtn.addEventListener('click', toggleQueue);
 document.getElementById('queue-close').addEventListener('click', closeQueue);
+
+// --- Chapter panel ----------------------------------------------------------
+// The third panel in the same place, and the only one a book has: its queue is
+// a list of files nobody is meant to see and it has no words to follow, so
+// while a book plays this one takes both their places.
+
+function openChapters() {
+  if (el.chapters.classList.contains('open')) return;
+  closeQueue();
+  closeLyrics();
+  el.chapters.classList.add('open');
+  el.chaptersBtn.setAttribute('aria-pressed', 'true');
+  pushOverlay('chapters', closeChapters);
+  scrollToRunningChapter();
+}
+
+function closeChapters() {
+  if (!el.chapters.classList.contains('open')) return;
+  el.chapters.classList.remove('open');
+  el.chaptersBtn.setAttribute('aria-pressed', 'false');
+  forgetOverlay('chapters');
+}
+
+function toggleChapters() {
+  if (el.chapters.classList.contains('open')) closeChapters();
+  else openChapters();
+}
+
+el.chaptersBtn.addEventListener('click', toggleChapters);
+document.getElementById('chapters-close').addEventListener('click', closeChapters);
+
+// Jumping to a chapter is a seek inside the file it lies in - and, for a book
+// of several parts, a jump to the right file first. `jumpTo` takes the offset
+// rather than seeking afterwards, which would race the load.
+el.chaptersList.addEventListener('click', (e) => {
+  const row = e.target.closest('[data-chapter]');
+  if (!row) return;
+  const chapter = bookChapters.list[Number(row.dataset.chapter)];
+  if (!chapter) return;
+
+  const part = bookChapters.parts[chapter.part];
+  const track = player.currentTrack();
+  if (part && track && part.id !== track.id) {
+    const at = player.state.order.findIndex(
+      (i) => player.state.queue[i] && player.state.queue[i].id === part.id
+    );
+    if (at >= 0) {
+      player.jumpTo(at, chapter.offset);
+      return;
+    }
+  }
+  player.seekToTime(chapter.offset);
+});
+
+// --- The chapters of the book that is playing -------------------------------
+// Loaded once per book, the way the lyrics are loaded once per song: the
+// transport asks for them by nothing more than "a different book is running".
+
+const bookChapters = { bookId: null, list: [], parts: [] };
+let chapterSeq = 0;
+
+function loadChapters(track) {
+  const id = track && track.audiobookId ? track.audiobookId : null;
+  if (bookChapters.bookId === id) return;
+
+  bookChapters.bookId = id;
+  bookChapters.list = [];
+  bookChapters.parts = [];
+  player.clearChapters();
+  renderChapters();
+  paintChapterMarks();
+  if (!id) return;
+
+  const seq = (chapterSeq += 1);
+  api
+    .book(id)
+    .then(({ book }) => {
+      if (seq !== chapterSeq) return;
+      bookChapters.list = book.chapters || [];
+      bookChapters.parts = book.parts || [];
+      player.setChapters(id, bookChapters.list, bookChapters.parts);
+      renderChapters();
+      paintChapterMarks();
+    })
+    .catch(() => {
+      // A book without its chapters is the book as it was before they existed:
+      // one long bar and its own title. Nothing here is worth an error message.
+      if (seq !== chapterSeq) return;
+      renderChapters();
+    });
+}
+
+function renderChapters() {
+  const track = player.currentTrack();
+  el.chaptersTitle.textContent = track && track.book ? track.book : 'Nichts ausgewählt';
+
+  if (!bookChapters.list.length) {
+    el.chaptersList.innerHTML =
+      '<div class="empty small"><p>Dieses Hörbuch hat keine Kapitelmarken.</p></div>';
+    return;
+  }
+
+  const here = player.currentChapter();
+  el.chaptersList.innerHTML = bookChapters.list
+    .map((chapter, i) => {
+      const running = here && here.index === chapter.index;
+      // .queue-item on purpose: the same grid, the same hover, the same amber
+      // for the row that is running. A chapter list is the queue panel's
+      // list, only of a different thing.
+      return `<button type="button" class="queue-item chapter-row${running ? ' playing' : ''}" data-chapter="${i}">
+          <span class="queue-pos">${i + 1}</span>
+          <span class="queue-title">${esc(chapter.title || `Kapitel ${i + 1}`)}</span>
+          <span class="queue-pos">${fmt.duration(chapter.start)}</span>
+        </button>`;
+    })
+    .join('');
+}
+
+// Only the marker moves while a book plays, so the list is not rebuilt for it.
+function markRunningChapter() {
+  const here = player.currentChapter();
+  const at = here ? here.index : -1;
+  if (at === paintedChapter) return;
+  paintedChapter = at;
+  el.chaptersList.querySelectorAll('.chapter-row').forEach((row) => {
+    row.classList.toggle('playing', Number(row.dataset.chapter) === at);
+  });
+  if (el.chapters.classList.contains('open')) scrollToRunningChapter();
+}
+
+let paintedChapter = -1;
+
+function scrollToRunningChapter() {
+  const row = el.chaptersList.querySelector('.chapter-row.playing');
+  if (row) row.scrollIntoView({ block: 'center' });
+}
+
+// Where the chapters begin, drawn on the rail. Placed from JS on purpose: the
+// app sends `style-src 'self'`, so a style attribute in the markup is dropped
+// without a word - the same trap the podcast progress bar fell into.
+function paintChapterMarks() {
+  const track = player.currentTrack();
+  const marks = track ? player.chaptersHere() : [];
+  const total = player.state.duration || 0;
+  if (!marks.length || !total) {
+    el.seekChapters.innerHTML = '';
+    return;
+  }
+  el.seekChapters.innerHTML = marks.map(() => '<span class="seek-chapter"></span>').join('');
+  const nodes = el.seekChapters.children;
+  marks.forEach((chapter, i) => {
+    // The mark at second zero is the start of the bar and would only thicken
+    // its left edge.
+    if (chapter.start <= 0) {
+      nodes[i].hidden = true;
+      return;
+    }
+    nodes[i].style.left = `${Math.min(100, (chapter.start / total) * 100)}%`;
+  });
+}
 el.visualBtn.addEventListener('click', () => toggleBigView());
 
 // --- The player as a screen of its own (phones) -----------------------------
@@ -2077,6 +2360,11 @@ function renderPlayer(s) {
   // question about the playhead. It returns immediately unless the line changed.
   paintLyricPosition(scrub === null ? s.currentTime : scrub * total);
 
+  // The same for a book: which chapter the playhead is in. Both return at once
+  // unless it actually changed, which is what lets them sit in the hot path.
+  markRunningChapter();
+  if (track && track.audiobookId) paintChapterMarks();
+
   const key = [
     track ? track.id : 0,
     track ? track.stars : 0,
@@ -2092,6 +2380,10 @@ function renderPlayer(s) {
     // exactly as it was while the queue behind it had already moved.
     s.order.join(','),
     s.source,
+    // A book stays on one file for fifty hours, so nothing above ever changes
+    // while the chapter under the playhead does - and the chapter is what the
+    // three lines of the bar are naming.
+    (player.currentChapter() || {}).index ?? -1,
   ].join('|');
   if (key === lastPlayerKey) return;
   lastPlayerKey = key;
@@ -2115,20 +2407,52 @@ function renderPlayer(s) {
 
   el.nowSource.textContent = s.source || 'Warteschlange';
 
-  // A new track means new words. Cheap when it is the same one.
+  // A new track means new words, and a new book means new chapters. Both are
+  // cheap when it is the same one.
   loadLyrics(track);
+  loadChapters(track);
+
+  // A book has no words to follow and its queue is a list of files nobody is
+  // meant to see, so those two controls step aside for the chapter list.
+  const isBook = !!(track && track.audiobookId);
+  el.lyricsBtn.hidden = isBook;
+  el.queueBtn.hidden = isBook;
+  el.chaptersBtn.hidden = !isBook;
   el.lyricsBtn.disabled = !track;
+  if (isBook) {
+    closeLyrics();
+    closeQueue();
+  } else {
+    closeChapters();
+  }
 
   if (track) {
     el.nowArt.innerHTML = art(track.cover, track.album || track.title);
-    el.nowTitle.textContent = track.title;
+
+    // A book reads differently from a song in all three lines, because the
+    // three things worth naming are different ones: the chapter is what moves,
+    // the book is what is being listened to, and the author is what it belongs
+    // to. So chapter / book / author take the places of title / interpret /
+    // album - and without chapter marks the book itself moves up into the
+    // title, with the album line left empty rather than filled with a repeat.
+    const chapter = isBook ? player.currentChapter() : null;
+    el.nowTitle.textContent = chapter
+      ? chapter.title || `Kapitel ${chapter.index + 1}`
+      : track.title;
+
     // The album is its own span: the strip along the bottom of a phone has room
     // for the interpret and nothing else, and half an album title behind an
     // ellipsis says less than leaving it out.
     // An episode names its show where a song names its interpret, and the show
     // is a page like an artist is.
-    el.nowArtist.innerHTML = track.audiobookId
-      ? `<a href="/audiobooks/books/${track.audiobookId}" data-link>${esc(track.artist)}</a>`
+    const bookLink = `<a href="/audiobooks/books/${track.audiobookId}" data-link>${esc(track.book || track.title)}</a>`;
+    const authorLink = track.bookAuthorId
+      ? `<a href="/audiobooks/authors/${track.bookAuthorId}" data-link>${esc(track.author)}</a>`
+      : esc(track.author || '');
+    el.nowArtist.innerHTML = isBook
+      ? chapter
+        ? `${bookLink}${track.author ? `<span class="now-album"> · ${authorLink}</span>` : ''}`
+        : authorLink
       : track.podcastId
       ? `<a href="/podcasts/${track.podcastId}" data-link>${esc(track.artist)}</a>`
       : track.artistId
@@ -2923,10 +3247,20 @@ function renderBigView(s) {
   if (!bigViewOpen()) return;
   const track = s.queue[s.order[s.pos]] || null;
   el.bigviewArt.innerHTML = art(track ? track.cover : '', track ? track.album || track.title : '?');
-  el.bigviewTitle.textContent = track ? track.title : 'Nichts ausgewählt';
-  el.bigviewSub.textContent = track
-    ? [track.artist, track.album].filter(Boolean).join(' · ')
-    : 'Wähle einen Titel aus der Bibliothek';
+
+  // The same three things the bar names, in the same order - a book reads
+  // chapter / book / author where a song reads title / interpret / album.
+  const chapter = track && track.audiobookId ? player.currentChapter() : null;
+  el.bigviewTitle.textContent = !track
+    ? 'Nichts ausgewählt'
+    : chapter
+      ? chapter.title || `Kapitel ${chapter.index + 1}`
+      : track.title;
+  el.bigviewSub.textContent = !track
+    ? 'Wähle einen Titel aus der Bibliothek'
+    : track.audiobookId
+      ? [chapter ? track.book : '', track.author].filter(Boolean).join(' · ')
+      : [track.artist, track.album].filter(Boolean).join(' · ');
 }
 
 el.bigview.addEventListener('click', (e) => {

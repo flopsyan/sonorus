@@ -71,6 +71,8 @@ export const api = {
   bookAuthor: (id) => request('GET', `/api/audiobooks/authors/${id}`),
   book: (id) => request('GET', `/api/audiobooks/books/${id}`),
   setBookHeard: (id, heard) => request('PUT', `/api/audiobooks/books/${id}/heard`, { heard }),
+  updateAuthor: (id, patch) => request('PATCH', `/api/audiobooks/authors/${id}`, patch),
+  updateBook: (id, patch) => request('PATCH', `/api/audiobooks/books/${id}`, patch),
   // Gilt fuer Podcast-Folgen und Hoerbuch-Teile gleichermassen.
   saveProgress: (id, body, keepalive = false) =>
     request('PUT', `/api/progress/${id}`, body, keepalive ? { keepalive: true } : undefined),

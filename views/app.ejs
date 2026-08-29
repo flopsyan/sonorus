@@ -100,6 +100,11 @@
       <span class="seek-track">
         <span class="seek-buffer" id="seek-buffer"></span>
         <span class="seek-fill" id="seek-fill"></span>
+        <!-- Where the chapters of an audiobook begin. Empty for everything
+             else, and the marks are placed from JS - the CSP drops a style
+             attribute silently, so a width written into the markup renders at
+             zero (the same trap the podcast progress bar fell into). -->
+        <span class="seek-chapters" id="seek-chapters" aria-hidden="true"></span>
         <span class="seek-knob" id="seek-knob"></span>
       </span>
     </button>
@@ -157,6 +162,10 @@
         <input type="range" class="volume-slider" id="volume" min="0" max="100" value="100" aria-label="Lautstärke" />
       </div>
       <button type="button" class="icon-btn" id="btn-lyrics" aria-label="Songtext" aria-pressed="false" data-icon="lyrics"></button>
+      <!-- Takes the place of the two above while a book is playing: a book has
+           no words to follow and its queue is a list of files nobody is meant
+           to see, so both are hidden and this one appears instead. -->
+      <button type="button" class="icon-btn" id="btn-chapters" hidden aria-label="Kapitel" aria-pressed="false" data-icon="list"></button>
       <button type="button" class="icon-btn" id="btn-queue" aria-label="Wiedergabeliste" data-icon="queue"></button>
     </div>
   </footer>
@@ -187,6 +196,20 @@
       <button type="button" class="icon-btn" id="lyrics-close" aria-label="Schließen" data-icon="x"></button>
     </div>
     <div class="lyrics-body" id="lyrics-body"></div>
+  </aside>
+
+  <!-- The chapters of the book that is playing. The queue panel's shape on
+       purpose: it is the same kind of thing - the list the transport is working
+       through - and for a book it is the only such list worth drawing. -->
+  <aside class="queue chapters-panel" id="chapters" aria-label="Kapitel">
+    <div class="queue-head">
+      <div>
+        <span class="rack-label">Kapitel</span>
+        <h2 id="chapters-title">Nichts ausgewählt</h2>
+      </div>
+      <button type="button" class="icon-btn" id="chapters-close" aria-label="Schließen" data-icon="x"></button>
+    </div>
+    <div class="queue-list" id="chapters-list"></div>
   </aside>
 
   <!-- Moving a song's text against the song. An overlay and deliberately not a

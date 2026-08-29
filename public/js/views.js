@@ -691,7 +691,9 @@ export async function bookAuthor(params) {
       artHtml: art(data.cover, data.name),
       zoom: data.cover,
       meta: facts([fmt.plural(data.books.length, 'Buch', 'Bücher'), fmt.durationLong(total)]),
-      actions: '',
+      actions: `<button type="button" class="btn btn-ghost" data-edit-author="${data.id}">
+          ${icon('edit', 16)} Bearbeiten
+        </button>`,
     })}
       <section class="section">
         <div class="section-head"><h2>Bücher</h2></div>
@@ -731,6 +733,12 @@ export async function audiobook(params) {
         book.authorId
           ? `<a href="/audiobooks/authors/${book.authorId}" data-link>${esc(book.author)}</a>`
           : esc(book.author),
+        // Between the author and the length, because that is the order the
+        // question comes in: whose book, who reads it, how long is it.
+        book.narrator ? `Gesprochen von ${esc(book.narrator)}` : '',
+        // The one place the full release date is spelled out, the same way an
+        // album page spells it out.
+        fmt.releaseDate(book.releaseDate),
         fmt.durationLong(book.duration),
         book.finished
           ? 'gehört'
@@ -738,7 +746,10 @@ export async function audiobook(params) {
             ? `noch ${fmt.durationLong(book.remaining)}`
             : '',
       ]),
-      actions: `${primary}${heard}`,
+      actions: `${primary}${heard}
+        <button type="button" class="btn btn-ghost" data-edit-book="${book.id}">
+          ${icon('edit', 16)} Bearbeiten
+        </button>`,
     })}
       ${
         book.started && !book.finished
