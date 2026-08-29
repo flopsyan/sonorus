@@ -487,7 +487,7 @@ export async function podcasts(_params, ctx) {
   if (!list.length) {
     return {
       title: 'Podcasts',
-      html: `${pageHead('Gesprochenes', 'Podcasts', '')}
+      html: `${pageHead('Bibliothek', 'Podcasts', '')}
         ${empty(
           'Noch keine Podcasts gefunden',
           'Sonorus liest den Ordner, den du unter PODCAST_DIR eingehängt hast - ein Unterordner je Sendung, die Folgen darin. Starte einen Scan, sobald dort Dateien liegen.',
@@ -502,7 +502,7 @@ export async function podcasts(_params, ctx) {
     // running, in the order they are shown.
     tracks: data.continue,
     html: `${pageHead(
-      'Gesprochenes',
+      'Bibliothek',
       'Podcasts',
       facts([
         fmt.plural(s.shows, 'Sendung', 'Sendungen'),
@@ -632,7 +632,7 @@ export async function audiobooks(_params, ctx) {
   if (!data.authors.length) {
     return {
       title: 'Hörbücher',
-      html: `${pageHead('Gesprochenes', 'Hörbücher', '')}
+      html: `${pageHead('Bibliothek', 'Hörbücher', '')}
         ${empty(
           'Noch keine Hörbücher gefunden',
           'Sonorus liest den Ordner, den du unter AUDIOBOOK_DIR eingehängt hast - ein Ordner je Autor, darin ein Ordner je Buch, darin die Dateien. Starte einen Scan, sobald dort etwas liegt.',
@@ -644,7 +644,7 @@ export async function audiobooks(_params, ctx) {
   return {
     title: 'Hörbücher',
     html: `${pageHead(
-      'Gesprochenes',
+      'Bibliothek',
       'Hörbücher',
       facts([
         fmt.plural(s.authors, 'Autor', 'Autoren'),
