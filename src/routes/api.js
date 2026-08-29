@@ -80,7 +80,13 @@ import {
   clearHistory,
 } from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
-import { updateAlbum, updateSingle, updateArtistCover } from '../models/edits.js';
+import {
+  updateAlbum,
+  updateSingle,
+  updateArtistCover,
+  updateAuthorCover,
+  updateBook,
+} from '../models/edits.js';
 import {
   listIssues,
   countIssues,
@@ -344,10 +350,31 @@ router.get('/audiobooks/authors/:id', (req, res) => {
   res.json({ ok: true, author });
 });
 
+// The picture, and nothing else - the same rule an interpret follows, for the
+// same reason: the name is the folder name.
+router.patch('/audiobooks/authors/:id', async (req, res) => {
+  if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
+
+  const result = await updateAuthorCover(id(req.params.id), req.body.cover);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, author: getAuthor(id(req.params.id), req.user.id) });
+});
+
 router.get('/audiobooks/books/:id', (req, res) => {
   const book = getBook(id(req.params.id), req.user.id);
   if (!book) return fail(res, 'not_found', 404);
   res.json({ ok: true, book });
+});
+
+// The narrator and the release date. Both are read from the file already; this
+// is for the day the file is wrong or, in the case of the date, not precise
+// enough - an m4b carries the year and nothing finer.
+router.patch('/audiobooks/books/:id', (req, res) => {
+  if (!('narrator' in req.body) && !('date' in req.body)) return fail(res, 'nothing_to_edit');
+
+  const result = updateBook(id(req.params.id), req.body);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, book: getBook(id(req.params.id), req.user.id) });
 });
 
 // Heard or not heard, for the whole book at once - there is no smaller unit

@@ -372,10 +372,44 @@ addColumn('tracks', 'part_no', 'INTEGER');
 // The show a cover was taken from, added after the podcasts table itself.
 addColumn('podcasts', 'cover_date', "TEXT NOT NULL DEFAULT ''");
 
+// Who reads the book aloud, and when it came out. Both are read from the file
+// (`composer` and `date`, which is what an Audible m4b carries) and both can be
+// typed over, because the file only ever knows the year and the listener may
+// know the day. `date_locked` covers the release date and the year together,
+// the way `year_locked` does for an album - they are one field to the user.
+addColumn('audiobooks', 'narrator', "TEXT NOT NULL DEFAULT ''");
+addColumn('audiobooks', 'release_date', "TEXT NOT NULL DEFAULT ''");
+addColumn('audiobooks', 'year', 'INTEGER');
+addColumn('audiobooks', 'narrator_locked', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('audiobooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
+
 // After the column exists, never before: on an existing database the CREATE
 // TABLE block above is a no-op and podcast_id only arrives here.
 db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_podcast ON tracks(podcast_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_audiobook ON tracks(audiobook_id)');
+
+// --- Chapters ---------------------------------------------------------------
+// The marks inside one file. An Audible m4b is a single file of forty hours
+// with the chapters written into it, so this is the only thing that can tell a
+// listener where they are in a book - the parts cannot, because there is one.
+//
+// Keyed to the *track* and not to the book on purpose: a chapter is a position
+// inside a file, and a book made of several files has each part's chapters
+// starting at zero again. Turning that into one list across a whole book is
+// arithmetic the audiobook model does (see `chaptersOf`), not something to
+// bake into the rows - it would go wrong the moment a part is replaced.
+//
+// `start` is seconds into the file. There is no `end` column: a chapter runs
+// until the next one starts, and the last one until the file does.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chapters (
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    idx      INTEGER NOT NULL,
+    title    TEXT NOT NULL DEFAULT '',
+    start    REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (track_id, idx)
+  );
+`);
 
 // --- One-off data migrations ------------------------------------------------
 // Unlike the columns above, these rewrite rows, so they must not run twice. The

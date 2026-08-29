@@ -88,6 +88,10 @@ async function dropCoverFile(name) {
        SELECT 1 FROM artists WHERE cover = @name
         UNION ALL
        SELECT 1 FROM tracks  WHERE cover = @name
+        UNION ALL
+       SELECT 1 FROM authors WHERE cover = @name
+        UNION ALL
+       SELECT 1 FROM audiobooks WHERE cover = @name
        LIMIT 1`
     )
     .get({ name });
@@ -249,5 +253,59 @@ export async function updateArtistCover(artistId, cover) {
     db.prepare('UPDATE artists SET cover = ? WHERE id = ?').run(written.name, artist.id);
   }
   await dropCoverFile(previous);
+  return { ok: true };
+}
+
+// The picture of an author, and nothing else about them: the name is the folder
+// name and the next scan would read it again anyway. Exactly the artist rule,
+// and for exactly the artist reason - which is why this is a copy of
+// updateArtistCover and not a shared function with a table name passed in. The
+// two look alike today; an author is not an interpret, and the moment one of
+// them grows a second editable field a shared version would have to be pulled
+// apart again.
+export async function updateAuthorCover(authorId, cover) {
+  const author = db.prepare('SELECT id, cover FROM authors WHERE id = ?').get(authorId);
+  if (!author) return { error: 'not_found' };
+
+  const previous = author.cover;
+  if (cover === null) {
+    db.prepare("UPDATE authors SET cover = '' WHERE id = ?").run(author.id);
+  } else {
+    const written = await writeCover(`author-${author.id}`, cover || {});
+    if (written.error) return { error: written.error };
+    db.prepare('UPDATE authors SET cover = ? WHERE id = ?').run(written.name, author.id);
+  }
+  await dropCoverFile(previous);
+  return { ok: true };
+}
+
+// The two things about a book the file cannot answer well enough.
+//
+// The narrator it does answer - `composer` on every Audible m4b - so this is
+// only for correcting it. The release date it answers badly: the tag holds a
+// bare year where the listener may know the day, and Sonorus fetches nothing
+// from the internet to find out. Both set a lock, so a later scan puts the
+// file's version back only where nobody has decided otherwise.
+export function updateBook(bookId, patch) {
+  const book = db.prepare('SELECT id FROM audiobooks WHERE id = ?').get(bookId);
+  if (!book) return { error: 'not_found' };
+
+  if ('date' in patch) {
+    const parsed = parseDate(patch.date);
+    if (!parsed.ok) return { error: 'invalid_date' };
+    db.prepare(
+      'UPDATE audiobooks SET release_date = ?, year = ?, date_locked = 1 WHERE id = ?'
+    ).run(parsed.date, parsed.year, book.id);
+  }
+
+  if ('narrator' in patch) {
+    // Emptied on purpose is a decision too, and it locks like any other: a book
+    // whose narrator line was deliberately removed must not have it written
+    // back by the next scan.
+    const narrator = String(patch.narrator ?? '').trim();
+    db.prepare('UPDATE audiobooks SET narrator = ?, narrator_locked = 1 WHERE id = ?')
+      .run(narrator, book.id);
+  }
+
   return { ok: true };
 }

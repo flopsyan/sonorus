@@ -44,6 +44,7 @@ const PROGRESS_FIELDS = `
 
 const BOOK_ROW = `
   b.id, b.title, b.cover, b.author_id AS authorId, a.name AS author,
+  b.narrator, b.release_date AS releaseDate, b.year,
   COUNT(t.id) AS partCount,
   COALESCE(SUM(t.duration), 0) AS duration
 `;
@@ -62,6 +63,12 @@ const shapeBook = (row) =>
         author: row.author || 'Unbekannter Autor',
         authorId: row.authorId,
         cover: row.cover ? `/covers/${row.cover}` : null,
+        // Empty rather than absent: "Gesprochen von" is a line the book page
+        // either prints or leaves out, and '' is the answer to both questions
+        // ("who reads it" and "is there a line") in one value.
+        narrator: row.narrator || '',
+        releaseDate: row.releaseDate || '',
+        year: row.year || null,
         duration: row.duration || 0,
         // Deliberately not called partCount anywhere the client can see it:
         // how many files a book is made of is nobody's business but the
@@ -135,6 +142,51 @@ function partsOf(bookId, userId) {
     }));
 }
 
+// --- Chapters ---------------------------------------------------------------
+
+// The chapters of a whole book, as one list with one clock.
+//
+// The rows are per file and each file's marks start at zero again, so a book of
+// several parts needs every chapter shifted by the length of everything before
+// it. For the ordinary Audible book - one m4b, forty hours, the marks inside -
+// that sum is zero and this is a straight read; the arithmetic exists so a book
+// ripped per chapter into forty files behaves the same way.
+//
+// `end` is filled in here rather than stored: a chapter runs until the next one
+// begins, and the last one until the book does. The player needs both ends to
+// draw a mark and to answer "which chapter is this second in".
+const selectChapters = db.prepare(
+  'SELECT idx, title, start FROM chapters WHERE track_id = ? ORDER BY idx'
+);
+
+function chaptersOf(parts) {
+  const list = [];
+  let before = 0;
+  for (const part of parts) {
+    for (const row of selectChapters.all(part.id)) {
+      list.push({
+        // Numbered across the whole book, which is what "Kapitel 12 von 59"
+        // means to a listener - a per-file index would restart mid-book.
+        index: list.length,
+        title: row.title,
+        start: before + row.start,
+        // Which file to open and where in it, so a chapter can be jumped to
+        // without the player having to work the sum back out.
+        part: parts.indexOf(part),
+        offset: row.start,
+      });
+    }
+    before += part.duration || 0;
+  }
+  // A book whose only mark sits at second zero has no chapters worth showing -
+  // that is one file with a decorative title, not a structure.
+  if (list.length < 2) return [];
+  return list.map((chapter, i) => ({
+    ...chapter,
+    end: i + 1 < list.length ? list[i + 1].start : before,
+  }));
+}
+
 // --- Authors ----------------------------------------------------------------
 
 // An author has no picture of their own; they borrow one of their books', the
@@ -161,7 +213,7 @@ export function listAuthors() {
 }
 
 export function getAuthor(id, userId) {
-  const author = db.prepare('SELECT id, name FROM authors WHERE id = ?').get(id);
+  const author = db.prepare('SELECT id, name, cover FROM authors WHERE id = ?').get(id);
   if (!author) return null;
   const books = db
     .prepare(`SELECT ${BOOK_ROW} ${BOOK_FROM} WHERE b.author_id = @id GROUP BY b.id
@@ -171,8 +223,17 @@ export function getAuthor(id, userId) {
     .filter((b) => b && b.parts > 0)
     .map((b) => ({ ...b, ...listened(b.id, userId) }));
 
-  const cover = (books.find((b) => b.cover) || {}).cover || null;
-  return { ...author, cover, books };
+  // The author's own picture wins; without one they borrow a book's, the way an
+  // interpret borrows an album's. `hasOwnCover` is what lets the edit dialog
+  // offer "Entfernen" only where there is something of their own to remove.
+  const borrowed = (books.find((b) => b.cover) || {}).cover || null;
+  return {
+    id: author.id,
+    name: author.name,
+    cover: author.cover ? `/covers/${author.cover}` : borrowed,
+    hasOwnCover: !!author.cover,
+    books,
+  };
 }
 
 // The position in one book, without pulling its whole track list into a list
@@ -213,6 +274,10 @@ export function getBook(id, userId) {
     // Which file to start with and how far into it. The player takes these two
     // and the listener sees a book carrying on where it stopped.
     resume: { index: place.index, offset: place.offset },
+    // Empty for a book whose files carry no marks, and the page and the player
+    // both fall back to the book's own title and one long bar - which is what
+    // they did before chapters existed at all.
+    chapters: chaptersOf(parts),
     parts,
   };
 }

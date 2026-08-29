@@ -44,6 +44,7 @@ import path from 'node:path';
 import { parseFile } from 'music-metadata';
 
 import db, { coversDir, musicDir, podcastDir, audiobookDir, getMeta, setMeta } from '../db.js';
+import { readChapters } from './chapters.js';
 import { isFfmpegReady, pregenerate, PROFILES } from './transcode.js';
 import { normalize, loosen, primaryArtist, isVarious } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
@@ -64,7 +65,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'audiobooks-1';
+const SCANNER_VERSION = 'chapters-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -203,6 +204,59 @@ function audiobookId(title, aId) {
   if (found) return found.id;
   return Number(insertBook.run(clean, aId).lastInsertRowid);
 }
+
+// Who reads it and when it came out, taken from the parts.
+//
+// Both live on the *book* rather than on its parts, for the reason an album's
+// date does: the parts are files, and a file that is renamed is a new row that
+// would take the answer back with it. And both are only written where the user
+// has not typed over them - the file knows the year, the listener may know the
+// day, and the day must not be overwritten by the next scan.
+//
+// `composer` is the narrator on every Audible m4b, which is not a convention
+// anybody invented here: it is what Audible writes and what Audiobookshelf
+// reads back as `narrators`. Verified across all 30 books of Florian's library
+// on 2026-08-29 - every one of them matched.
+const selectBookMeta = db.prepare(
+  'SELECT narrator, release_date, narrator_locked, date_locked FROM audiobooks WHERE id = ?'
+);
+const setBookNarrator = db.prepare('UPDATE audiobooks SET narrator = ? WHERE id = ?');
+const setBookDate = db.prepare('UPDATE audiobooks SET release_date = ?, year = ? WHERE id = ?');
+
+function storeBookMeta(bookId, common) {
+  const book = selectBookMeta.get(bookId);
+  if (!book) return;
+
+  if (!book.narrator_locked) {
+    // Several names mean a full cast, which is a radio play read as a book -
+    // they are kept as they stand, comma separated, and the interface decides
+    // whether to print them.
+    const spoken = [].concat(common.composer || []).map((n) => String(n).trim()).filter(Boolean);
+    const narrator = spoken.join(', ');
+    if (narrator && narrator !== book.narrator) setBookNarrator.run(narrator, bookId);
+  }
+
+  if (!book.date_locked) {
+    const date = parseReleaseDate(common.date || common.year || '');
+    // A tag that is not a date at all leaves what is there alone rather than
+    // clearing it; only a real answer overwrites.
+    if (date && date !== book.release_date) setBookDate.run(date, yearOf(date), bookId);
+  }
+}
+
+// The marks inside one part, replaced whole - a file that was re-ripped has
+// different ones, and merging two versions of a chapter list is meaningless.
+const clearChapters = db.prepare('DELETE FROM chapters WHERE track_id = ?');
+const insertChapter = db.prepare(
+  'INSERT INTO chapters (track_id, idx, title, start) VALUES (@trackId, @idx, @title, @start)'
+);
+
+const writeChapters = db.transaction((trackId, list) => {
+  clearChapters.run(trackId);
+  list.forEach((chapter, idx) => {
+    insertChapter.run({ trackId, idx, title: chapter.title, start: chapter.start });
+  });
+});
 
 // --- Where a file sits in the folder structure -------------------------------
 
@@ -698,6 +752,10 @@ async function indexEpisode(filePath, stat, force) {
 // One part of one book. Shorter still than an episode: a part has no title
 // worth showing, no date, no genre and nothing anybody edits - it exists only
 // so the book has something to play, in the right order.
+//
+// What it does carry, and what the *book* takes off it, is the narrator, the
+// release date and the chapter marks. All three are facts about the book, so
+// they end up on the book row; the part is only where they are read from.
 async function indexAudiobookPart(filePath, stat, force) {
   const existing = selectTrackByPath.get(filePath);
   if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
@@ -751,12 +809,21 @@ async function indexAudiobookPart(filePath, stat, force) {
     part_no: place.partNo,
   };
 
-  writeTrack(row, [], existing && existing.id, false);
+  const trackId = writeTrack(row, [], existing && existing.id, false);
 
   if (existing) state.updated += 1;
   else state.added += 1;
 
-  if (bId) await storeBookCover(bId, meta, filePath);
+  if (bId) {
+    await storeBookCover(bId, meta, filePath);
+    storeBookMeta(bId, common);
+  }
+
+  // Last, because it is the one thing here that costs a process: an Audible m4b
+  // keeps its marks in the file rather than in a tag, so nothing short of
+  // ffprobe finds them. Only ever on a file that was actually re-read - the
+  // size/mtime shortcut above has already returned for everything else.
+  if (trackId) writeChapters(trackId, await readChapters(filePath));
 }
 
 // --- Pruning ----------------------------------------------------------------
