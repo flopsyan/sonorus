@@ -43,7 +43,15 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 
-import db, { coversDir, musicDir, podcastDir, audiobookDir, getMeta, setMeta } from '../db.js';
+import db, {
+  coversDir,
+  musicDir,
+  podcastDir,
+  audiobookDir,
+  audiodramaDir,
+  getMeta,
+  setMeta,
+} from '../db.js';
 import { readChapters } from './chapters.js';
 import { isFfmpegReady, pregenerate, PROFILES } from './transcode.js';
 import { normalize, loosen, primaryArtist, isVarious } from './normalize.js';
@@ -65,7 +73,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'chapters-1';
+const SCANNER_VERSION = 'audiodramas-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -93,7 +101,7 @@ const state = {
 };
 
 export function scanState() {
-  return { ...state, musicDir, podcastDir, audiobookDir };
+  return { ...state, musicDir, podcastDir, audiobookDir, audiodramaDir };
 }
 
 export function isScanning() {
@@ -193,16 +201,22 @@ function authorId(name) {
   return Number(insertAuthor.run(clean).lastInsertRowid);
 }
 
-const selectBook = db.prepare('SELECT id, cover FROM audiobooks WHERE title = ? AND author_id IS ?');
-const insertBook = db.prepare('INSERT INTO audiobooks (title, author_id) VALUES (?, ?)');
+// Keyed by title, author *and* kind: an author is free to have a book and a
+// radio play of the same name, and the two roots are two libraries.
+const selectBook = db.prepare(
+  'SELECT id, cover FROM audiobooks WHERE title = ? AND author_id IS ? AND kind = ?'
+);
+const insertBook = db.prepare(
+  'INSERT INTO audiobooks (title, author_id, kind) VALUES (?, ?, ?)'
+);
 const setBookCover = db.prepare('UPDATE audiobooks SET cover = ? WHERE id = ?');
 
-function audiobookId(title, aId) {
+function audiobookId(title, aId, kind) {
   const clean = String(title || '').trim();
   if (!clean) return null;
-  const found = selectBook.get(clean, aId);
+  const found = selectBook.get(clean, aId, kind);
   if (found) return found.id;
-  return Number(insertBook.run(clean, aId).lastInsertRowid);
+  return Number(insertBook.run(clean, aId, kind).lastInsertRowid);
 }
 
 // Who reads it and when it came out, taken from the parts.
@@ -223,11 +237,14 @@ const selectBookMeta = db.prepare(
 const setBookNarrator = db.prepare('UPDATE audiobooks SET narrator = ? WHERE id = ?');
 const setBookDate = db.prepare('UPDATE audiobooks SET release_date = ?, year = ? WHERE id = ?');
 
-function storeBookMeta(bookId, common) {
+function storeBookMeta(bookId, common, kind) {
   const book = selectBookMeta.get(bookId);
   if (!book) return;
 
-  if (!book.narrator_locked) {
+  // A radio play has a cast where a book has a narrator, and Florian asked for
+  // "Gesprochen von" to stay away from them - a list of six actors under that
+  // heading reads as one person doing a bad job. The date is read for both.
+  if (kind !== 'drama' && !book.narrator_locked) {
     // Several names mean a full cast, which is a radio play read as a book -
     // they are kept as they stand, comma separated, and the interface decides
     // whether to print them.
@@ -371,8 +388,8 @@ const UNKNOWN_AUTHOR = 'Unbekannter Autor';
 // them, and the files it is made of only decide the order it plays in. So
 // nothing here tries to make a nice title out of the file name - only the
 // number in front of it matters, and even that only for sorting.
-function describeAudiobookPart(filePath) {
-  const parts = path.relative(audiobookDir, filePath).split(path.sep);
+function describeAudiobookPart(filePath, root) {
+  const parts = path.relative(root, filePath).split(path.sep);
   const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
 
   const author = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_AUTHOR;
@@ -756,7 +773,7 @@ async function indexEpisode(filePath, stat, force) {
 // What it does carry, and what the *book* takes off it, is the narrator, the
 // release date and the chapter marks. All three are facts about the book, so
 // they end up on the book row; the part is only where they are read from.
-async function indexAudiobookPart(filePath, stat, force) {
+async function indexAudiobookPart(filePath, stat, force, root, kind) {
   const existing = selectTrackByPath.get(filePath);
   if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
     if (existing.missing_at) markFound.run(existing.id);
@@ -768,9 +785,9 @@ async function indexAudiobookPart(filePath, stat, force) {
   const common = meta.common || {};
   const format = meta.format || {};
 
-  const place = describeAudiobookPart(filePath);
+  const place = describeAudiobookPart(filePath, root);
   const aId = authorId(place.author);
-  const bId = audiobookId(place.book, aId);
+  const bId = audiobookId(place.book, aId, kind);
 
   const row = {
     path: filePath,
@@ -816,7 +833,7 @@ async function indexAudiobookPart(filePath, stat, force) {
 
   if (bId) {
     await storeBookCover(bId, meta, filePath);
-    storeBookMeta(bId, common);
+    storeBookMeta(bId, common, kind);
   }
 
   // Last, because it is the one thing here that costs a process: an Audible m4b
@@ -917,7 +934,9 @@ export async function runScan() {
     const episodes = fs.existsSync(podcastDir) ? await collectFiles(podcastDir) : [];
     // And a third, on the same terms: missing is fine.
     const bookParts = fs.existsSync(audiobookDir) ? await collectFiles(audiobookDir) : [];
-    state.total = files.length + episodes.length + bookParts.length;
+    // And a fourth. Same layout, same terms - a play is a book with a cast.
+    const dramaParts = fs.existsSync(audiodramaDir) ? await collectFiles(audiodramaDir) : [];
+    state.total = files.length + episodes.length + bookParts.length + dramaParts.length;
     state.phase = 'reading';
 
     // After a change to how a file is read, the size/mtime shortcut would keep
@@ -940,7 +959,10 @@ export async function runScan() {
     };
     await readAll(files, indexFile);
     await readAll(episodes, indexEpisode);
-    await readAll(bookParts, indexAudiobookPart);
+    await readAll(bookParts, (file, stat, force) =>
+      indexAudiobookPart(file, stat, force, audiobookDir, 'book'));
+    await readAll(dramaParts, (file, stat, force) =>
+      indexAudiobookPart(file, stat, force, audiodramaDir, 'drama'));
 
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();

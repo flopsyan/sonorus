@@ -32,7 +32,8 @@ export const TRACK_FIELDS = `
   t.artist_id AS artistId, ${TRACK_ARTIST} AS artist, t.track_artist AS trackArtist,
   t.album_id AS albumId, al.title AS album,
   t.podcast_id AS podcastId, pc.name AS podcast, t.episode_no AS episodeNo,
-  t.audiobook_id AS audiobookId, ab.title AS book, au.id AS authorId, au.name AS author,
+  t.audiobook_id AS audiobookId, ab.title AS book, ab.kind AS bookKind,
+  au.id AS authorId, au.name AS author,
   t.part_no AS partNo,
   -- An episode has no cover of its own: the show carries one and every episode
   -- of it shows that, see storePodcastCover in the scanner.
@@ -137,6 +138,9 @@ export function shapeTrack(row) {
     // there is - the parts only decide the order it plays in.
     audiobookId: row.audiobookId || null,
     book: row.book || '',
+    // 'book' or 'drama'. The client builds /audiobooks/... or /audiodramas/...
+    // from it: two libraries to the listener, one table underneath.
+    bookKind: row.bookKind || '',
     author: row.author || '',
     bookAuthorId: row.authorId || null,
     partNo: row.partNo ?? null,

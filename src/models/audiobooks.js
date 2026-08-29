@@ -1,4 +1,12 @@
-// Audiobooks: authors, their books, and where in a book the listener is.
+// Audiobooks and radio plays: authors, their books, and where in one the
+// listener is.
+//
+// **Both live in this one module and in one table**, told apart by
+// `audiobooks.kind` ('book' or 'drama'). A radio play is a book with a cast
+// instead of a narrator: same folders, same parts, same position, same
+// chapters. Every exported function therefore takes the kind and passes it into
+// the query, which is what keeps the two libraries apart everywhere the
+// listener looks without any of this existing twice.
 //
 // The one idea that shapes everything here: **a book is one thing, and its
 // files are not shown.** A book folder holds however many parts the ripper
@@ -26,6 +34,12 @@ import {
 
 const PRESENT_PART = `${PRESENT} AND ${BOOK_PART}`;
 
+// 'book' unless something explicitly asks for the other one - so a caller that
+// forgets shows audiobooks rather than a mixed library.
+export const BOOK = 'book';
+export const DRAMA = 'drama';
+const kindOf = (value) => (value === DRAMA ? DRAMA : BOOK);
+
 // The order the files of a book play in: the number in front of the file name
 // where there is one, and the path otherwise - which is alphabetical order, and
 // that is what a ripper without numbers leaves behind.
@@ -44,7 +58,7 @@ const PROGRESS_FIELDS = `
 
 const BOOK_ROW = `
   b.id, b.title, b.cover, b.author_id AS authorId, a.name AS author,
-  b.narrator, b.release_date AS releaseDate, b.year,
+  b.narrator, b.release_date AS releaseDate, b.year, b.kind,
   COUNT(t.id) AS partCount,
   COALESCE(SUM(t.duration), 0) AS duration
 `;
@@ -54,6 +68,9 @@ const BOOK_FROM = `
   LEFT JOIN authors a ON a.id = b.author_id
   LEFT JOIN tracks  t ON t.audiobook_id = b.id AND t.missing_at = ''
 `;
+
+// Every list is one library or the other, never both.
+const OF_KIND = 'b.kind = @kind';
 
 const shapeBook = (row) =>
   row && row.id
@@ -66,7 +83,11 @@ const shapeBook = (row) =>
         // Empty rather than absent: "Gesprochen von" is a line the book page
         // either prints or leaves out, and '' is the answer to both questions
         // ("who reads it" and "is there a line") in one value.
-        narrator: row.narrator || '',
+        kind: row.kind || BOOK,
+        // A radio play has a cast, not a narrator, and Florian asked for the
+        // line to stay away from them: several names under "Gesprochen von"
+        // would read as one person reading badly.
+        narrator: row.kind === DRAMA ? '' : row.narrator || '',
         releaseDate: row.releaseDate || '',
         year: row.year || null,
         duration: row.duration || 0,
@@ -193,32 +214,37 @@ function chaptersOf(parts) {
 // same way an interpret borrows an album's.
 const AUTHOR_COVER = `COALESCE(NULLIF(a.cover, ''),
     (SELECT b2.cover FROM audiobooks b2
-      WHERE b2.author_id = a.id AND b2.cover <> '' ORDER BY b2.title LIMIT 1))`;
+      WHERE b2.author_id = a.id AND b2.kind = @kind AND b2.cover <> ''
+      ORDER BY b2.title LIMIT 1))`;
 
-export function listAuthors() {
+// One author can write both a book and a radio play - Sebastian Fitzek does -
+// and then stands in both lists with the works of that library only. The join
+// carries the kind, so an author with nothing of this kind is counted at zero
+// and dropped by the HAVING.
+export function listAuthors(kind) {
   return db
     .prepare(
       `SELECT a.id, a.name, ${AUTHOR_COVER} AS cover,
               COUNT(DISTINCT b.id) AS bookCount,
               COALESCE(SUM(t.duration), 0) AS duration
          FROM authors a
-         LEFT JOIN audiobooks b ON b.author_id = a.id
+         LEFT JOIN audiobooks b ON b.author_id = a.id AND b.kind = @kind
          LEFT JOIN tracks t ON t.audiobook_id = b.id AND t.missing_at = ''
         GROUP BY a.id
        HAVING bookCount > 0
         ORDER BY a.name COLLATE NOCASE ASC`
     )
-    .all()
+    .all({ kind: kindOf(kind) })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-export function getAuthor(id, userId) {
+export function getAuthor(id, userId, kind) {
   const author = db.prepare('SELECT id, name, cover FROM authors WHERE id = ?').get(id);
   if (!author) return null;
   const books = db
-    .prepare(`SELECT ${BOOK_ROW} ${BOOK_FROM} WHERE b.author_id = @id GROUP BY b.id
+    .prepare(`SELECT ${BOOK_ROW} ${BOOK_FROM} WHERE b.author_id = @id AND ${OF_KIND} GROUP BY b.id
                ORDER BY b.title COLLATE NOCASE`)
-    .all({ id })
+    .all({ id, kind: kindOf(kind) })
     .map(shapeBook)
     .filter((b) => b && b.parts > 0)
     .map((b) => ({ ...b, ...listened(b.id, userId) }));
@@ -245,10 +271,11 @@ function listened(bookId, userId) {
 
 // --- Books ------------------------------------------------------------------
 
-export function listBooks(userId) {
+export function listBooks(userId, kind) {
   return db
-    .prepare(`SELECT ${BOOK_ROW} ${BOOK_FROM} GROUP BY b.id ORDER BY b.title COLLATE NOCASE`)
-    .all()
+    .prepare(`SELECT ${BOOK_ROW} ${BOOK_FROM} WHERE ${OF_KIND} GROUP BY b.id
+               ORDER BY b.title COLLATE NOCASE`)
+    .all({ kind: kindOf(kind) })
     .map(shapeBook)
     .filter((b) => b && b.parts > 0)
     .map((b) => ({ ...b, ...listened(b.id, userId) }));
@@ -284,17 +311,19 @@ export function getBook(id, userId) {
 
 // Books that are begun and not finished, most recently listened to first. The
 // row at the top of the Hoerbuecher page.
-export function continueBooks(userId, limit = 12) {
+export function continueBooks(userId, limit = 12, kind) {
   const rows = db
     .prepare(
       `SELECT DISTINCT t.audiobook_id AS id, MAX(ep.updated_at) AS touchedAt
-         FROM tracks t JOIN episode_progress ep ON ep.track_id = t.id AND ep.user_id = @userId
+         FROM tracks t
+         JOIN audiobooks b2 ON b2.id = t.audiobook_id AND b2.kind = @kind
+         JOIN episode_progress ep ON ep.track_id = t.id AND ep.user_id = @userId
         WHERE ${PRESENT_PART}
         GROUP BY t.audiobook_id
         ORDER BY touchedAt DESC
         LIMIT @limit`
     )
-    .all({ userId, limit });
+    .all({ userId, limit, kind: kindOf(kind) });
 
   return rows
     .map((r) => {
@@ -340,7 +369,7 @@ export const setBookHeard = db.transaction((userId, bookId, heard) => {
 // album is looked for under its title and its artist.
 const BOOK_SEARCH_FIELDS = ['b.title', 'a.name'];
 
-export function searchBooks({ userId, q = '', limit = 20 } = {}) {
+export function searchBooks({ userId, q = '', limit = 20, kind } = {}) {
   const list = searchWords(q);
   if (!list.length) return [];
   const where = allWordsIn(BOOK_SEARCH_FIELDS, list);
@@ -348,33 +377,37 @@ export function searchBooks({ userId, q = '', limit = 20 } = {}) {
   return db
     .prepare(
       `SELECT ${BOOK_ROW}, ${scoreOf('b.title', [[['a.name'], 15]], list)} AS score ${BOOK_FROM}
-        WHERE ${where.where}
+        WHERE ${where.where} AND ${OF_KIND}
         GROUP BY b.id
        HAVING partCount > 0
         ORDER BY score DESC, b.title COLLATE NOCASE ASC
         LIMIT @limit`
     )
-    .all({ ...where.params, ...queryParams(q), limit })
+    .all({ ...where.params, ...queryParams(q), limit, kind: kindOf(kind) })
     .map(shapeBook)
     .map((b) => ({ ...b, ...listened(b.id, userId) }));
 }
 
 // How much spoken word of this kind there is, for the page head and the empty
 // state.
-export function audiobookStats(userId) {
+export function audiobookStats(userId, kind) {
+  const of = kindOf(kind);
   const row = db
     .prepare(
       `SELECT COUNT(DISTINCT t.audiobook_id) AS books,
               COALESCE(SUM(t.duration), 0) AS duration
-         FROM tracks t WHERE ${PRESENT_PART}`
+         FROM tracks t
+         JOIN audiobooks b ON b.id = t.audiobook_id AND ${OF_KIND}
+        WHERE ${PRESENT_PART}`
     )
-    .get();
+    .get({ kind: of });
   const authors = db
     .prepare(
       `SELECT COUNT(DISTINCT b.author_id) AS c FROM audiobooks b
-        WHERE EXISTS (SELECT 1 FROM tracks t WHERE t.audiobook_id = b.id AND t.missing_at = '')`
+        WHERE ${OF_KIND}
+          AND EXISTS (SELECT 1 FROM tracks t WHERE t.audiobook_id = b.id AND t.missing_at = '')`
     )
-    .get().c;
-  const open = listBooks(userId).filter((b) => !b.finished).length;
+    .get({ kind: of }).c;
+  const open = listBooks(userId, of).filter((b) => !b.finished).length;
   return { ...row, authors, open };
 }

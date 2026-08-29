@@ -67,12 +67,14 @@ export const api = {
   podcast: (id, sort) => request('GET', `/api/podcasts/${id}${query({ sort })}`),
   // Hörbücher. Ein Buch ist eine Einheit - die Teile kommen nur mit, damit der
   // Player weiß, was er einreihen soll.
-  audiobooks: () => request('GET', '/api/audiobooks'),
-  bookAuthor: (id) => request('GET', `/api/audiobooks/authors/${id}`),
-  book: (id) => request('GET', `/api/audiobooks/books/${id}`),
-  setBookHeard: (id, heard) => request('PUT', `/api/audiobooks/books/${id}/heard`, { heard }),
-  updateAuthor: (id, patch) => request('PATCH', `/api/audiobooks/authors/${id}`, patch),
-  updateBook: (id, patch) => request('PATCH', `/api/audiobooks/books/${id}`, patch),
+  // `base` is 'audiobooks' or 'audiodramas'. Two libraries to the listener, the
+  // same endpoints on the server - see spokenRoutes in src/routes/api.js.
+  spoken: (base) => request('GET', `/api/${base}`),
+  spokenAuthor: (base, id) => request('GET', `/api/${base}/authors/${id}`),
+  spokenBook: (base, id) => request('GET', `/api/${base}/books/${id}`),
+  setBookHeard: (base, id, heard) => request('PUT', `/api/${base}/books/${id}/heard`, { heard }),
+  updateAuthor: (base, id, patch) => request('PATCH', `/api/${base}/authors/${id}`, patch),
+  updateBook: (base, id, patch) => request('PATCH', `/api/${base}/books/${id}`, patch),
   // Gilt fuer Podcast-Folgen und Hoerbuch-Teile gleichermassen.
   saveProgress: (id, body, keepalive = false) =>
     request('PUT', `/api/progress/${id}`, body, keepalive ? { keepalive: true } : undefined),

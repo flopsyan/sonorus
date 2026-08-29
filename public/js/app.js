@@ -69,6 +69,9 @@ const ROUTES = [
   [/^\/audiobooks$/, views.audiobooks],
   [/^\/audiobooks\/authors\/(\d+)$/, views.bookAuthor, ['id']],
   [/^\/audiobooks\/books\/(\d+)$/, views.audiobook, ['id']],
+  [/^\/audiodramas$/, views.audiodramas],
+  [/^\/audiodramas\/authors\/(\d+)$/, views.dramaAuthor, ['id']],
+  [/^\/audiodramas\/books\/(\d+)$/, views.audiodrama, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -337,6 +340,7 @@ function renderSidebar() {
   const spoken = [
     { href: '/podcasts', label: 'Podcasts', iconName: 'mic' },
     { href: '/audiobooks', label: 'Hörbücher', iconName: 'book' },
+    { href: '/audiodramas', label: 'Hörspiele', iconName: 'mic' },
   ]
     .map((item) => navItem({ ...item, active: path.startsWith(item.href) }))
     .join('');
@@ -995,10 +999,10 @@ async function editAlbumDialog(albumId) {
 // its own function rather than a shared one with a table name passed in: the
 // two are alike today and an author is not an interpret, so the moment one of
 // them grows a field the shared version would have to be pulled apart again.
-async function editAuthorDialog(authorId) {
+async function editAuthorDialog(authorId, base = 'audiobooks') {
   let author;
   try {
-    author = (await api.bookAuthor(authorId)).author;
+    author = (await api.spokenAuthor(base, authorId)).author;
   } catch (err) {
     return toast(err.message, 'err');
   }
@@ -1012,7 +1016,7 @@ async function editAuthorDialog(authorId) {
           label: 'Profilbild',
           cover: author.cover,
           title: author.name,
-          hint: `${COVER_HINT} Ohne eigenes Bild zeigt Sonorus das Cover eines Buchs.`,
+          hint: `${COVER_HINT} Ohne eigenes Bild zeigt Sonorus das Cover eines Titels.`,
         })}
         <p class="panel-hint">Der Name kommt aus dem Ordnernamen und lässt sich hier nicht ändern -
           ein späterer Scan würde ihn ohnehin wieder von der Festplatte lesen.</p>
@@ -1029,7 +1033,7 @@ async function editAuthorDialog(authorId) {
         e.preventDefault();
         if (cover === undefined) return closeModal();
         try {
-          await api.updateAuthor(authorId, { cover });
+          await api.updateAuthor(base, authorId, { cover });
           closeModal();
           toast('Profilbild gespeichert.');
           render();
@@ -1047,23 +1051,31 @@ async function editAuthorDialog(authorId) {
 // m4b - so this is not where the answer comes from, it is where it is corrected.
 // The date is the one that usually needs it: the tag holds a bare year, the
 // listener may know the day, and Sonorus asks nothing on the internet.
-async function editBookDialog(bookId) {
+async function editBookDialog(bookId, base = 'audiobooks') {
   let book;
   try {
-    book = (await api.book(bookId)).book;
+    book = (await api.spokenBook(base, bookId)).book;
   } catch (err) {
     return toast(err.message, 'err');
   }
 
+  // A radio play has a cast, not a narrator, and Florian asked for the line to
+  // stay away from them - so the field is not there rather than there and empty.
+  const isDrama = base === 'audiodramas';
+
   modal({
-    title: 'Hörbuch bearbeiten',
+    title: isDrama ? 'Hörspiel bearbeiten' : 'Hörbuch bearbeiten',
     body: `<form id="book-form">
-        <div class="field">
+        ${
+          isDrama
+            ? ''
+            : `<div class="field">
           <label for="bk-narrator">Sprecher</label>
           <input type="text" id="bk-narrator" value="${esc(book.narrator)}" placeholder="z. B. Simon Jäger" />
           <p class="panel-hint">Steht als „Gesprochen von“ auf der Buchseite. Mehrere durch Komma
             trennen. Leer lassen blendet die Zeile aus.</p>
-        </div>
+        </div>`
+        }
         <div class="field">
           <label for="bk-date">Erscheinungsdatum</label>
           <input type="text" id="bk-date" inputmode="numeric"
@@ -1072,6 +1084,7 @@ async function editBookDialog(bookId) {
         </div>
         <p class="panel-hint">Titel und Autor kommen aus den Ordnernamen und lassen sich hier nicht
           ändern - ein späterer Scan würde sie ohnehin wieder von der Festplatte lesen.</p>
+        ${isDrama ? '<p class="panel-hint">Ein Hörspiel hat eine Besetzung statt eines Sprechers, deshalb steht hier keine „Gesprochen von“-Zeile.</p>' : ''}
         ${EDIT_NOTE}
       </form>`,
     footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
@@ -1080,12 +1093,12 @@ async function editBookDialog(bookId) {
       root.querySelector('#book-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
-          await api.updateBook(bookId, {
-            narrator: root.querySelector('#bk-narrator').value,
+          await api.updateBook(base, bookId, {
+            narrator: root.querySelector('#bk-narrator')?.value ?? '',
             date: root.querySelector('#bk-date').value.trim(),
           });
           closeModal();
-          toast('Hörbuch gespeichert.');
+          toast(isDrama ? 'Hörspiel gespeichert.' : 'Hörbuch gespeichert.');
           render();
         } catch (err) {
           toast(err.message, 'err');
@@ -1450,7 +1463,7 @@ content.addEventListener('click', async (e) => {
     const bookId = Number(bookHeard.dataset.bookHeard);
     const heard = bookHeard.dataset.heard !== '1';
     try {
-      await api.setBookHeard(bookId, heard);
+      await api.setBookHeard(bookHeard.dataset.kind || 'audiobooks', bookId, heard);
       // Every part of the book changed at once, so the whole page is redrawn -
       // but the reader has not gone anywhere.
       render({ keep: true });
@@ -1566,13 +1579,13 @@ content.addEventListener('click', async (e) => {
 
   const editAuthor = e.target.closest('[data-edit-author]');
   if (editAuthor) {
-    editAuthorDialog(Number(editAuthor.dataset.editAuthor));
+    editAuthorDialog(Number(editAuthor.dataset.editAuthor), editAuthor.dataset.kind || 'audiobooks');
     return;
   }
 
   const editBook = e.target.closest('[data-edit-book]');
   if (editBook) {
-    editBookDialog(Number(editBook.dataset.editBook));
+    editBookDialog(Number(editBook.dataset.editBook), editBook.dataset.kind || 'audiobooks');
     return;
   }
 
@@ -1681,7 +1694,11 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (track.audiobookId) {
     contextMenu(x, y, [
       { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
-      { label: 'Zum Hörbuch', icon: 'book', onSelect: () => navigate(`/audiobooks/books/${track.audiobookId}`) },
+      {
+        label: track.bookKind === 'drama' ? 'Zum Hörspiel' : 'Zum Hörbuch',
+        icon: 'book',
+        onSelect: () => navigate(`/${spokenBase(track)}/books/${track.audiobookId}`),
+      },
     ]);
     return;
   }
@@ -2040,6 +2057,13 @@ el.chaptersList.addEventListener('click', (e) => {
 const bookChapters = { bookId: null, list: [], parts: [] };
 let chapterSeq = 0;
 
+// Which of the two libraries a track belongs to. The server sends `bookKind`
+// with every book part, so nothing here has to remember which page it came
+// from - a play reached from the search links back into the plays.
+function spokenBase(track) {
+  return track && track.bookKind === 'drama' ? 'audiodramas' : 'audiobooks';
+}
+
 function loadChapters(track) {
   const id = track && track.audiobookId ? track.audiobookId : null;
   if (bookChapters.bookId === id) return;
@@ -2054,7 +2078,7 @@ function loadChapters(track) {
 
   const seq = (chapterSeq += 1);
   api
-    .book(id)
+    .spokenBook(spokenBase(track), id)
     .then(({ book }) => {
       if (seq !== chapterSeq) return;
       bookChapters.list = book.chapters || [];
@@ -2077,7 +2101,9 @@ function renderChapters() {
 
   if (!bookChapters.list.length) {
     el.chaptersList.innerHTML =
-      '<div class="empty small"><p>Dieses Hörbuch hat keine Kapitelmarken.</p></div>';
+      `<div class="empty small"><p>${
+        player.currentTrack() && player.currentTrack().bookKind === 'drama' ? 'Dieses Hörspiel' : 'Dieses Hörbuch'
+      } hat keine Kapitelmarken.</p></div>`;
     return;
   }
 
@@ -2445,9 +2471,10 @@ function renderPlayer(s) {
     // ellipsis says less than leaving it out.
     // An episode names its show where a song names its interpret, and the show
     // is a page like an artist is.
-    const bookLink = `<a href="/audiobooks/books/${track.audiobookId}" data-link>${esc(track.book || track.title)}</a>`;
+    const base = `/${spokenBase(track)}`;
+    const bookLink = `<a href="${base}/books/${track.audiobookId}" data-link>${esc(track.book || track.title)}</a>`;
     const authorLink = track.bookAuthorId
-      ? `<a href="/audiobooks/authors/${track.bookAuthorId}" data-link>${esc(track.author)}</a>`
+      ? `<a href="${base}/authors/${track.bookAuthorId}" data-link>${esc(track.author)}</a>`
       : esc(track.author || '');
     el.nowArtist.innerHTML = isBook
       ? chapter

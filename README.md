@@ -4,11 +4,11 @@ Self-hosted music player for your own audio files. Sonorus scans a music folder
 you mount into the container and turns your folder structure into a browsable
 library: artists, albums, singles, genres, all tracks, and your own playlists.
 
-Podcasts and audiobooks live next to the music in roots of their own: one subfolder
-per show, the episodes in it. They are kept out of the music library on purpose -
-a show is not an artist and an episode is not a song - and they carry the one
-thing a song does not need, a remembered position, so a 70-minute episode picks
-up where you stopped.
+Podcasts, audiobooks and radio plays live next to the music in roots of their
+own: one subfolder per show, the episodes in it. They are kept out of the music
+library on purpose - a show is not an artist and an episode is not a song - and
+they carry the one thing a song does not need, a remembered position, so a
+70-minute episode picks up where you stopped.
 
 The interface is a single page - navigating between artists, albums and
 playlists never interrupts playback. Design-wise it takes a loose cue from the
@@ -214,6 +214,19 @@ queued in order and play straight through.
   file name where there is one, and the file name otherwise.
 - **Als gehört markieren** applies to the whole book, because that is the only
   unit the interface offers.
+- **Chapters**, where the files carry them. An Audible-style `.m4b` is one file
+  of up to fifty hours with the marks written inside it, and Sonorus reads them
+  with `ffprobe`. The transport then names the chapter where a song has its
+  title, the book where it has its interpret and the author where it has its
+  album; the seek bar carries a hairline at every chapter start; the skip
+  buttons and the media keys move one chapter at a time; and the panel on the
+  right is the chapter list instead of the queue and the lyrics, which a book
+  has no use for. A book whose files carry no marks keeps its own title and one
+  long bar, exactly as before.
+- **Gesprochen von** and the **release date**, read from the file
+  (`composer` and `date`, which is what an Audible `.m4b` carries) and editable
+  under "Bearbeiten" - the tag knows the year, you may know the day. An author
+  can be given a picture of their own, the way an artist can.
 - Like podcasts, books are **not part of the music library** and are neither
   rated nor added to playlists. The search finds them in a section of its own.
 
@@ -221,6 +234,29 @@ One thing worth knowing: the transition between two parts is not gapless. The
 browser has to open the next file, which costs a fraction of a second - at the
 end of a chapter this is essentially unnoticeable, but it is not the same as
 one continuous file.
+
+### Radio plays
+
+Radio plays are scanned from `AUDIODRAMA_DIR`, a fourth root laid out exactly
+like the audiobooks - one folder per author, one folder per play inside it:
+
+```
+audiodramas/
+  Sebastian Fitzek/
+    Passagier 23/
+      Passagier 23.m4b
+```
+
+They get their own tab, their own author list and their own section in the
+search, because a play is a different thing to sit down to than a book. Behind
+the interface they are the same rows as an audiobook and behave the same way:
+one thing to the listener, the parts never shown, the position remembered,
+chapters where the files carry them.
+
+**The one difference is the narrator.** A play has a cast, not a reader, so it
+carries no "Gesprochen von" line and its edit dialog has no such field - a list
+of six actors under that heading would read as one person doing a bad job. The
+release date works exactly as it does for a book.
 
 ### Playback
 
@@ -431,6 +467,7 @@ All settings are read from the environment (see `.env.example`):
 | `MUSIC_DIR` | `./music` | Host path of your music folder, mounted read-only into the container |
 | `PODCAST_DIR` | `./podcasts` | Host path of your podcast folder (one subfolder per show), mounted read-only. May point at nothing; it must not lie inside `MUSIC_DIR` |
 | `AUDIOBOOK_DIR` | `./audiobooks` | Host path of your audiobook folder (one folder per author, one per book inside it), mounted read-only. Same rules as `PODCAST_DIR` |
+| `AUDIODRAMA_DIR` | `./audiodramas` | Host path of your radio-play folder, laid out like `AUDIOBOOK_DIR` and mounted read-only. Same rules |
 | `PORT` | `3000` | Host port the app is reachable on |
 | `SITE_NAME` | `Sonorus` | Name shown in the header and browser tab |
 | `AUTH_USER` | `admin` | Username for the bootstrapped first admin |

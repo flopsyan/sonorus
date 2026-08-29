@@ -30,6 +30,15 @@ const podcastDir = path.resolve(process.env.PODCAST_DIR || path.join(projectRoot
 // one thing to the listener, and the parts only decide the order it plays in.
 const audiobookDir = path.resolve(process.env.AUDIOBOOK_DIR || path.join(projectRoot, 'audiobooks'));
 
+// Radio plays, a fourth root, laid out exactly like the audiobooks:
+// audiodramas/<Autor>/<Stück>/*.m4b. Florian wanted them apart from the books
+// and they are apart on disk, but they are not a second kind of *thing* - a
+// play is a book with a cast instead of a narrator, so one table carries both
+// and `audiobooks.kind` says which. That is what stops every audiobook feature
+// from having to be built twice, which is the debt this project has already
+// paid once (see the cross-repo rule in the vault).
+const audiodramaDir = path.resolve(process.env.AUDIODRAMA_DIR || path.join(projectRoot, 'audiodramas'));
+
 // The smaller copies of the songs, made on demand and kept. A root of its own
 // rather than a folder in dataDir, because it is the one directory here that
 // grows with the size of the library rather than with the number of rows: the
@@ -140,7 +149,10 @@ db.exec(`
     author_id INTEGER REFERENCES authors(id) ON DELETE SET NULL,
     title     TEXT NOT NULL,
     cover     TEXT NOT NULL DEFAULT '',
-    UNIQUE (title, author_id)
+    -- The kind is part of the key: one author may have a book and a radio play
+    -- of the same name, and moving a title from one root to the other has both
+    -- rows alive at once - the old one is not pruned until after the read.
+    UNIQUE (title, author_id, kind)
   );
   CREATE INDEX IF NOT EXISTS idx_audiobooks_author ON audiobooks(author_id);
 
@@ -383,6 +395,12 @@ addColumn('audiobooks', 'year', 'INTEGER');
 addColumn('audiobooks', 'narrator_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('audiobooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
+// 'book' or 'drama'. Everything that reads this table takes it as an argument,
+// so the two libraries stay apart everywhere the listener looks while sharing
+// every query, every edit and every chapter behind it. Existing rows default to
+// 'book', which is what they all are.
+addColumn('audiobooks', 'kind', "TEXT NOT NULL DEFAULT 'book'");
+
 // After the column exists, never before: on an existing database the CREATE
 // TABLE block above is a no-op and podcast_id only arrives here.
 db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_podcast ON tracks(podcast_id)');
@@ -475,6 +493,62 @@ once('drop_album_ratings', () => {
   db.exec('DROP TABLE IF EXISTS album_ratings;');
 });
 
+// `audiobooks` was unique on (title, author_id), from the days when a book was
+// the only thing in it. A radio play is the same row with `kind = 'drama'`, so
+// the key had to grow - and it is not a cosmetic change: moving a title from
+// the audiobook root to the radio-play root has both rows alive at the same
+// time, because the old one is only pruned *after* everything has been read.
+// Without this the move fails with a UNIQUE violation and the play never
+// appears (found exactly that way, moving five titles on 2026-08-29).
+//
+// SQLite cannot drop a constraint, so the table is rebuilt - and this one is
+// deliberately **not** wrapped in `once()`, for two reasons that are the whole
+// difficulty of it:
+//
+//   - `PRAGMA foreign_keys` is a no-op inside a transaction, and `once` runs
+//     its body in one. The pragma has to be set before BEGIN.
+//   - With foreign keys on, `DROP TABLE audiobooks` performs an implicit delete
+//     of every row, which fires `ON DELETE SET NULL` and would quietly empty
+//     `tracks.audiobook_id` - every book in the library detached from its
+//     parts. Deferring the check does not help: the action still runs.
+//
+// So: pragma off, rebuild in a transaction of its own, pragma on. Ids are
+// carried over, which is what keeps `tracks.audiobook_id` and `chapters`
+// pointing at the right rows. The guard reads the schema rather than a meta
+// row, so it describes its own condition and cannot run twice.
+const audiobooksSchema = db
+  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'audiobooks'")
+  .get();
+
+if (audiobooksSchema && !audiobooksSchema.sql.includes('UNIQUE (title, author_id, kind)')) {
+  db.pragma('foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE audiobooks_new (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        author_id INTEGER REFERENCES authors(id) ON DELETE SET NULL,
+        title     TEXT NOT NULL,
+        cover     TEXT NOT NULL DEFAULT '',
+        narrator  TEXT NOT NULL DEFAULT '',
+        release_date TEXT NOT NULL DEFAULT '',
+        year      INTEGER,
+        narrator_locked INTEGER NOT NULL DEFAULT 0,
+        date_locked     INTEGER NOT NULL DEFAULT 0,
+        kind      TEXT NOT NULL DEFAULT 'book',
+        UNIQUE (title, author_id, kind)
+      );
+      INSERT INTO audiobooks_new
+        (id, author_id, title, cover, narrator, release_date, year,
+         narrator_locked, date_locked, kind)
+        SELECT id, author_id, title, cover, narrator, release_date, year,
+               narrator_locked, date_locked, kind FROM audiobooks;
+      DROP TABLE audiobooks;
+      ALTER TABLE audiobooks_new RENAME TO audiobooks;
+    `);
+  })();
+  db.pragma('foreign_keys = ON');
+}
+
 export function getMeta(key) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key);
   return row ? row.value : null;
@@ -487,5 +561,14 @@ export function setMeta(key, value) {
   ).run(key, String(value));
 }
 
-export { dbPath, dataDir, coversDir, transcodeDir, musicDir, podcastDir, audiobookDir };
+export {
+  dbPath,
+  dataDir,
+  coversDir,
+  transcodeDir,
+  musicDir,
+  podcastDir,
+  audiobookDir,
+  audiodramaDir,
+};
 export default db;

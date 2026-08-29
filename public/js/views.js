@@ -602,10 +602,45 @@ export async function podcast(params, ctx) {
   };
 }
 
-// --- Audiobooks -------------------------------------------------------------
+// --- Spoken word: audiobooks and radio plays ---------------------------------
 // A book is one thing. The files it is made of are never drawn - no parts list,
 // no part titles - because that is the whole point of the feature: you open a
 // book and carry on, the way you would with a paper one.
+//
+// Radio plays are the same three pages with different words. Florian wanted
+// them as a tab of their own ("Ist im Grunde zum Großteil eine Kopie") and they
+// are one - but a copy is what would have to be maintained twice, so the words
+// live in SPOKEN and the pages are written once. The one real difference is the
+// narrator: a play has a cast, and "Gesprochen von" stays away from it.
+
+const SPOKEN = {
+  book: {
+    base: '/audiobooks',
+    api: 'audiobooks',
+    plural: 'Hörbücher',
+    label: 'Hörbuch',
+    one: 'Buch',
+    many: 'Bücher',
+    section: 'Bücher',
+    envVar: 'AUDIOBOOK_DIR',
+    emptyTitle: 'Noch keine Hörbücher gefunden',
+    emptyText:
+      'Sonorus liest den Ordner, den du unter AUDIOBOOK_DIR eingehängt hast - ein Ordner je Autor, darin ein Ordner je Buch, darin die Dateien. Starte einen Scan, sobald dort etwas liegt.',
+  },
+  drama: {
+    base: '/audiodramas',
+    api: 'audiodramas',
+    plural: 'Hörspiele',
+    label: 'Hörspiel',
+    one: 'Hörspiel',
+    many: 'Hörspiele',
+    section: 'Hörspiele',
+    envVar: 'AUDIODRAMA_DIR',
+    emptyTitle: 'Noch keine Hörspiele gefunden',
+    emptyText:
+      'Sonorus liest den Ordner, den du unter AUDIODRAMA_DIR eingehängt hast - ein Ordner je Autor, darin ein Ordner je Hörspiel, darin die Dateien. Starte einen Scan, sobald dort etwas liegt.',
+  },
+};
 
 // What a book says about itself in a grid or a list: who wrote it, and how much
 // of it is left. The remaining time is the only number worth the space - the
@@ -616,48 +651,51 @@ function bookSub(b) {
   return `${b.author} · ${fmt.durationRack(b.duration)}`;
 }
 
-const bookItem = (b) => ({
-  href: `/audiobooks/books/${b.id}`,
+// The kind travels with the row from the server, so a card in the search
+// results links into the right library without the caller having to say which.
+const bookItem = (b, words = SPOKEN[b.kind] || SPOKEN.book) => ({
+  href: `${words.base}/books/${b.id}`,
   cover: b.cover,
   title: b.title,
   sub: bookSub(b),
   meta: fmt.durationRack(b.duration),
 });
 
-export async function audiobooks(_params, ctx) {
-  const data = await api.audiobooks();
-  const view = collectionView(ctx, 'audiobooks');
+async function spokenIndex(ctx, kind) {
+  const words = SPOKEN[kind];
+  const data = await api.spoken(words.api);
+  const view = collectionView(ctx, words.api);
   const s = data.stats;
 
   if (!data.authors.length) {
     return {
-      title: 'Hörbücher',
-      html: `${pageHead('Bibliothek', 'Hörbücher', '')}
+      title: words.plural,
+      html: `${pageHead('Bibliothek', words.plural, '')}
         ${empty(
-          'Noch keine Hörbücher gefunden',
-          'Sonorus liest den Ordner, den du unter AUDIOBOOK_DIR eingehängt hast - ein Ordner je Autor, darin ein Ordner je Buch, darin die Dateien. Starte einen Scan, sobald dort etwas liegt.',
+          words.emptyTitle,
+          words.emptyText,
           '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>'
         )}`,
     };
   }
 
   return {
-    title: 'Hörbücher',
+    title: words.plural,
     html: `${pageHead(
       'Bibliothek',
-      'Hörbücher',
+      words.plural,
       facts([
         fmt.plural(s.authors, 'Autor', 'Autoren'),
-        fmt.plural(s.books, 'Buch', 'Bücher'),
+        fmt.plural(s.books, words.one, words.many),
         fmt.durationLong(s.duration),
       ]),
-      viewSwitch('audiobooks', view)
+      viewSwitch(words.api, view)
     )}
       ${
         data.continue.length
           ? `<section class="section">
               <div class="section-head"><h2>Weiterhören</h2></div>
-              <div class="grid row">${data.continue.map((b) => card(bookItem(b))).join('')}</div>
+              <div class="grid row">${data.continue.map((b) => card(bookItem(b, words))).join('')}</div>
             </section>`
           : ''
       }
@@ -666,10 +704,10 @@ export async function audiobooks(_params, ctx) {
         ${collection(
           view,
           data.authors.map((a) => ({
-            href: `/audiobooks/authors/${a.id}`,
+            href: `${words.base}/authors/${a.id}`,
             cover: a.cover,
             title: a.name,
-            sub: fmt.plural(a.bookCount, 'Buch', 'Bücher'),
+            sub: fmt.plural(a.bookCount, words.one, words.many),
             meta: fmt.durationRack(a.duration),
             round: true,
           }))
@@ -678,8 +716,9 @@ export async function audiobooks(_params, ctx) {
   };
 }
 
-export async function bookAuthor(params) {
-  const { author: data } = await api.bookAuthor(params.id);
+async function spokenAuthor(params, kind) {
+  const words = SPOKEN[kind];
+  const { author: data } = await api.spokenAuthor(words.api, params.id);
   const total = data.books.reduce((sum, b) => sum + b.duration, 0);
 
   return {
@@ -690,20 +729,25 @@ export async function bookAuthor(params) {
       round: true,
       artHtml: art(data.cover, data.name),
       zoom: data.cover,
-      meta: facts([fmt.plural(data.books.length, 'Buch', 'Bücher'), fmt.durationLong(total)]),
-      actions: `<button type="button" class="btn btn-ghost" data-edit-author="${data.id}">
+      meta: facts([
+        fmt.plural(data.books.length, words.one, words.many),
+        fmt.durationLong(total),
+      ]),
+      actions: `<button type="button" class="btn btn-ghost"
+          data-edit-author="${data.id}" data-kind="${words.api}">
           ${icon('edit', 16)} Bearbeiten
         </button>`,
     })}
       <section class="section">
-        <div class="section-head"><h2>Bücher</h2></div>
-        <div class="grid">${data.books.map((b) => card(bookItem(b))).join('')}</div>
+        <div class="section-head"><h2>${words.section}</h2></div>
+        <div class="grid">${data.books.map((b) => card(bookItem(b, words))).join('')}</div>
       </section>`,
   };
 }
 
-export async function audiobook(params) {
-  const { book } = await api.book(params.id);
+async function spokenBook(params, kind) {
+  const words = SPOKEN[kind];
+  const { book } = await api.spokenBook(words.api, params.id);
   const percent = book.duration ? Math.min(100, Math.round((book.elapsed / book.duration) * 100)) : 0;
 
   // One button, because there is one thing to do with a book. It says
@@ -714,7 +758,7 @@ export async function audiobook(params) {
       </button>`;
 
   const heard = `<button type="button" class="btn btn-ghost" data-book-heard="${book.id}"
-        data-heard="${book.finished ? '1' : '0'}">
+        data-kind="${words.api}" data-heard="${book.finished ? '1' : '0'}">
         ${icon(book.finished ? 'refresh' : 'check-circle', 16)}
         ${book.finished ? 'Als ungehört markieren' : 'Als gehört markieren'}
       </button>`;
@@ -725,16 +769,17 @@ export async function audiobook(params) {
     // them; they are what the play button hands to the queue.
     tracks: book.parts,
     html: `${detailHead({
-      label: 'Hörbuch',
+      label: words.label,
       title: book.title,
       artHtml: art(book.cover, book.title),
       zoom: book.cover,
       meta: facts([
         book.authorId
-          ? `<a href="/audiobooks/authors/${book.authorId}" data-link>${esc(book.author)}</a>`
+          ? `<a href="${words.base}/authors/${book.authorId}" data-link>${esc(book.author)}</a>`
           : esc(book.author),
         // Between the author and the length, because that is the order the
-        // question comes in: whose book, who reads it, how long is it.
+        // question comes in: whose book, who reads it, how long is it. A radio
+        // play never gets here - it has a cast, and the server sends none.
         book.narrator ? `Gesprochen von ${esc(book.narrator)}` : '',
         // The one place the full release date is spelled out, the same way an
         // album page spells it out.
@@ -747,7 +792,7 @@ export async function audiobook(params) {
             : '',
       ]),
       actions: `${primary}${heard}
-        <button type="button" class="btn btn-ghost" data-edit-book="${book.id}">
+        <button type="button" class="btn btn-ghost" data-edit-book="${book.id}" data-kind="${words.api}">
           ${icon('edit', 16)} Bearbeiten
         </button>`,
     })}
@@ -762,6 +807,13 @@ export async function audiobook(params) {
     after: applyProgress,
   };
 }
+
+export const audiobooks = (_params, ctx) => spokenIndex(ctx, 'book');
+export const bookAuthor = (params) => spokenAuthor(params, 'book');
+export const audiobook = (params) => spokenBook(params, 'book');
+export const audiodramas = (_params, ctx) => spokenIndex(ctx, 'drama');
+export const dramaAuthor = (params) => spokenAuthor(params, 'drama');
+export const audiodrama = (params) => spokenBook(params, 'drama');
 
 // --- Genres -----------------------------------------------------------------
 
@@ -1061,8 +1113,9 @@ export async function search(params) {
   const data = await api.search(q);
   const episodes = data.episodes || [];
   const books = data.books || [];
+  const dramas = data.dramas || [];
   const nothing = !data.tracks.length && !data.artists.length && !data.albums.length
-    && !episodes.length && !books.length;
+    && !episodes.length && !books.length && !dramas.length;
 
   return {
     title: `Suche: ${q}`,
@@ -1076,6 +1129,7 @@ export async function search(params) {
       data.tracks.length ? fmt.plural(data.tracks.length, 'Song', 'Songs') : '',
       episodes.length ? fmt.plural(episodes.length, 'Folge', 'Folgen') : '',
       books.length ? fmt.plural(books.length, 'Hörbuch', 'Hörbücher') : '',
+      dramas.length ? fmt.plural(dramas.length, 'Hörspiel', 'Hörspiele') : '',
     ]))}
       ${
         nothing
@@ -1134,6 +1188,12 @@ export async function search(params) {
           books.length
             ? `<section class="section"><div class="section-head"><h2>Hörbücher</h2></div>
                 <div class="grid">${books.map((b) => card(bookItem(b))).join('')}</div></section>`
+            : ''
+        }
+        ${
+          dramas.length
+            ? `<section class="section"><div class="section-head"><h2>Hörspiele</h2></div>
+                <div class="grid">${dramas.map((b) => card(bookItem(b))).join('')}</div></section>`
             : ''
         }`
       }`,
@@ -1629,6 +1689,12 @@ function scanBlock(scan, lastScan) {
         <div>
           <div class="setting-label">Hörbuch-Ordner</div>
           <div class="setting-sub num">${esc(scan.audiobookDir || '')}</div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Hörspiel-Ordner</div>
+          <div class="setting-sub num">${esc(scan.audiodramaDir || '')}</div>
         </div>
       </div>
       <div class="setting-row">

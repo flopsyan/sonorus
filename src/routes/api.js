@@ -56,6 +56,8 @@ import {
   setBookHeard,
   searchBooks,
   audiobookStats,
+  BOOK,
+  DRAMA,
 } from '../models/audiobooks.js';
 import {
   playlistTree,
@@ -335,55 +337,75 @@ router.put('/progress/:id', (req, res) => {
 
 // A book is one thing: the parts it is made of never leave this file except
 // inside `getBook`, where the player needs them to know what to queue.
-router.get('/audiobooks', (req, res) => {
-  res.json({
-    ok: true,
-    authors: listAuthors(),
-    continue: continueBooks(req.user.id, 12),
-    stats: audiobookStats(req.user.id),
+//
+// Audiobooks and radio plays are the same endpoints twice, told apart by the
+// path and nothing else - `/api/audiobooks/...` and `/api/audiodramas/...` are
+// wired from one set of handlers below. They are two libraries to the listener
+// and one table underneath, which is the whole reason a play costs a mount and
+// a route rather than a second half of this file.
+function spokenRoutes(base, kind) {
+  router.get(`/${base}`, (req, res) => {
+    res.json({
+      ok: true,
+      kind,
+      authors: listAuthors(kind),
+      continue: continueBooks(req.user.id, 12, kind),
+      stats: audiobookStats(req.user.id, kind),
+    });
   });
-});
 
-router.get('/audiobooks/authors/:id', (req, res) => {
-  const author = getAuthor(id(req.params.id), req.user.id);
-  if (!author) return fail(res, 'not_found', 404);
-  res.json({ ok: true, author });
-});
+  router.get(`/${base}/authors/:id`, (req, res) => {
+    const author = getAuthor(id(req.params.id), req.user.id, kind);
+    if (!author) return fail(res, 'not_found', 404);
+    res.json({ ok: true, author });
+  });
 
-// The picture, and nothing else - the same rule an interpret follows, for the
-// same reason: the name is the folder name.
-router.patch('/audiobooks/authors/:id', async (req, res) => {
-  if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
+  // The picture, and nothing else - the same rule an interpret follows, for the
+  // same reason: the name is the folder name.
+  router.patch(`/${base}/authors/:id`, async (req, res) => {
+    if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
 
-  const result = await updateAuthorCover(id(req.params.id), req.body.cover);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
-  res.json({ ok: true, author: getAuthor(id(req.params.id), req.user.id) });
-});
+    const result = await updateAuthorCover(id(req.params.id), req.body.cover);
+    if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+    res.json({ ok: true, author: getAuthor(id(req.params.id), req.user.id, kind) });
+  });
 
-router.get('/audiobooks/books/:id', (req, res) => {
-  const book = getBook(id(req.params.id), req.user.id);
-  if (!book) return fail(res, 'not_found', 404);
-  res.json({ ok: true, book });
-});
+  // "books" in both paths on purpose: a play is a book to everything below this
+  // line, and a second word for it would only have to be translated back.
+  router.get(`/${base}/books/:id`, (req, res) => {
+    const book = getBook(id(req.params.id), req.user.id);
+    if (!book || book.kind !== kind) return fail(res, 'not_found', 404);
+    res.json({ ok: true, book });
+  });
 
-// The narrator and the release date. Both are read from the file already; this
-// is for the day the file is wrong or, in the case of the date, not precise
-// enough - an m4b carries the year and nothing finer.
-router.patch('/audiobooks/books/:id', (req, res) => {
-  if (!('narrator' in req.body) && !('date' in req.body)) return fail(res, 'nothing_to_edit');
+  // The narrator and the release date. Both are read from the file already;
+  // this is for the day the file is wrong or, in the case of the date, not
+  // precise enough - an m4b carries the year and nothing finer. A radio play
+  // has no narrator field at all, so it only ever sends the date.
+  router.patch(`/${base}/books/:id`, (req, res) => {
+    if (!('narrator' in req.body) && !('date' in req.body)) return fail(res, 'nothing_to_edit');
 
-  const result = updateBook(id(req.params.id), req.body);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
-  res.json({ ok: true, book: getBook(id(req.params.id), req.user.id) });
-});
+    const current = getBook(id(req.params.id), req.user.id);
+    if (!current || current.kind !== kind) return fail(res, 'not_found', 404);
 
-// Heard or not heard, for the whole book at once - there is no smaller unit
-// the listener is shown.
-router.put('/audiobooks/books/:id/heard', (req, res) => {
-  const result = setBookHeard(req.user.id, id(req.params.id), !!req.body.heard);
-  if (result.error) return fail(res, result.error, 404);
-  res.json({ ...result, book: getBook(id(req.params.id), req.user.id) });
-});
+    const patch = kind === DRAMA ? { ...req.body, narrator: undefined } : req.body;
+    if (kind === DRAMA) delete patch.narrator;
+    const result = updateBook(id(req.params.id), patch);
+    if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+    res.json({ ok: true, book: getBook(id(req.params.id), req.user.id) });
+  });
+
+  // Heard or not heard, for the whole thing at once - there is no smaller unit
+  // the listener is shown.
+  router.put(`/${base}/books/:id/heard`, (req, res) => {
+    const result = setBookHeard(req.user.id, id(req.params.id), !!req.body.heard);
+    if (result.error) return fail(res, result.error, 404);
+    res.json({ ...result, book: getBook(id(req.params.id), req.user.id) });
+  });
+}
+
+spokenRoutes('audiobooks', BOOK);
+spokenRoutes('audiodramas', DRAMA);
 
 // 0 is the list of everything that has no rating yet. Several ratings can be
 // asked for at once ("4,5"), which gives one combined list.
@@ -417,9 +439,11 @@ router.get('/shuffle', (req, res) => {
   res.json({ ok: true, unrated, tracks: randomTracks(req.user.id, limit, { unrated }) });
 });
 
-// One query, four answers. Episodes are their own section rather than part of
+// One query, five answers. Episodes are their own section rather than part of
 // the songs: they are not in the music library, and a search that mixed 691
-// episodes into the song results would bury it.
+// episodes into the song results would bury it. Radio plays are their own
+// section for the same reason they are their own tab - they are a library of
+// their own to the listener, even where they are one table underneath.
 router.get('/search', (req, res) => {
   const q = String(req.query.q || '').trim();
   res.json({
@@ -427,7 +451,8 @@ router.get('/search', (req, res) => {
     q,
     ...searchLibrary({ userId: req.user.id, q, limit: 100 }),
     episodes: searchEpisodes({ userId: req.user.id, q, limit: 40 }),
-    books: searchBooks({ userId: req.user.id, q, limit: 20 }),
+    books: searchBooks({ userId: req.user.id, q, limit: 20, kind: BOOK }),
+    dramas: searchBooks({ userId: req.user.id, q, limit: 20, kind: DRAMA }),
   });
 });
 
