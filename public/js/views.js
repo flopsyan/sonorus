@@ -1452,7 +1452,7 @@ function chart(rows) {
 // three-minute song, and the row that stands for more time says so. The play
 // count stays on the row - it is worth knowing - but it neither decides the
 // order nor draws the bar.
-function topList(title, rows, href) {
+function topList(title, rows, href, subOf = null) {
   if (!rows.length) return '';
   const peak = Math.max(...rows.map((r) => r.seconds), 1);
   return `<section class="top-list">
@@ -1464,7 +1464,9 @@ function topList(title, rows, href) {
             <span class="top-art">${art(r.cover, r.title)}</span>
             <span class="top-text">
               <span class="top-title">${esc(r.title)}</span>
-              <span class="top-sub">${esc(r.artist || fmt.plural(r.tracks || 0, 'Song', 'Songs'))}</span>
+              <span class="top-sub">${esc(
+                subOf ? subOf(r) : r.artist || fmt.plural(r.tracks || 0, 'Song', 'Songs')
+              )}</span>
             </span>
             <span class="top-meter"><span class="chart-bar" data-bar="${Math.round((r.seconds / peak) * 100)}"></span></span>
             <span class="top-count num">${fmt.number(r.plays)}×</span>
@@ -1485,6 +1487,99 @@ const readoutCell = (label, value, opts = {}) =>
     <span class="readout-value">${esc(value)}</span>
     ${opts.sub ? `<span class="readout-sub">${esc(opts.sub)}</span>` : ''}
   </div>`;
+
+// The four libraries, in the order they are worth reading: the big one first,
+// then the spoken ones in the order the sidebar lists them.
+const KIND_LABELS = { music: 'Musik', podcast: 'Podcasts', book: 'Hörbücher', drama: 'Hörspiele' };
+const KIND_ORDER = ['music', 'podcast', 'book', 'drama'];
+
+// The selected period's listening time, split by the library it came from.
+//
+// Every kind gets a row, a silent one included: "Podcasts 0 Sek." is what tells
+// the reader that podcasts are counted on this page at all, and an omitted row
+// would tell them nothing. The share is of the total, so the four bars are
+// comparable with each other rather than each with its own scale.
+function kindTable(kinds) {
+  const total = kinds.total.seconds;
+  const row = (key, label, value) => {
+    const share = total ? Math.round((value.seconds / total) * 100) : 0;
+    return `<div class="kind-row${value.seconds ? '' : ' quiet'}${key === 'total' ? ' total' : ''}">
+        <span class="kind-name">${esc(label)}</span>
+        <span class="top-meter">${
+          key === 'total' ? '' : `<span class="chart-bar" data-bar="${share}"></span>`
+        }</span>
+        <span class="kind-share num">${key === 'total' ? '' : `${share} %`}</span>
+        <span class="top-count num">${fmt.number(value.plays)}×</span>
+        <span class="kind-time num">${esc(fmt.durationRack(value.seconds))}</span>
+      </div>`;
+  };
+
+  return `<div class="panel">
+      <h2>Spielzeit</h2>
+      <p class="panel-hint">Was in diesem Zeitraum wirklich gelaufen ist, nach Bibliothek
+        getrennt. Gesprochenes zählt genauso mit wie Musik.</p>
+      <div class="kind-list">
+        ${KIND_ORDER.map((k) => row(k, KIND_LABELS[k], kinds[k])).join('')}
+        ${row('total', 'Gesamt', kinds.total)}
+      </div>
+    </div>`;
+}
+
+// The three spoken libraries as the library panel sees them: how much there is
+// and how much of it is still ahead. One row each, because the three answer the
+// same question with different words - a podcast has Folgen where a book has
+// Teile - and three separate readouts would say that three times.
+function spokenPanel(spoken) {
+  const rows = [
+    {
+      label: 'Podcasts',
+      href: '/podcasts',
+      sub: [
+        fmt.plural(spoken.podcasts.shows, 'Show', 'Shows'),
+        fmt.plural(spoken.podcasts.episodes, 'Folge', 'Folgen'),
+        `${fmt.number(spoken.podcasts.unplayed)} ungehört`,
+      ],
+      seconds: spoken.podcasts.duration,
+    },
+    {
+      label: 'Hörbücher',
+      href: '/audiobooks',
+      sub: [
+        fmt.plural(spoken.books.books, 'Buch', 'Bücher'),
+        fmt.plural(spoken.books.authors, 'Autor', 'Autoren'),
+        `${fmt.number(spoken.books.open)} offen`,
+      ],
+      seconds: spoken.books.duration,
+    },
+    {
+      label: 'Hörspiele',
+      href: '/audiodramas',
+      sub: [
+        fmt.plural(spoken.dramas.books, 'Hörspiel', 'Hörspiele'),
+        fmt.plural(spoken.dramas.authors, 'Autor', 'Autoren'),
+        `${fmt.number(spoken.dramas.open)} offen`,
+      ],
+      seconds: spoken.dramas.duration,
+    },
+  ];
+
+  return `<div class="panel">
+      <h2>Gesprochenes</h2>
+      <div class="kind-list">
+        ${rows
+          .map(
+            (r) => `<a class="kind-row wide" href="${r.href}" data-link>
+              <span class="kind-text">
+                <span class="kind-name">${esc(r.label)}</span>
+                <span class="kind-sub">${esc(r.sub.join(' · '))}</span>
+              </span>
+              <span class="kind-time num">${esc(fmt.durationRack(r.seconds))}</span>
+            </a>`
+          )
+          .join('')}
+      </div>
+    </div>`;
+}
 
 // Everything that belongs to the selected period, as one block: the switch, the
 // arrows, what that period adds up to, its chart and the three top lists. It is
@@ -1529,19 +1624,37 @@ function periodSection(listening) {
       <div class="mt-lg">${chart(series(range, key, listening.chart))}</div>
     </div>
 
+    ${kindTable(listening.period.kinds)}
+
     ${topList('Meistgehörte Songs', listening.top.tracks, (r) =>
       r.albumId ? `/albums/${r.albumId}` : `/artists/${r.artistId}`
     )}
     ${topList('Meistgehörte Interpreten', listening.top.artists, (r) => `/artists/${r.id}`)}
-    ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}`;
+    ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}
+    ${topList('Meistgehörtes Gesprochenes', listening.top.spoken, spokenHref, spokenSub)}`;
 }
+
+// Where a row of the spoken top list leads. The three libraries have three
+// different paths, and the row carries the kind precisely so this can be a
+// lookup rather than a guess from the shape of the id.
+const spokenHref = (r) =>
+  r.kind === 'podcast'
+    ? `/podcasts/${r.id}`
+    : `/${r.kind === 'drama' ? 'audiodramas' : 'audiobooks'}/books/${r.id}`;
+
+// One list holds three libraries, so every row says which one it is. The author
+// follows where there is one - a show has none, and a fallback to the "n Songs"
+// the music lists print would be nonsense on a podcast.
+const SPOKEN_WORDS = { podcast: 'Podcast', book: 'Hörbuch', drama: 'Hörspiel' };
+const spokenSub = (r) =>
+  [SPOKEN_WORDS[r.kind] || 'Gesprochenes', r.artist].filter(Boolean).join(' · ');
 
 export async function stats(params, ctx) {
   // The page opens on the width the account picked last - "Gesamt" stays
   // "Gesamt" until it is changed again. Only the width is kept, not which
   // period the arrows walked to: a saved day would be yesterday tomorrow.
   const saved = ctx.prefs.statsRange;
-  const { library, listening } = await api.stats(saved ? { range: saved } : {});
+  const { library, spoken, listening } = await api.stats(saved ? { range: saved } : {});
   const t = listening.totals;
   // Which period is on screen. The arrows step from it, so it has to survive
   // between two renders of the block.
@@ -1586,13 +1699,15 @@ export async function stats(params, ctx) {
         </div>
       </div>
 
+      ${spokenPanel(spoken)}
+
       ${
         t.plays
           ? `<div class="panel">
         <h2>Durchschnitt</h2>
         <p class="panel-hint">Alles gemessen, nichts hochgerechnet: Grundlage sind die
           ${fmt.plural(t.days, 'Tag', 'Tage')} seit dem ersten Anhören am ${esc(fmt.date(t.firstPlay))}.
-          Ein Hörtag ist ein Tag, an dem wirklich Musik lief
+          Ein Hörtag ist ein Tag, an dem wirklich etwas lief - Musik oder Gesprochenes
           (${fmt.plural(t.activeDays, 'Tag', 'Tage')}).</p>
         <div class="readout">
           ${readoutCell('Pro Tag', fmt.durationRack(listening.average.day))}

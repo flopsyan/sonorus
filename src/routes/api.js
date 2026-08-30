@@ -487,6 +487,14 @@ router.get('/stats', (req, res) => {
   res.json({
     ok: true,
     library: libraryStats(),
+    // The three spoken libraries, each answering its own head's question. They
+    // are read here rather than folded into `libraryStats`, because that one
+    // knows nothing but music and every other caller of it wants it that way.
+    spoken: {
+      podcasts: podcastStats(req.user.id),
+      books: audiobookStats(req.user.id, BOOK),
+      dramas: audiobookStats(req.user.id, DRAMA),
+    },
     listening: listeningStats(req.user.id, req.query.offset, {
       range: req.query.range,
       period: req.query.period,

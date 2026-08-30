@@ -178,8 +178,9 @@ podcasts/
   in the last 30 seconds of. Both can be set by hand from the row menu.
 - Episodes are **not part of the music library**: they never appear under Alle
   Songs, Interpreten, Alben, Genres, the star playlists, the Zufallsmix or the
-  statistics, and they are neither rated nor added to playlists. The search does
-  find them, in a section of its own.
+  music-shaped lists of the statistics, and they are neither rated nor added to
+  playlists. The search does find them, in a section of its own. Their listening
+  time does count on the statistics page, on a line of its own - see Statistik.
 - The **show carries the artwork**, not the episode. A podcast rebrands over the
   years rather than drawing a cover per episode, so storing one picture per
   episode would write the same handful of images hundreds of times.
@@ -391,20 +392,34 @@ server and belongs to the account, so the phone and the desktop count into the
 same numbers.
 
 - Library at a glance: songs, artists, albums, singles, genres, total playtime.
-- Time listened in total, since the first play, with the number of days music
-  actually ran and the day the most of it ran.
-- Averages: per day (quiet days included), per day music actually ran, per play,
-  and plays per day. **Measured, never projected** - there is no "per year" after
-  two days of listening.
+- **Gesprochenes**, the same for the three spoken libraries: shows and episodes,
+  books and authors, radio plays and authors, each with its length and how much
+  of it is still unheard. Every row leads to that library.
+- Time listened in total, since the first play, with the number of days
+  something actually ran and the day the most of it ran.
+- Averages: per day (quiet days included), per day something actually ran, per
+  play, and plays per day. **Measured, never projected** - there is no "per
+  year" after two days of listening.
 - A column chart of the time listened, by day, week, month or year, with the
   time above each bar and the number of plays below it. A period nothing was
   played in is shown as the zero it is instead of being left out.
-- The most played tracks, artists and albums, with play count and time.
+- **Spielzeit**, the selected period split by library: Musik, Podcasts,
+  Hörbücher, Hörspiele and the total, each with its share, its play count and
+  its time. A library that was silent keeps its row - that is what says it is
+  counted here at all.
+- The most played tracks, artists and albums, with play count and time. These
+  three stay **music only**: one 70-minute episode outweighs a dozen songs, and
+  a mixed list would be a list of podcasts.
+- **Meistgehörtes Gesprochenes**, one list for all three spoken libraries. What
+  is ranked is the show, the book or the radio play - never the file, because a
+  book is one thing whose parts are never shown.
 
 A play is counted once a track has run for 30 seconds - a third of its length
 for tracks shorter than that, which can never reach the mark. What is counted is
 the **time actually listened**: the player keeps reporting how far it really
 got, so skipping away after a minute counts as a minute, not as a whole track.
+That holds for every library: an episode and a part of a book are counted the
+same way a song is, which is why the total playtime is the total.
 
 ### CSV import
 
