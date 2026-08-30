@@ -33,11 +33,22 @@ import { transcodeDir } from '../db.js';
 
 const ffmpegBin = process.env.FFMPEG_PATH || 'ffmpeg';
 
-// The cap on the whole cache. The music library re-encoded at this profile is
-// ungefähr a third of the FLACs it was made from, so a library of a few hundred
-// gigabytes lands in the tens - which is why there is a cap at all rather than
-// letting it grow until the disk is full. 0 turns the limit off.
-const maxBytes = Math.round((Number(process.env.TRANSCODE_MAX_GB) || 60) * 1024 ** 3);
+// The cap on the whole cache, in GB. It is not a budget, it is an **eviction
+// threshold**: nothing is refused for being over it, the least recently used
+// entries are dropped once the folder passes it. That is worth having on a small
+// system disk and is pure friction on a volume with terabytes free - so **0
+// turns it off** and nothing is ever evicted.
+//
+// Written out rather than `Number(...) || 60`, because `Number('0')` is falsy
+// and that expression swallowed exactly the value meant to switch the cap off:
+// setting it to 0 silently gave you 60 GB. Empty still means "not set".
+function capBytes() {
+  const raw = String(process.env.TRANSCODE_MAX_GB ?? '').trim();
+  const gb = raw === '' ? 60 : Number(raw);
+  return Math.round((Number.isFinite(gb) && gb >= 0 ? gb : 60) * 1024 ** 3);
+}
+
+const maxBytes = capBytes();
 
 // An entry touched this recently is never evicted, however full the cache is.
 //

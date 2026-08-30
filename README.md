@@ -528,8 +528,14 @@ The copies are made in one batch at the end of every **Bibliothek scannen**, and
 the progress bar covers that phase like the others. They live in their own
 volume (`TRANSCODE_DIR`, `/app/transcodes`) rather than next to the database:
 they are large, they are worthless in a backup, and every one of them can be
-made again from the file it came from. `TRANSCODE_MAX_GB` caps the folder; past
-it, the least recently used copies are dropped.
+made again from the file it came from.
+
+`TRANSCODE_MAX_GB` is an **eviction threshold**, not a budget: nothing is
+refused for being over it, the least recently used copies are deleted once the
+folder passes it. Default 60. **Set it to 0 and nothing is ever evicted** -
+which is the right answer when the folder sits on a volume with room to spare
+and you would rather keep every copy than re-encode it on the next long drive.
+Einstellungen prints what the folder holds and which of the two applies.
 
 ## Data & backup
 

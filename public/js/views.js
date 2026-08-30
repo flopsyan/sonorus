@@ -1980,7 +1980,12 @@ function qualityBlock(quality) {
     <div class="setting-row">
       <div>
         <div class="setting-label">Zwischenspeicher</div>
-        <div class="setting-sub">${fmt.number(cache.files || 0)} Dateien · ${fmt.bytes(cache.bytes || 0)}${
+        <div class="setting-sub">${fmt.number(cache.files || 0)} Dateien · ${fmt.bytes(cache.bytes || 0)} · ${
+          // Whether anything is ever thrown away is the one thing this row could
+          // not say, and it is the thing worth knowing: past the limit the least
+          // recently used copies are deleted, and without one nothing ever is.
+          cache.maxBytes ? `Limit ${fmt.bytes(cache.maxBytes)}` : 'kein Limit'
+        }${
           batch.running ? ` · wird gerade erzeugt (${fmt.number(batch.done)} von ${fmt.number(batch.total)})` : ''
         }</div>
       </div>
