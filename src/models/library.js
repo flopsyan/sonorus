@@ -344,10 +344,10 @@ export function trackPath(id) {
 
 // Everything the transcode cache has to know about a song, and nothing a
 // response may carry. `size` and `mtime` are what makes a cache entry invalid
-// by itself when the file behind it changes; the rest decides whether the file
-// is re-encoded at all (see `willTranscode` in lib/transcode.js).
-const STREAM_FIELDS =
-  'id, path, size, mtime, bitrate, lossless, duration';
+// by itself when the file behind it changes, and `lossless` is the whole of the
+// re-encode decision (see `willTranscode` in lib/transcode.js) - `bitrate` and
+// `duration` were part of it until 2026-08-30 and are deliberately gone.
+const STREAM_FIELDS = 'id, path, size, mtime, lossless';
 
 export function streamTrack(id) {
   return db.prepare(`SELECT ${STREAM_FIELDS} FROM tracks WHERE id = ?`).get(id) || null;

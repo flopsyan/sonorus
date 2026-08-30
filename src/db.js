@@ -149,6 +149,12 @@ db.exec(`
     author_id INTEGER REFERENCES authors(id) ON DELETE SET NULL,
     title     TEXT NOT NULL,
     cover     TEXT NOT NULL DEFAULT '',
+    -- 'book' or 'drama'. One table carries both libraries; this is the only
+    -- thing that tells them apart. An older database gets it from the addColumn
+    -- call below, and it has to stand here as well or a *fresh* database fails
+    -- on the UNIQUE that reads it - which is what happened until 2026-08-30.
+    -- (No backticks in this block: it is inside a template literal.)
+    kind      TEXT NOT NULL DEFAULT 'book',
     -- The kind is part of the key: one author may have a book and a radio play
     -- of the same name, and moving a title from one root to the other has both
     -- rows alive at once - the old one is not pruned until after the read.

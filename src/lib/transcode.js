@@ -19,6 +19,9 @@
 // There is exactly one profile. A ladder of them was considered and dropped:
 // what is wanted is "the original" or "small enough for a mobile connection",
 // and every step in between is a setting nobody ever moves.
+//
+// And exactly one kind of source: **lossless only**, see `willTranscode`. A file
+// that is already lossy is handed over untouched however large it is.
 
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -76,37 +79,29 @@ export function profileOf(quality) {
   return PROFILES[wanted] || null;
 }
 
-// Lossy sources are only re-encoded when they are clearly *above* the target -
-// a 128k MP3 turned into a 128k Opus is smaller by nothing worth having and
-// worse by a generation of loss. The margin keeps files that sit near the target
-// on the original side of the line.
-const UPWARD_MARGIN = 1.1;
-
-/**
- * The bitrate of a track in bits per second, falling back to what the file size
- * says. Some containers do not carry one, and a null there must not read as
- * "low" - it would keep every one of them on the original.
- */
-function bitrateOf(track) {
-  if (track.bitrate > 0) return track.bitrate;
-  if (track.size > 0 && track.duration > 0) return Math.round((track.size * 8) / track.duration);
-  return 0;
-}
-
 /**
  * Whether [track] is really served in [profile], or handed over untouched.
  *
- * Lossless always transcodes - that is the whole point, and a FLAC is above any
- * lossy target by definition. Lossy only when it is above the target, and a file
- * whose bitrate cannot be worked out at all stays as it is: guessing wrong here
- * costs a generation of quality for nothing.
+ * **Only lossless sources are ever re-encoded.** ffmpeg goes down the ladder and
+ * never sideways: FLAC, WAV, ALAC, APE, WavPack and DSD shrink, and every lossy
+ * file - MP3, AAC, Opus, Vorbis - is handed over as it lies, whatever its
+ * bitrate. Florian's rule, 2026-08-30, after 312 podcast episodes at 160-320
+ * kbps were being re-encoded into Opus 128 on the phone.
+ *
+ * The bitrate decided this until then (lossy above 140.8 kbps shrank too), and
+ * on paper a 320k MP3 into a 128k Opus is smaller. What it also is, is a second
+ * generation of lossy loss for a file that was already small enough - and no
+ * bitrate threshold can tell the two apart, because the encoder that made the
+ * source is not the one reading it back.
+ *
+ * `lossless` comes from `music-metadata` and is a fact about the codec, not
+ * about the extension: a compressed WAV and a hybrid WavPack are false, and a
+ * container whose parser sets nothing (WMA, Musepack) lands on false as well -
+ * the safe side, since an unknown format is one nothing should be re-encoding.
  */
 export function willTranscode(track, profile) {
   if (!profile || !track) return false;
-  if (track.lossless) return true;
-  const source = bitrateOf(track);
-  if (!source) return false;
-  return source > profile.bitrate * UPWARD_MARGIN;
+  return !!track.lossless;
 }
 
 /**

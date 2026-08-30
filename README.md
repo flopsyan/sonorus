@@ -505,14 +505,20 @@ play whatever the source was.
 That copy is made once with ffmpeg and kept, so nothing is encoded while you
 wait for a song to start. Three rules decide what you actually get:
 
-- **Lossless always shrinks.** FLAC, WAV, AIFF, APE, WavPack and DSD are
+- **Only lossless shrinks.** FLAC, WAV, AIFF, ALAC, APE, WavPack and DSD are
   re-encoded, which is where the setting earns its keep - a FLAC album is
   ungefähr three times the size of the same album in Opus.
-- **A lossy file is never re-encoded upwards.** An MP3 that is already at or
-  near 128 kbps is handed over untouched, because a second generation of loss
-  would cost quality and save nothing worth having.
+- **A lossy file is never re-encoded at all.** MP3, AAC, Opus and Vorbis are
+  handed over as they lie, whatever their bitrate. ffmpeg goes down the ladder
+  and never sideways: turning one lossy file into another costs a generation of
+  loss on a file that was already small enough. A 320 kbps MP3 therefore streams
+  at 320 kbps even with the smaller quality picked.
 - **You are told which of the two happened.** The app shows the format really
   being played under the transport, not the one that was asked for.
+
+Whether a file is lossless is read from the codec, not from the extension: a
+compressed WAV and a hybrid WavPack count as lossy, and so does anything whose
+container carries no such flag at all (WMA, Musepack) - the safe side.
 
 Without ffmpeg on the server the app runs exactly as before and serves originals
 only; Einstellungen says so instead of offering a choice that cannot work. The
