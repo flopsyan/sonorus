@@ -1770,6 +1770,20 @@ function applyBars(root) {
 
 // --- Settings ---------------------------------------------------------------
 
+// One library root: where it is mounted and the layout it is read by. The
+// layout used to be one paragraph above all four roots, which meant reading
+// about podcasts to find the rule for music. Next to the folder it describes it
+// is one line, and only music needs a second one for the Various case.
+function dirRow(label, dir, layout) {
+  return `<div class="setting-row">
+        <div>
+          <div class="setting-label">${label}</div>
+          <div class="setting-sub num">${esc(dir || '')}</div>
+          ${layout.map((line) => `<div class="setting-sub num setting-layout">${esc(line)}</div>`).join('')}
+        </div>
+      </div>`;
+}
+
 // The running scan reports its progress here, right under the button that
 // started it - that is the whole feedback, there is no toast for it.
 function scanBlock(scan, lastScan) {
@@ -1788,30 +1802,13 @@ function scanBlock(scan, lastScan) {
   };
 
   return `<div id="scan-block">
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Musikordner</div>
-          <div class="setting-sub num">${esc(scan.musicDir)}</div>
-        </div>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Podcast-Ordner</div>
-          <div class="setting-sub num">${esc(scan.podcastDir || '')}</div>
-        </div>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Hörbuch-Ordner</div>
-          <div class="setting-sub num">${esc(scan.audiobookDir || '')}</div>
-        </div>
-      </div>
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Hörspiel-Ordner</div>
-          <div class="setting-sub num">${esc(scan.audiodramaDir || '')}</div>
-        </div>
-      </div>
+      ${dirRow('Musikordner', scan.musicDir, [
+        'Interpret / Album / 01 - Titel.flac',
+        'Various / Album / 01 - Interpret - Titel.flac',
+      ])}
+      ${dirRow('Podcast-Ordner', scan.podcastDir, ['Podcast / #001 Titel.mp3'])}
+      ${dirRow('Hörbuch-Ordner', scan.audiobookDir, ['Autor / Buch / 01 - Teil.mp3'])}
+      ${dirRow('Hörspiel-Ordner', scan.audiodramaDir, ['Autor / Hörspiel / 01 - Teil.mp3'])}
       <div class="setting-row">
         <div>
           <div class="setting-label">Letzter Scan</div>
@@ -1883,18 +1880,13 @@ export async function settings(_params, ctx) {
 
       <div class="panel">
         <h2>Bibliothek</h2>
-        <p class="panel-hint">Sonorus liest den eingehängten Ordner nur - deine Dateien werden nie verändert.
-          Die Zuordnung kommt aus der Ordnerstruktur: <code>Interpret / Album / 01 - Titel.flac</code>.
-          Dateien, die direkt im Ordner eines Interpreten liegen, zählen als Single.
-          Im Ordner <code>Various</code> steht der Interpret im Dateinamen:
-          <code>Various / Album / 01 - Interpret - Titel.flac</code>.
-          Datum, Genre und Cover kommen weiterhin aus der Datei selbst.</p>
+        <p class="panel-hint">Sonorus liest die eingehängten Ordner nur - deine Dateien werden nie verändert.</p>
         ${scanBlock(status.scan, status.lastScan)}
       </div>
 
       <div class="panel">
         <h2>Playlist aus CSV importieren</h2>
-        <p class="panel-hint">Erwartet eine Kopfzeile mit den Spalten <strong>playlist</strong>, <strong>title</strong>, <strong>artists</strong> und <strong>album</strong>. Die Spaltennamen gängiger Streaming-Exporte werden ebenfalls erkannt.</p>
+        <p class="panel-hint">Erwartet eine Kopfzeile mit den Spalten <strong>playlist</strong>, <strong>title</strong>, <strong>artists</strong> und <strong>album</strong>.</p>
         <div class="drop-zone" id="csv-drop" tabindex="0" role="button">
           ${icon('upload', 22)}
           <div class="mt-sm">CSV-Datei hierher ziehen oder klicken zum Auswählen</div>
@@ -1906,7 +1898,7 @@ export async function settings(_params, ctx) {
         <h2>Mitteilungen
           ${issueData.issues.length ? `<span class="issue-count">${fmt.number(issueData.issues.length)}</span>` : ''}
         </h2>
-        <p class="panel-hint">Songs aus einem CSV-Import, zu denen keine Datei in der Bibliothek passt. Sie bleiben hier stehen, bis du sie verwirfst - oder bis ein späterer Scan die Datei findet und sie automatisch in die Playlist einsortiert.</p>
+        <p class="panel-hint">Songs aus einem CSV-Import, zu denen keine Datei in der Bibliothek passt.</p>
         <div id="issues-block">${issueRows(issueData.issues)}</div>
         ${
           issueData.issues.length
@@ -1921,14 +1913,12 @@ export async function settings(_params, ctx) {
       <div class="panel">
         <h2>Qualität</h2>
         <p class="panel-hint">Gilt nur für <strong>dieses Gerät</strong> und nur fürs Streamen -
-          die Einstellung liegt im Browser, nicht im Konto. Ein Rechner im eigenen Netz
-          und ein Laptop im Hotel-WLAN wollen nicht dasselbe.</p>
+          die Einstellung liegt im Browser, nicht im Konto.</p>
         ${qualityBlock(quality)}
       </div>
 
       <div class="panel">
         <h2>Darstellung</h2>
-        <p class="panel-hint">Sonorus ist für dunkel gebaut; hell gibt es für den Tag.</p>
         <div class="setting-row">
           <div class="setting-label">Erscheinungsbild</div>
           ${themeSwitch()}
@@ -1954,7 +1944,7 @@ function qualityBlock(quality) {
         <div>
           <div class="setting-label">Nur Original</div>
           <div class="setting-sub">Auf diesem Server ist kein ffmpeg installiert, also gibt es
-            nichts umzurechnen. Sonorus liefert die Dateien so aus, wie sie im Musikordner liegen.</div>
+            nichts umzurechnen.</div>
         </div>
       </div>`;
   }

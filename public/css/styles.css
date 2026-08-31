@@ -1528,6 +1528,10 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 .setting-row:last-child { border-bottom: none; }
 .setting-label { font-size: 0.91rem; font-weight: 550; }
 .setting-sub { font-size: 0.82rem; color: var(--text-dim); }
+/* The layout a library root is read by, under the path it applies to.
+   Fainter than the path so the two mono lines are not read as two
+   folders. */
+.setting-layout { color: var(--text-faint); }
 
 .progress { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
 .progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
