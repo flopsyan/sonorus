@@ -58,9 +58,23 @@ export function recordPlay(userId, trackId, seconds = 0, playedAt = '') {
 // filed under now, which is the honest answer to "when, then?".
 const BACKDATE_LIMIT_MS = 365 * 24 * 3600 * 1000;
 
+// A timestamp that names no zone is UTC, not the server's local time.
+//
+// `new Date('2026-08-30 23:54:37')` reads local, so on a CEST server
+// `toISOString()` moved it two hours back and a play late in the evening could
+// be filed on the day before - visible in the statistics, where a day boundary
+// is a day boundary. The clients all send ISO-8601 with a `Z`, so nothing in
+// the wild depended on the old reading; this is the half that makes the column
+// and the comment below true for anything else that ever posts here.
+//
+// A date without a time is left alone: JavaScript already reads those as UTC.
+const ZONELESS = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)$/;
+
 function plausibleTime(value) {
   if (!value) return '';
-  const at = new Date(String(value));
+  const text = String(value).trim();
+  const zoneless = ZONELESS.exec(text);
+  const at = new Date(zoneless ? `${zoneless[1]}T${zoneless[2]}Z` : text);
   if (Number.isNaN(at.getTime())) return '';
   const skew = at.getTime() - Date.now();
   if (skew > 60 * 1000 || skew < -BACKDATE_LIMIT_MS) return '';
