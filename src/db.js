@@ -39,6 +39,12 @@ const audiobookDir = path.resolve(process.env.AUDIOBOOK_DIR || path.join(project
 // paid once (see the cross-repo rule in the vault).
 const audiodramaDir = path.resolve(process.env.AUDIODRAMA_DIR || path.join(projectRoot, 'audiodramas'));
 
+// eBooks, a fifth root, laid out like the audiobooks: ebooks/<Autor>/<Titel>/
+// *.epub. Nothing in it is played, so it shares no table with the tracks - but
+// it does share the `authors` table, because an author who wrote a book Florian
+// both hears and reads is one author.
+const ebookDir = path.resolve(process.env.EBOOK_DIR || path.join(projectRoot, 'ebooks'));
+
 // The smaller copies of the songs, made on demand and kept. A root of its own
 // rather than a folder in dataDir, because it is the one directory here that
 // grows with the size of the library rather than with the number of rows: the
@@ -435,6 +441,48 @@ db.exec(`
   );
 `);
 
+// --- eBooks -----------------------------------------------------------------
+// One EPUB, one row. `path` is the file and `documents` the number of pieces
+// the spine is made of, which is what the reader pages through.
+//
+// Identity is title plus author rather than the path, so renaming the file
+// inside its folder keeps the row - and with it where the reader had got to.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ebooks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    author_id    INTEGER REFERENCES authors(id) ON DELETE SET NULL,
+    title        TEXT NOT NULL,
+    path         TEXT NOT NULL,
+    cover        TEXT NOT NULL DEFAULT '',
+    language     TEXT NOT NULL DEFAULT '',
+    publisher    TEXT NOT NULL DEFAULT '',
+    release_date TEXT NOT NULL DEFAULT '',
+    year         INTEGER,
+    description  TEXT NOT NULL DEFAULT '',
+    documents    INTEGER NOT NULL DEFAULT 0,
+    size         INTEGER NOT NULL DEFAULT 0,
+    mtime        INTEGER NOT NULL DEFAULT 0,
+    added_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (title, author_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_ebooks_author ON ebooks(author_id);
+
+  -- Where the reading stopped: which document of the spine, and how far into
+  -- it. A fraction rather than a character offset, because the same document
+  -- is a different number of pages at a different font size.
+  CREATE TABLE IF NOT EXISTS ebook_progress (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ebook_id   INTEGER NOT NULL REFERENCES ebooks(id) ON DELETE CASCADE,
+    doc        INTEGER NOT NULL DEFAULT 0,
+    ratio      REAL NOT NULL DEFAULT 0,
+    finished   INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, ebook_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_ebook_progress_user
+    ON ebook_progress(user_id, updated_at DESC);
+`);
+
 // --- One-off data migrations ------------------------------------------------
 // Unlike the columns above, these rewrite rows, so they must not run twice. The
 // key in `meta` is what makes that so.
@@ -576,5 +624,6 @@ export {
   podcastDir,
   audiobookDir,
   audiodramaDir,
+  ebookDir,
 };
 export default db;

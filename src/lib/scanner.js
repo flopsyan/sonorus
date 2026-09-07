@@ -49,10 +49,12 @@ import db, {
   podcastDir,
   audiobookDir,
   audiodramaDir,
+  ebookDir,
   getMeta,
   setMeta,
 } from '../db.js';
 import { readChapters } from './chapters.js';
+import { readEpub, mimeOf } from './epub.js';
 import { isFfmpegReady, pregenerate, PROFILES } from './transcode.js';
 import { normalize, loosen, primaryArtist, isVarious } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
@@ -65,6 +67,10 @@ const AUDIO_EXT = new Set([
   '.mp3', '.m4a', '.m4b', '.mp4', '.aac', '.flac', '.ogg', '.oga', '.opus',
   '.wav', '.wv', '.aif', '.aiff', '.aifc', '.wma', '.ape', '.mpc', '.dsf', '.dff',
 ]);
+
+// The only ebook format Sonorus reads. A PDF is not a book that reflows, and
+// reflowing is the whole of the reading view.
+const EBOOK_EXT = new Set(['.epub']);
 
 // Cover files next to the audio, used when a file carries no embedded artwork.
 const COVER_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
@@ -101,7 +107,7 @@ const state = {
 };
 
 export function scanState() {
-  return { ...state, musicDir, podcastDir, audiobookDir, audiodramaDir };
+  return { ...state, musicDir, podcastDir, audiobookDir, audiodramaDir, ebookDir };
 }
 
 export function isScanning() {
@@ -491,7 +497,7 @@ async function storeBookCover(id, meta, filePath) {
 
 // Collects every audio file under the music folder. Symlinked directories are
 // followed but remembered, so a loop cannot make the walk run forever.
-async function collectFiles(root) {
+async function collectFiles(root, extensions = AUDIO_EXT) {
   const files = [];
   const seenDirs = new Set();
 
@@ -516,13 +522,13 @@ async function collectFiles(root) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(full);
-      } else if (entry.isFile() && AUDIO_EXT.has(path.extname(entry.name).toLowerCase())) {
+      } else if (entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase())) {
         files.push(full);
       } else if (entry.isSymbolicLink()) {
         try {
           const st = await fsp.stat(full);
           if (st.isDirectory()) await walk(full);
-          else if (AUDIO_EXT.has(path.extname(entry.name).toLowerCase())) files.push(full);
+          else if (extensions.has(path.extname(entry.name).toLowerCase())) files.push(full);
         } catch {
           // broken symlink
         }
@@ -875,6 +881,76 @@ const retireTracks = db.transaction((ids) => {
   return removed;
 });
 
+// --- Writing one ebook ------------------------------------------------------
+
+// Where a file sits in ebooks/<Autor>/<Titel>/<datei>.epub. The folder names
+// win over the metadata inside the file: a shelf full of Calibre exports has
+// titles like "Collins, Suzanne - The Ballad of Songbirds and Snakes", and the
+// folder is what Florian named.
+function describeEbook(filePath) {
+  const parts = path.relative(ebookDir, filePath).split(path.sep);
+  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
+  return {
+    author: parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_AUTHOR,
+    title: parts.length > 2 ? unhide(parts[1].trim()) : base,
+  };
+}
+
+const selectEbook = db.prepare(
+  'SELECT id, size, mtime, cover FROM ebooks WHERE title = ? AND author_id IS ?'
+);
+const insertEbook = db.prepare(
+  'INSERT INTO ebooks (title, author_id, path) VALUES (?, ?, ?)'
+);
+const updateEbook = db.prepare(`
+  UPDATE ebooks
+     SET path = @path, language = @language, publisher = @publisher,
+         release_date = @release_date, year = @year, description = @description,
+         documents = @documents, size = @size, mtime = @mtime
+   WHERE id = @id
+`);
+const setEbookCover = db.prepare('UPDATE ebooks SET cover = ? WHERE id = ?');
+
+// One EPUB. Answers the row id so the walk can tell which books it has seen,
+// also for the ones it skipped as unchanged.
+async function indexEbook(filePath, stat, force) {
+  const place = describeEbook(filePath);
+  const aId = authorId(place.author);
+  const known = selectEbook.get(place.title, aId);
+  const size = stat.size;
+  const mtime = Math.floor(stat.mtimeMs);
+  if (known && !force && known.size === size && known.mtime === mtime) {
+    state.skipped += 1;
+    return known.id;
+  }
+
+  const book = readEpub(filePath);
+  const id = known ? known.id : Number(insertEbook.run(place.title, aId, filePath).lastInsertRowid);
+  updateEbook.run({
+    id,
+    path: filePath,
+    language: book.language,
+    publisher: book.publisher,
+    release_date: book.date,
+    year: yearOf(book.date),
+    description: book.description,
+    documents: book.documents,
+    size,
+    mtime,
+  });
+
+  const row = db.prepare('SELECT cover FROM ebooks WHERE id = ?').get(id);
+  if (book.cover && !row.cover) {
+    const name = `ebook-${id}${COVER_MIME_EXT[book.cover.mime] || '.jpg'}`;
+    await fsp.writeFile(path.join(coversDir, name), book.cover.data);
+    setEbookCover.run(name, id);
+  }
+
+  if (known) state.updated += 1;
+  else state.added += 1;
+  return id;
+}
+
 // Removes the artists, albums and genres that no track references any more.
 // Playlist entries and ratings pointing at a deleted track cascade away with it.
 //
@@ -896,7 +972,8 @@ const prune = db.transaction(() => {
     DELETE FROM audiobooks
      WHERE id NOT IN (SELECT audiobook_id FROM tracks WHERE audiobook_id IS NOT NULL);
     DELETE FROM authors
-     WHERE id NOT IN (SELECT author_id FROM audiobooks WHERE author_id IS NOT NULL);
+     WHERE id NOT IN (SELECT author_id FROM audiobooks WHERE author_id IS NOT NULL)
+       AND id NOT IN (SELECT author_id FROM ebooks WHERE author_id IS NOT NULL);
   `);
 });
 
@@ -936,7 +1013,11 @@ export async function runScan() {
     const bookParts = fs.existsSync(audiobookDir) ? await collectFiles(audiobookDir) : [];
     // And a fourth. Same layout, same terms - a play is a book with a cast.
     const dramaParts = fs.existsSync(audiodramaDir) ? await collectFiles(audiodramaDir) : [];
-    state.total = files.length + episodes.length + bookParts.length + dramaParts.length;
+    // And a fifth, which is read rather than played and therefore lands in a
+    // table of its own.
+    const ebooks = fs.existsSync(ebookDir) ? await collectFiles(ebookDir, EBOOK_EXT) : [];
+    state.total =
+      files.length + episodes.length + bookParts.length + dramaParts.length + ebooks.length;
     state.phase = 'reading';
 
     // After a change to how a file is read, the size/mtime shortcut would keep
@@ -964,12 +1045,28 @@ export async function runScan() {
     await readAll(dramaParts, (file, stat, force) =>
       indexAudiobookPart(file, stat, force, audiodramaDir, 'drama'));
 
+    // The ebooks are counted by row rather than by path: the row is keyed by
+    // title and author, so a renamed file is the same book.
+    const seenBooks = new Set();
+    await readAll(ebooks, async (file, stat, force) => {
+      const id = await indexEbook(file, stat, force);
+      if (id) seenBooks.add(id);
+    });
+
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();
     const gone = known.filter((t) => !seen.has(t.path)).map((t) => t.id);
     if (gone.length) {
       state.removed = retireTracks(gone);
       state.kept = gone.length - state.removed;
+    }
+    // A book whose file is gone is gone: nothing refers to it but the place it
+    // was read to, and that is worth less than a shelf full of dead rows.
+    for (const row of db.prepare('SELECT id FROM ebooks').all()) {
+      if (!seenBooks.has(row.id)) {
+        db.prepare('DELETE FROM ebooks WHERE id = ?').run(row.id);
+        state.removed += 1;
+      }
     }
     prune();
 

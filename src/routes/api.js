@@ -60,6 +60,17 @@ import {
   DRAMA,
 } from '../models/audiobooks.js';
 import {
+  listAuthors as listEbookAuthors,
+  getAuthor as getEbookAuthor,
+  getBook as getEbook,
+  continueBooks as continueEbooks,
+  setProgress as setEbookProgress,
+  ebookStats,
+  readResource,
+  readerDocument,
+  READER_CSP,
+} from '../models/ebooks.js';
+import {
   playlistTree,
   listPlaylists,
   getPlaylist,
@@ -406,6 +417,68 @@ function spokenRoutes(base, kind) {
 
 spokenRoutes('audiobooks', BOOK);
 spokenRoutes('audiodramas', DRAMA);
+
+// --- eBooks -----------------------------------------------------------------
+//
+// The shelf reads like the spoken word's - authors, their books, one book - and
+// then it stops: an ebook is read rather than played, so there is no queue, no
+// rating and no download. What is new is the last two routes, which hand the
+// pieces of the EPUB itself to the reading view.
+
+router.get('/ebooks', (req, res) => {
+  res.json({
+    ok: true,
+    authors: listEbookAuthors(),
+    continue: continueEbooks(req.user.id),
+    stats: ebookStats(),
+  });
+});
+
+router.get('/ebooks/authors/:id', (req, res) => {
+  const author = getEbookAuthor(id(req.params.id), req.user.id);
+  if (!author) return fail(res, 'not_found', 404);
+  res.json({ ok: true, author });
+});
+
+router.get('/ebooks/books/:id', (req, res) => {
+  const book = getEbook(id(req.params.id), req.user.id);
+  if (!book) return fail(res, 'not_found', 404);
+  res.json({ ok: true, book });
+});
+
+router.put('/ebooks/books/:id/progress', (req, res) => {
+  const result = setEbookProgress(req.user.id, id(req.params.id), req.body || {});
+  if (result.error) return fail(res, result.error, 404);
+  res.json({ ok: true, progress: getEbook(id(req.params.id), req.user.id).progress });
+});
+
+// One file out of the book, under the path it has inside the zip.
+//
+// The path is mirrored on purpose: a chapter loads its pictures and its
+// stylesheet with the relative links the book was written with, and those
+// resolve against this URL. Rewriting them would mean parsing every document
+// and getting CSS `url()` right as well.
+router.get('/ebooks/books/:id/read/*name', (req, res) => {
+  const name = Array.isArray(req.params.name) ? req.params.name.join('/') : req.params.name;
+  let piece;
+  try {
+    piece = readResource(id(req.params.id), name);
+  } catch {
+    return fail(res, 'not_found', 404);
+  }
+  if (!piece) return fail(res, 'not_found', 404);
+
+  // The book's own CSP: it may style itself, which an EPUB does inline, and it
+  // may load nothing from anywhere else.
+  res.set('Content-Security-Policy', READER_CSP);
+  if (piece.document >= 0) {
+    res.type('text/html; charset=utf-8');
+    return res.send(readerDocument(piece.data));
+  }
+  res.type(piece.mime);
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.send(piece.data);
+});
 
 // 0 is the list of everything that has no rating yet. Several ratings can be
 // asked for at once ("4,5"), which gives one combined list.

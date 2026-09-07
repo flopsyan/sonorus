@@ -1,0 +1,150 @@
+/*
+ * The reading view, laid over whatever stylesheet the book brought with it.
+ *
+ * Pagination is CSS multicol: the document flows into columns one screen wide
+ * and the body is slid sideways by a whole column per page. That is why `html`
+ * clips and nothing here scrolls - a scrollbar would be a second way to move
+ * through the text, and it would not agree with the page count.
+ *
+ * The `!important` is not laziness. A book's own stylesheet sets colours and
+ * faces for a white page, and every one of them has to lose against the
+ * reader's - otherwise a dark theme shows black text on black.
+ */
+
+/* Ubuntu comes from the server, so the phone does not have to have it. Four
+   faces and no more: a reading view needs upright, italic and their bold. */
+@font-face {
+  font-family: 'Ubuntu';
+  src: url('/static/fonts/Ubuntu-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu';
+  src: url('/static/fonts/Ubuntu-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu';
+  src: url('/static/fonts/Ubuntu-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Ubuntu';
+  src: url('/static/fonts/Ubuntu-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  --reader-ink: #e7e5e4;
+  --reader-bg: #12100f;
+  --reader-dim: #a8a29e;
+  --reader-accent: #d97706;
+  --reader-font: system-ui, sans-serif;
+  --reader-mono: ui-monospace, monospace;
+  --reader-size: 18px;
+  --reader-leading: 1.6;
+  --reader-pad-v: 28px;
+  --reader-pad-h: 22px;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: var(--reader-bg) !important;
+  font-size: var(--reader-size);
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+body {
+  margin: 0 !important;
+  padding: var(--reader-pad-v) var(--reader-pad-h) !important;
+  height: calc(100vh - var(--reader-pad-v) * 2) !important;
+  width: auto !important;
+  max-width: none !important;
+  column-width: calc(100vw - var(--reader-pad-h) * 2) !important;
+  column-gap: calc(var(--reader-pad-h) * 2) !important;
+  column-fill: auto !important;
+  background: var(--reader-bg) !important;
+  color: var(--reader-ink) !important;
+  font-family: var(--reader-font) !important;
+  font-size: 1rem !important;
+  line-height: var(--reader-leading) !important;
+  text-align: left;
+  transform: translateX(0);
+  will-change: transform;
+}
+
+body.sonorus-turning {
+  transition: transform 260ms cubic-bezier(0.22, 0.7, 0.2, 1);
+}
+
+body * {
+  font-family: var(--reader-font) !important;
+  color: var(--reader-ink) !important;
+  background-color: transparent !important;
+  max-width: 100% !important;
+}
+
+pre, code, kbd, samp {
+  font-family: var(--reader-mono) !important;
+  white-space: pre-wrap !important;
+}
+
+p, li, dd, dt, td, th, blockquote, div, span {
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+h1 { font-size: 1.55rem !important; }
+h2 { font-size: 1.32rem !important; }
+h3 { font-size: 1.15rem !important; }
+h4, h5, h6 { font-size: 1.05rem !important; }
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.25 !important;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* A page break inside a heading or a picture is the one break that reads as a
+   fault rather than as the end of a page. */
+img, svg, figure, table {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+img, svg {
+  max-width: 100% !important;
+  max-height: calc(100vh - var(--reader-pad-v) * 2) !important;
+  height: auto !important;
+  object-fit: contain;
+}
+
+a, a * {
+  color: var(--reader-accent) !important;
+  text-decoration: none !important;
+}
+
+hr {
+  border: 0 !important;
+  border-top: 1px solid var(--reader-dim) !important;
+  opacity: 0.4;
+}
+
+/* The book's own page-break hints would each start a fresh column, which turns
+   a chapter of six pages into forty mostly empty ones. */
+* {
+  break-before: auto !important;
+  page-break-before: auto !important;
+}
