@@ -149,10 +149,14 @@ export function getBook(id, userId) {
 
   let chapters = [];
   let lengths = [];
+  // The spine by position, because everything else here names a document by its
+  // index and only this says which file that is.
+  let spine = [];
   try {
     const epub = openEpub(row.path);
     try {
       chapters = epub.toc;
+      spine = epub.spine.map((item) => item.href);
       book.documents = epub.spine.length;
       // How much text each document holds, which is what turns "page 3 of 12
       // in this chapter" into a page number for the whole book. Counted on the
@@ -166,7 +170,7 @@ export function getBook(id, userId) {
     // A file that cannot be opened still has a row worth showing; the reader
     // is what will say so.
   }
-  return { ...book, chapters, lengths, progress: placeIn(book, userId) };
+  return { ...book, chapters, spine, lengths, progress: placeIn(book, userId) };
 }
 
 /** Roughly how many characters of prose a document holds. */
