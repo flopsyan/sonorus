@@ -26,8 +26,62 @@ import db from '../db.js';
 
 // Rows written before the player reported its listening time have seconds = 0.
 // For those the track length is the only estimate available - a counted play
-// did run most of the way through.
-const SECONDS = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration, 0) END';
+// did run most of the way through. Applied once, in the slicing below, so
+// everything downstream reads a length that is already settled.
+const RAW_SECONDS = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration, 0) END';
+
+// The end of the hour a moment lies in, and how much of that hour is left.
+const HOUR_END = (c) => `datetime(strftime('%Y-%m-%d %H:00:00', ${c}), '+1 hour')`;
+const LEFT_IN_HOUR = (c) => `(strftime('%s', ${HOUR_END(c)}) - strftime('%s', ${c}))`;
+
+/**
+ * Every play, cut at the hour boundaries it crosses, in the server's own time.
+ *
+ * **A play is a stretch of time, not an instant**, and the hour it began in is
+ * not the only hour it happened in. Counting it whole where it started is what
+ * put two hours and nineteen minutes into the 14:00 bar of a chart whose bars
+ * are an hour wide. Two and a half hours begun at 14:40 are now twenty minutes
+ * of 14:00, an hour each of 15:00 and 16:00, and ten minutes of 17:00.
+ *
+ * Cutting at the *hour* is enough for all five ranges: hours roll up into days,
+ * days into weeks and months, months into years - so a play that runs past
+ * midnight lands on both days without a second rule for it.
+ *
+ * The conversion out of UTC happens here and only here, which is what lets
+ * every expression downstream read a plain local timestamp. **It is the
+ * server's time, deliberately**: which hour a play belongs to must not depend
+ * on where the listener is standing when they look, or a flight would rewrite
+ * last week.
+ *
+ * The one thing it gets wrong is a play running through the night the clocks
+ * change: the seconds are counted as if that local day had 24 hours. One play
+ * a year, off by an hour, and the alternative is arithmetic in UTC that would
+ * cut a half-hour zone in the wrong place every day.
+ */
+const WITH_SLICES = `
+WITH RECURSIVE slice(id, user_id, track_id, at, remaining) AS (
+  SELECT p.id, p.user_id, p.track_id,
+         datetime(p.played_at, 'localtime'),
+         ${RAW_SECONDS}
+    FROM plays p
+    JOIN tracks t ON t.id = p.track_id
+   WHERE p.user_id = @userId
+  UNION ALL
+  SELECT id, user_id, track_id, ${HOUR_END('at')}, remaining - ${LEFT_IN_HOUR('at')}
+    FROM slice
+   WHERE remaining > ${LEFT_IN_HOUR('at')}
+),
+sliced AS (
+  SELECT id, user_id, track_id, at AS played_at,
+         MIN(remaining, ${LEFT_IN_HOUR('at')}) AS seconds
+    FROM slice
+)`;
+
+// What a query counts and what it adds up. A slice is a piece of a play, so the
+// plays have to be counted by their id - counting rows would make one long
+// evening's listening look like three.
+const SECONDS = 'p.seconds';
+const PLAYS = 'COUNT(DISTINCT p.id)';
 
 // Four libraries write into the same plays table, and this page needs both
 // answers, so there are two FROMs.
@@ -39,13 +93,13 @@ const SECONDS = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration
 // outweighs a dozen songs, and mixing them in would turn "Meistgehörte Songs"
 // into a list of podcasts.
 const FROM_ALL = `
-  FROM plays p
+  FROM sliced p
   JOIN tracks t ON t.id = p.track_id
   LEFT JOIN audiobooks b ON b.id = t.audiobook_id
 `;
 
 const FROM = `
-  FROM plays p
+  FROM sliced p
   JOIN tracks t ON t.id = p.track_id AND t.podcast_id IS NULL AND t.audiobook_id IS NULL
 `;
 
@@ -66,14 +120,6 @@ const KIND = `
 const musicOnly = (column) =>
   `COUNT(DISTINCT CASE WHEN t.podcast_id IS NULL AND t.audiobook_id IS NULL THEN ${column} END)`;
 
-// played_at is UTC. The day a play belongs to is a question about the listener,
-// not about the server, so the browser sends its own offset and it is applied
-// inside the query. Clamped to a real timezone range.
-function zone(offsetMinutes) {
-  const m = Math.max(-840, Math.min(840, Math.round(Number(offsetMinutes) || 0)));
-  return `${m >= 0 ? '+' : '-'}${Math.abs(m)} minutes`;
-}
-
 // The five ways of slicing the history.
 //
 // `key` puts a play into one period and is *also* what selects that period
@@ -86,25 +132,25 @@ function zone(offsetMinutes) {
 // `all` has no key - it is every period at once and therefore filters nothing.
 const RANGES = {
   day: {
-    key: (c) => `strftime('%Y-%m-%d', ${c}, @tz)`,
-    inner: (c) => `strftime('%H', ${c}, @tz)`,
+    key: (c) => `strftime('%Y-%m-%d', ${c})`,
+    inner: (c) => `strftime('%H', ${c})`,
   },
   // The Monday of that week: forward to Sunday, then back six days.
   week: {
-    key: (c) => `date(${c}, @tz, 'weekday 0', '-6 days')`,
-    inner: (c) => `strftime('%Y-%m-%d', ${c}, @tz)`,
+    key: (c) => `date(${c}, 'weekday 0', '-6 days')`,
+    inner: (c) => `strftime('%Y-%m-%d', ${c})`,
   },
   month: {
-    key: (c) => `strftime('%Y-%m', ${c}, @tz)`,
-    inner: (c) => `strftime('%Y-%m-%d', ${c}, @tz)`,
+    key: (c) => `strftime('%Y-%m', ${c})`,
+    inner: (c) => `strftime('%Y-%m-%d', ${c})`,
   },
   year: {
-    key: (c) => `strftime('%Y', ${c}, @tz)`,
-    inner: (c) => `strftime('%Y-%m', ${c}, @tz)`,
+    key: (c) => `strftime('%Y', ${c})`,
+    inner: (c) => `strftime('%Y-%m', ${c})`,
   },
   all: {
     key: null,
-    inner: (c) => `strftime('%Y', ${c}, @tz)`,
+    inner: (c) => `strftime('%Y', ${c})`,
   },
 };
 
@@ -130,23 +176,28 @@ function scope(userId, range, period) {
 
 // Which period a moment in time falls into - used for "now" (where the
 // navigator starts) and for the first play (how far back it may step).
-function periodKey(range, tz, when) {
+// `when` is already the server's local time - it comes out of the slicing, or
+// is the literal below.
+const NOW = "datetime('now', 'localtime')";
+
+function periodKey(range, when) {
   const { key } = RANGES[range];
   if (!key || !when) return '';
-  return db.prepare(`SELECT ${key('@when')} AS key`).get({ tz, when }).key || '';
+  if (when === NOW) return db.prepare(`SELECT ${key(NOW)} AS key`).get().key || '';
+  return db.prepare(`SELECT ${key('@when')} AS key`).get({ when }).key || '';
 }
 
-function periodTotals(userId, tz, range, period) {
+function periodTotals(userId, range, period) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
-      `SELECT COUNT(*) AS plays, ROUND(COALESCE(SUM(${SECONDS}), 0)) AS seconds,
+      `${WITH_SLICES} SELECT ${PLAYS} AS plays, ROUND(COALESCE(SUM(${SECONDS}), 0)) AS seconds,
               ${musicOnly('t.id')} AS tracks,
               ${musicOnly('t.artist_id')} AS artists,
               ${musicOnly('t.album_id')} AS albums ${FROM_ALL}
         WHERE ${where}`
     )
-    .get(params.period ? { ...params, tz } : params);
+    .get(params);
 }
 
 // The four libraries a period's listening time came from, and what they add up
@@ -155,7 +206,7 @@ function periodTotals(userId, tz, range, period) {
 // nothing at all.
 const KINDS = ['music', 'podcast', 'book', 'drama'];
 
-function byKind(userId, tz, range, period) {
+function byKind(userId, range, period) {
   const { where, params } = scope(userId, range, period);
   const rows = db
     .prepare(
@@ -165,12 +216,12 @@ function byKind(userId, tz, range, period) {
       // libraries then collapse into three groups (NULL for music and for
       // podcasts alike) and the CASE is evaluated for whichever row of the
       // group came first - which filed every music play under "podcast".
-      `SELECT ${KIND} AS kind, COUNT(*) AS plays,
+      `${WITH_SLICES} SELECT ${KIND} AS kind, ${PLAYS} AS plays,
               ROUND(COALESCE(SUM(${SECONDS}), 0)) AS seconds ${FROM_ALL}
         WHERE ${where}
         GROUP BY 1`
     )
-    .all(params.period ? { ...params, tz } : params);
+    .all(params);
 
   const out = { total: { plays: 0, seconds: 0 } };
   for (const kind of KINDS) out[kind] = { plays: 0, seconds: 0 };
@@ -187,31 +238,31 @@ function byKind(userId, tz, range, period) {
 // months of a year, years of everything. Only the slots something was played in
 // come back - the client fills the quiet ones, because it knows how long a
 // period is and the query does not.
-function chart(userId, tz, range, period) {
+function chart(userId, range, period) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
-      `SELECT ${RANGES[range].inner('p.played_at')} AS key,
-              COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM_ALL}
+      `${WITH_SLICES} SELECT ${RANGES[range].inner('p.played_at')} AS key,
+              ${PLAYS} AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM_ALL}
         WHERE ${where}
         GROUP BY key
         ORDER BY key ASC`
     )
-    .all({ ...params, tz });
+    .all(params);
 }
 
-function topTracks(userId, tz, range, period, limit) {
+function topTracks(userId, range, period, limit) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
       // The interpret of the song, which on a compilation is not the folder it
       // lies in. The top *artists* below deliberately keep grouping by the
       // folder: the album belongs to "Various", and that is what was listened to.
-      `SELECT t.id, t.title, COALESCE(NULLIF(t.track_artist, ''), ar.name) AS artist,
+      `${WITH_SLICES} SELECT t.id, t.title, COALESCE(NULLIF(t.track_artist, ''), ar.name) AS artist,
               al.title AS album,
               t.album_id AS albumId, t.artist_id AS artistId,
               COALESCE(NULLIF(al.cover, ''), t.cover) AS cover,
-              COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
+              ${PLAYS} AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
          LEFT JOIN artists ar ON ar.id = t.artist_id
          LEFT JOIN albums  al ON al.id = t.album_id
         WHERE ${where}
@@ -219,15 +270,15 @@ function topTracks(userId, tz, range, period, limit) {
         ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
-    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
+    .all({ ...params, limit })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-function topArtists(userId, tz, range, period, limit) {
+function topArtists(userId, range, period, limit) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
-      `SELECT ar.id, ar.name AS title, COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds,
+      `${WITH_SLICES} SELECT ar.id, ar.name AS title, ${PLAYS} AS plays, ROUND(SUM(${SECONDS})) AS seconds,
               COUNT(DISTINCT t.id) AS tracks,
               (SELECT al.cover FROM albums al
                 WHERE al.artist_id = ar.id AND al.cover <> '' LIMIT 1) AS cover ${FROM}
@@ -237,16 +288,16 @@ function topArtists(userId, tz, range, period, limit) {
         ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
-    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
+    .all({ ...params, limit })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-function topAlbums(userId, tz, range, period, limit) {
+function topAlbums(userId, range, period, limit) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
-      `SELECT al.id, al.title, ar.name AS artist, al.cover,
-              COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
+      `${WITH_SLICES} SELECT al.id, al.title, ar.name AS artist, al.cover,
+              ${PLAYS} AS plays, ROUND(SUM(${SECONDS})) AS seconds ${FROM}
          JOIN albums al ON al.id = t.album_id
          LEFT JOIN artists ar ON ar.id = al.artist_id
         WHERE ${where}
@@ -254,7 +305,7 @@ function topAlbums(userId, tz, range, period, limit) {
         ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
-    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
+    .all({ ...params, limit })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
@@ -262,21 +313,21 @@ function topAlbums(userId, tz, range, period, limit) {
 // What is ranked is the *thing* - the show, the book, the radio play - and not
 // the file it is made of: a book is one thing whose parts are never shown, so a
 // top list of parts would name the same book forty times over.
-function topSpoken(userId, tz, range, period, limit) {
+function topSpoken(userId, range, period, limit) {
   const { where, params } = scope(userId, range, period);
   return db
     .prepare(
-      `SELECT 'podcast' AS kind, pc.id AS id, pc.name AS title, '' AS artist,
-              pc.cover AS cover, COUNT(*) AS plays, ROUND(SUM(${SECONDS})) AS seconds
-         FROM plays p
+      `${WITH_SLICES} SELECT 'podcast' AS kind, pc.id AS id, pc.name AS title, '' AS artist,
+              pc.cover AS cover, ${PLAYS} AS plays, ROUND(SUM(${SECONDS})) AS seconds
+         FROM sliced p
          JOIN tracks t ON t.id = p.track_id
          JOIN podcasts pc ON pc.id = t.podcast_id
         WHERE ${where}
         GROUP BY pc.id
         UNION ALL
        SELECT b.kind, b.id, b.title, COALESCE(au.name, ''),
-              b.cover, COUNT(*), ROUND(SUM(${SECONDS}))
-         FROM plays p
+              b.cover, ${PLAYS}, ROUND(SUM(${SECONDS}))
+         FROM sliced p
          JOIN tracks t ON t.id = p.track_id
          JOIN audiobooks b ON b.id = t.audiobook_id
          LEFT JOIN authors au ON au.id = b.author_id
@@ -285,31 +336,38 @@ function topSpoken(userId, tz, range, period, limit) {
         ORDER BY seconds DESC, plays DESC
         LIMIT @limit`
     )
-    .all({ ...params, limit, ...(params.period ? { tz } : {}) })
+    .all({ ...params, limit })
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
-export function listeningStats(userId, offsetMinutes = 0, options = {}) {
-  const tz = zone(offsetMinutes);
+/**
+ * Everything the statistics page shows, for one account.
+ *
+ * **The server's clock decides which hour, day and year a play belongs to**, so
+ * the same history reads the same from every device and from every country.
+ * The browser used to send its own UTC offset for this; a client still sending
+ * one is simply not listened to.
+ */
+export function listeningStats(userId, options = {}) {
   const range = RANGES[options.range] ? options.range : DEFAULT_RANGE;
   const top = Math.max(1, Math.min(50, Math.round(Number(options.top) || 10)));
 
   const totals = db
     .prepare(
-      `SELECT COUNT(*) AS plays, ROUND(COALESCE(SUM(${SECONDS}), 0)) AS seconds,
+      `${WITH_SLICES} SELECT ${PLAYS} AS plays, ROUND(COALESCE(SUM(${SECONDS}), 0)) AS seconds,
               MIN(p.played_at) AS firstPlay, MAX(p.played_at) AS lastPlay,
               ${musicOnly('t.id')} AS tracks,
               ${musicOnly('t.artist_id')} AS artists,
               ${musicOnly('t.album_id')} AS albums,
-              COUNT(DISTINCT date(p.played_at, @tz)) AS activeDays ${FROM_ALL}
+              COUNT(DISTINCT date(p.played_at)) AS activeDays ${FROM_ALL}
         WHERE p.user_id = @userId`
     )
-    .get({ userId, tz });
+    .get({ userId });
 
   // The two ends the navigator may not step past: the period the first play
   // falls into, and the one that is running right now.
-  const current = periodKey(range, tz, 'now');
-  const first = periodKey(range, tz, totals.firstPlay);
+  const current = periodKey(range, NOW);
+  const first = periodKey(range, totals.firstPlay);
   const asked = String(options.period || '');
   const period = KEY_SHAPE.test(asked) ? asked : current;
 
@@ -320,23 +378,23 @@ export function listeningStats(userId, offsetMinutes = 0, options = {}) {
         1,
         db
           .prepare(
-            `SELECT CAST(julianday(date('now', @tz)) - julianday(date(@first, @tz)) AS INTEGER) + 1 AS d`
+            `SELECT CAST(julianday(date(${NOW})) - julianday(date(@first)) AS INTEGER) + 1 AS d`
           )
-          .get({ tz, first: totals.firstPlay }).d
+          .get({ first: totals.firstPlay }).d
       )
     : 1;
 
   // The day the most was listened to. Measured like everything else here.
   const bestDay = db
     .prepare(
-      `SELECT date(p.played_at, @tz) AS day, COUNT(*) AS plays,
+      `${WITH_SLICES} SELECT date(p.played_at) AS day, ${PLAYS} AS plays,
               ROUND(SUM(${SECONDS})) AS seconds ${FROM_ALL}
         WHERE p.user_id = @userId
         GROUP BY day
         ORDER BY seconds DESC
         LIMIT 1`
     )
-    .get({ userId, tz }) || null;
+    .get({ userId }) || null;
 
   return {
     totals: { ...totals, days, bestDay },
@@ -359,16 +417,16 @@ export function listeningStats(userId, offsetMinutes = 0, options = {}) {
       key: period,
       first,
       current,
-      totals: periodTotals(userId, tz, range, period),
+      totals: periodTotals(userId, range, period),
       // The same period, split by the library it was listened to in.
-      kinds: byKind(userId, tz, range, period),
+      kinds: byKind(userId, range, period),
     },
-    chart: chart(userId, tz, range, period),
+    chart: chart(userId, range, period),
     top: {
-      tracks: topTracks(userId, tz, range, period, top),
-      artists: topArtists(userId, tz, range, period, top),
-      albums: topAlbums(userId, tz, range, period, top),
-      spoken: topSpoken(userId, tz, range, period, top),
+      tracks: topTracks(userId, range, period, top),
+      artists: topArtists(userId, range, period, top),
+      albums: topAlbums(userId, range, period, top),
+      spoken: topSpoken(userId, range, period, top),
     },
   };
 }

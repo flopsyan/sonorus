@@ -583,7 +583,7 @@ router.get('/stats', (req, res) => {
       books: audiobookStats(req.user.id, BOOK),
       dramas: audiobookStats(req.user.id, DRAMA),
     },
-    listening: listeningStats(req.user.id, req.query.offset, {
+    listening: listeningStats(req.user.id, {
       range: req.query.range,
       period: req.query.period,
     }),

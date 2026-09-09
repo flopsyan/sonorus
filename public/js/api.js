@@ -101,9 +101,10 @@ export const api = {
     request('PUT', `/api/plays/${playId}`, { seconds }, keepalive ? { keepalive: true } : undefined),
   clearHistory: () => request('DELETE', '/api/plays'),
   // The statistics answer for one period; `range` and `period` say which one.
-  // The offset is what makes a day the listener's day, not the server's.
+  // No offset any more: the hour, the day and the year a play belongs to are
+  // the server's, so the same history reads the same from every device.
   stats: (params) =>
-    request('GET', `/api/stats${query({ offset: -new Date().getTimezoneOffset(), ...params })}`),
+    request('GET', `/api/stats${query(params)}`),
 
   playlists: () => request('GET', '/api/playlists'),
   playlist: (id) => request('GET', `/api/playlists/${id}`),
