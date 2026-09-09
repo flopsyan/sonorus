@@ -53,6 +53,10 @@
   --reader-leading: 1.6;
   --reader-pad-v: 28px;
   --reader-pad-h: 22px;
+  /* The strip at the very bottom that carries the page number. Part of the
+     layout rather than an overlay, because a line the text can run under is a
+     line nobody can read. */
+  --reader-foot: 17px;
 }
 
 html {
@@ -69,7 +73,7 @@ html {
 body {
   margin: 0 !important;
   padding: var(--reader-pad-v) var(--reader-pad-h) !important;
-  height: calc(100vh - var(--reader-pad-v) * 2) !important;
+  height: calc(100vh - var(--reader-pad-v) * 2 - var(--reader-foot)) !important;
   width: auto !important;
   max-width: none !important;
   column-width: calc(100vw - var(--reader-pad-h) * 2) !important;
@@ -88,6 +92,30 @@ body {
   overflow-wrap: break-word;
   transform: translateX(0);
   will-change: transform;
+}
+
+/* Which page of the book this is, in the bottom margin the way a printed book
+   carries it. Written by the client through `Reader.footer()`: this document is
+   one chapter and cannot count the ones around it.
+
+   It sits outside <body> - see reader.js - so none of the `body *` rules above
+   reach it, and every property it needs is set here. */
+#sonorus-foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--reader-foot);
+  line-height: var(--reader-foot);
+  text-align: center;
+  font-family: var(--reader-font);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--reader-dim);
+  background: var(--reader-bg);
+  opacity: 0.7;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 body.sonorus-turning {
@@ -131,7 +159,7 @@ img, svg, figure, table {
 
 img, svg {
   max-width: 100% !important;
-  max-height: calc(100vh - var(--reader-pad-v) * 2) !important;
+  max-height: calc(100vh - var(--reader-pad-v) * 2 - var(--reader-foot)) !important;
   height: auto !important;
   object-fit: contain;
 }

@@ -16,6 +16,29 @@
   var page = 0;
   var pages = 1;
 
+  // Whether the text has been broken into columns at least once. Before that
+  // `pages` is 1 whatever the chapter holds, and everything that turns a share
+  // into a page number has to wait rather than compute with it.
+  var measured = false;
+
+  // A share of the chapter still to be landed on. It outlives the relayouts on
+  // the way there, and that is the whole reason it exists: the client asks for
+  // the stored place while the text is still one column wide, and the answer
+  // would be page 0 for every book ever reopened.
+  var pending = null;
+
+  // Whether the faces the book is set in have arrived. A page counted against
+  // the fallback font is a count of a book nobody will see: Ubuntu is served
+  // from Sonorus and turns up a moment after the text does.
+  var fontsReady = false;
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      fontsReady = true;
+    });
+  } else {
+    fontsReady = true;
+  }
+
   function step() {
     // One page is the viewport, gap included - which is what the column rule
     // above adds up to.
@@ -25,7 +48,12 @@
   function measure() {
     var width = body.scrollWidth;
     pages = Math.max(1, Math.round(width / step()));
+    measured = true;
     if (page > pages - 1) page = pages - 1;
+  }
+
+  function pageOf(share) {
+    return Math.max(0, Math.min(pages - 1, Math.round(share * (pages - 1))));
   }
 
   function draw(animated) {
@@ -44,10 +72,39 @@
     );
   }
 
+  // A relayout has to be measured after the engine has done it, and one frame
+  // is not always enough on a font that has just arrived.
+  function relayout(then) {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        measure();
+        if (then) then();
+      });
+    });
+  }
+
+  /**
+   * Re-measures and puts the reader back where they were.
+   *
+   * A pending share wins over the place on screen: it is a place the client
+   * asked for and has not been granted yet, while the place on screen is only
+   * where the previous layout happened to leave things.
+   */
+  function settle(reason) {
+    var was = ratio();
+    relayout(function () {
+      page = pageOf(pending !== null ? pending : was);
+      pending = null;
+      draw(false);
+      report(reason);
+    });
+  }
+
   var Reader = {
     /** One page on. Answers false at the end, where the next chapter begins. */
     next: function () {
       if (page >= pages - 1) return false;
+      pending = null;
       page += 1;
       draw(true);
       report('turn');
@@ -56,22 +113,36 @@
 
     previous: function () {
       if (page <= 0) return false;
+      pending = null;
       page -= 1;
       draw(true);
       report('turn');
       return true;
     },
 
-    /** Where the reader was, as a share of the chapter. */
+    /**
+     * Where the reader was, as a share of the chapter.
+     *
+     * Before the text has been broken this is remembered rather than acted on.
+     * Asking twice is allowed; the last share wins.
+     */
     goToRatio: function (value) {
       var at = Math.max(0, Math.min(1, Number(value) || 0));
-      page = Math.round(at * (pages - 1));
+      // Remembered even when it can be granted at once, because a relayout may
+      // already be on its way - the client applies the stored place and the
+      // reader's font in the same breath - and a relayout that does not know
+      // about this would put the old page back.
+      pending = at;
+      if (!measured) return;
+      page = pageOf(at);
       draw(false);
       report('seek');
     },
 
     /** The last page, which is where a chapter entered backwards begins. */
     goToEnd: function () {
+      pending = 1;
+      if (!measured) return;
       page = pages - 1;
       draw(false);
       report('seek');
@@ -93,18 +164,54 @@
       Object.keys(values || {}).forEach(function (key) {
         if (names[key]) root.style.setProperty(names[key], values[key]);
       });
-      // The text is re-broken, so where the reader was has to be kept as a
-      // share and put back afterwards rather than as a page number.
-      var was = ratio();
-      relayout(function () {
-        page = Math.round(was * (pages - 1));
-        draw(false);
-        report('style');
-      });
+      // The text is re-broken, so where the reader was is kept as a share and
+      // put back afterwards rather than as a page number.
+      settle('style');
+    },
+
+    /**
+     * The line in the bottom margin: which page of the whole book this is.
+     *
+     * The text comes from the client, because only the client knows the book.
+     * This document is one chapter and cannot count the ones around it.
+     */
+    footer: function (text) {
+      var el = document.getElementById('sonorus-foot');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'sonorus-foot';
+        // Appended to <html> rather than to <body> on purpose: the body carries
+        // the transform that slides the pages sideways, and a fixed child of a
+        // transformed element travels with it instead of staying put.
+        document.documentElement.appendChild(el);
+      }
+      el.textContent = text == null ? '' : String(text);
     },
 
     state: function () {
       return JSON.stringify({ page: page, pages: pages, ratio: ratio() });
+    },
+
+    /**
+     * Measures this instant instead of on the next frame.
+     *
+     * Everything else here waits for `requestAnimationFrame`, which is right
+     * for a page somebody is looking at and useless for one nobody is: a view
+     * that is not being drawn is given no frames, so the measurement would
+     * never happen. Reading `scrollWidth` forces the layout synchronously, and
+     * that is exactly what a background count needs.
+     *
+     * `fonts` says whether the answer is worth keeping. Counted before the
+     * book's faces have loaded, it is a count of the wrong typeface.
+     */
+    measureNow: function () {
+      measure();
+      return JSON.stringify({
+        page: page,
+        pages: pages,
+        ratio: ratio(),
+        fonts: fontsReady,
+      });
     },
 
     /** How much text this chapter holds, for the estimate of a page number. */
@@ -112,17 +219,6 @@
       return (body.innerText || body.textContent || '').length;
     },
   };
-
-  // A relayout has to be measured after the engine has done it, and one frame
-  // is not always enough on a font that has just arrived.
-  function relayout(then) {
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        measure();
-        if (then) then();
-      });
-    });
-  }
 
   // Left third back, right third on, the middle for the controls. The same
   // division every reader uses, and the only one that needs no explaining.
@@ -156,6 +252,9 @@
   // A swipe does the same as a tap on the side. Vertical movement is left
   // alone: there is nothing to scroll, so it can only be a scroll that was
   // meant for something else.
+  //
+  // The host has to keep its own hands off the horizontal drag while a book is
+  // open, or the gesture is spent opening a navigation drawer instead.
   var startX = 0;
   var startY = 0;
   document.addEventListener('touchstart', function (e) {
@@ -178,12 +277,7 @@
   }, { passive: true });
 
   window.addEventListener('resize', function () {
-    var was = ratio();
-    relayout(function () {
-      page = Math.round(was * (pages - 1));
-      draw(false);
-      report('resize');
-    });
+    settle('resize');
   });
 
   window.Reader = Reader;
@@ -192,6 +286,8 @@
   // parsed: a client that asked for the page count in between would get 1.
   function ready() {
     relayout(function () {
+      page = pageOf(pending !== null ? pending : 0);
+      pending = null;
       draw(false);
       report('ready');
     });
