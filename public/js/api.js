@@ -75,6 +75,8 @@ export const api = {
   setBookHeard: (base, id, heard) => request('PUT', `/api/${base}/books/${id}/heard`, { heard }),
   updateAuthor: (base, id, patch) => request('PATCH', `/api/${base}/authors/${id}`, patch),
   updateBook: (base, id, patch) => request('PATCH', `/api/${base}/books/${id}`, patch),
+  // eBooks. The shelf only, for now - reading happens in the app.
+  ebooks: () => request('GET', '/api/ebooks'),
   // Gilt fuer Podcast-Folgen und Hoerbuch-Teile gleichermassen.
   saveProgress: (id, body, keepalive = false) =>
     request('PUT', `/api/progress/${id}`, body, keepalive ? { keepalive: true } : undefined),

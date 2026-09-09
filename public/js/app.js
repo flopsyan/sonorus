@@ -72,6 +72,7 @@ const ROUTES = [
   [/^\/audiodramas$/, views.audiodramas],
   [/^\/audiodramas\/authors\/(\d+)$/, views.dramaAuthor, ['id']],
   [/^\/audiodramas\/books\/(\d+)$/, views.audiodrama, ['id']],
+  [/^\/ebooks$/, views.ebooks],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -345,6 +346,15 @@ function renderSidebar() {
     .map((item) => navItem({ ...item, active: path.startsWith(item.href) }))
     .join('');
 
+  // A group of its own rather than a fourth line under Hörspiele: a book is
+  // read, not listened to, and the gap is what says so.
+  const reading = navItem({
+    href: '/ebooks',
+    label: 'eBooks',
+    iconName: 'book-open',
+    active: path.startsWith('/ebooks'),
+  });
+
   const starItems = [5, 4, 3, 2, 1]
     .map((n) =>
       `<a class="nav-item${starred.includes(n) ? ' active' : ''}" href="/stars/${n}" data-link>
@@ -410,6 +420,10 @@ function renderSidebar() {
          which made this one gap twice as tall as every other. -->
     <nav class="nav-group">
       ${spoken}
+    </nav>
+
+    <nav class="nav-group">
+      ${reading}
     </nav>
 
     <nav class="nav-group">

@@ -815,6 +815,23 @@ export const audiodramas = (_params, ctx) => spokenIndex(ctx, 'drama');
 export const dramaAuthor = (params) => spokenAuthor(params, 'drama');
 export const audiodrama = (params) => spokenBook(params, 'drama');
 
+// --- eBooks -------------------------------------------------------------------
+
+// The shelf itself is the app's for now; the browser gets the entry and says so.
+// A nav item that led to "Seite nicht gefunden" would read as a broken link
+// rather than as a feature that has not arrived here yet.
+export async function ebooks() {
+  const { stats } = await api.ebooks();
+  const count = stats.books
+    ? `${fmt.number(stats.books)} ${stats.books === 1 ? 'Buch' : 'Bücher'} im Regal.`
+    : 'Noch kein Buch im Regal.';
+  return {
+    title: 'eBooks',
+    html: `${pageHead('Bibliothek', 'eBooks')}
+      ${empty('Zum Lesen in der App', `${count} Die Leseansicht gibt es bisher nur in der Android-App.`)}`,
+  };
+}
+
 // --- Genres -----------------------------------------------------------------
 
 export async function genres(_params, ctx) {
