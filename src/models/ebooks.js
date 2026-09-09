@@ -74,10 +74,18 @@ function placeIn(row, userId) {
 
 // --- Authors ------------------------------------------------------------------
 
+// An author has no picture of their own; they borrow one of their books', the
+// same way the spoken word does it. Without this the shelf is a wall of blanks,
+// because the scanner only ever fills a book's cover, never an author's.
+const AUTHOR_COVER = `COALESCE(NULLIF(a.cover, ''),
+    (SELECT b2.cover FROM ebooks b2
+      WHERE b2.author_id = a.id AND b2.cover <> ''
+      ORDER BY b2.title LIMIT 1))`;
+
 export function listAuthors() {
   return db
     .prepare(
-      `SELECT a.id, a.name, a.cover, COUNT(b.id) AS bookCount
+      `SELECT a.id, a.name, ${AUTHOR_COVER} AS cover, COUNT(b.id) AS bookCount
          FROM authors a
          JOIN ebooks b ON b.author_id = a.id
         GROUP BY a.id

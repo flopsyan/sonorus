@@ -259,6 +259,32 @@ carries no "Gesprochen von" line and its edit dialog has no such field - a list
 of six actors under that heading would read as one person doing a bad job. The
 release date works exactly as it does for a book.
 
+### eBooks
+
+eBooks are scanned from `EBOOK_DIR`, a fifth root laid out like the audiobooks -
+one folder per author, one folder per book inside it. Only `.epub` is read:
+
+```
+ebooks/
+  Suzanne Collins/
+    The Ballad of Songbirds and Snakes/
+      The Ballad of Songbirds and Snakes.epub
+```
+
+A book is read rather than played, so it has no queue, no rating and no
+playlist. What it has is a reading view: the EPUB is unpacked on the server and
+each document served as its own page, broken into columns so a tap on the right
+half turns forward and one on the left turns back. Font, size, line spacing and
+margin are the reader's; Ubuntu is served from the server, so nothing has to be
+installed on the device.
+
+- **A book is identified by its title and author, not by its path**, so a
+  renamed file is still the same book and keeps its reading position.
+- **The position is a share of a document, not a page number.** A page is
+  whatever fits on the screen at the chosen size, so it means nothing on the
+  next device; the share means the same everywhere.
+- Both EPUB 2 (`toc.ncx`) and EPUB 3 (`nav`) tables of contents are read.
+
 ### Playback
 
 - Play/pause, previous/next track, elapsed and total time. "Back" starts the
@@ -483,6 +509,7 @@ All settings are read from the environment (see `.env.example`):
 | `PODCAST_DIR` | `./podcasts` | Host path of your podcast folder (one subfolder per show), mounted read-only. May point at nothing; it must not lie inside `MUSIC_DIR` |
 | `AUDIOBOOK_DIR` | `./audiobooks` | Host path of your audiobook folder (one folder per author, one per book inside it), mounted read-only. Same rules as `PODCAST_DIR` |
 | `AUDIODRAMA_DIR` | `./audiodramas` | Host path of your radio-play folder, laid out like `AUDIOBOOK_DIR` and mounted read-only. Same rules |
+| `EBOOK_DIR` | `./ebooks` | Host path of your ebook folder, laid out like `AUDIOBOOK_DIR` and mounted read-only. Same rules |
 | `PORT` | `3000` | Host port the app is reachable on |
 | `SITE_NAME` | `Sonorus` | Name shown in the header and browser tab |
 | `AUTH_USER` | `admin` | Username for the bootstrapped first admin |

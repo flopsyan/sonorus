@@ -17,6 +17,7 @@ services:
       PODCAST_DIR: /podcasts
       AUDIOBOOK_DIR: /audiobooks
       AUDIODRAMA_DIR: /audiodramas
+      EBOOK_DIR: /ebooks
       # auto (scan when the library is empty) | always | never
       SCAN_ON_START: ${SCAN_ON_START:-auto}
       # Optional: bootstrap the first admin account non-interactively. If left
@@ -45,6 +46,9 @@ services:
       # them because they are a library of their own to listen to - one folder
       # per author, one per play inside it. Read-only, and may point at nothing.
       - "${AUDIODRAMA_DIR:-./audiodramas}:/audiodramas:ro"
+      # eBooks, one folder per author and one per book inside it, holding the
+      # EPUB. Read-only, and may point at nothing.
+      - "${EBOOK_DIR:-./ebooks}:/ebooks:ro"
       # Persistent data: SQLite database + extracted cover art
       - sonorus-data:/app/data
       # The smaller copies, in a volume of their own: they are large, they are

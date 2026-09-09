@@ -14,6 +14,8 @@ data/
 music/
 podcasts/
 audiobooks/
+audiodramas/
+ebooks/
 
 # Environment variables
 .env
