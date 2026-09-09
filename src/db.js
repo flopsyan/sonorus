@@ -407,6 +407,12 @@ addColumn('audiobooks', 'year', 'INTEGER');
 addColumn('audiobooks', 'narrator_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('audiobooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
+// A year set by hand on a book that is read. Locked for the same reason the
+// spoken word's date is: an EPUB that carries the wrong year carries it on
+// every scan, so a correction has to say "leave this alone" or it lasts until
+// the next one.
+addColumn('ebooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
+
 // 'book' or 'drama'. Everything that reads this table takes it as an argument,
 // so the two libraries stay apart everywhere the listener looks while sharing
 // every query, every edit and every chapter behind it. Existing rows default to

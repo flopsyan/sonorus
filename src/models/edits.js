@@ -286,6 +286,27 @@ export async function updateAuthorCover(authorId, cover) {
 // bare year where the listener may know the day, and Sonorus fetches nothing
 // from the internet to find out. Both set a lock, so a later scan puts the
 // file's version back only where nobody has decided otherwise.
+/**
+ * The year of a book that is read.
+ *
+ * Only the date: the title and the author are the folder names, and the cover
+ * and the blurb come out of the EPUB itself. Locked once set, or the next scan
+ * would put the file's own wrong year back.
+ */
+export function updateEbook(bookId, patch) {
+  const book = db.prepare('SELECT id FROM ebooks WHERE id = ?').get(bookId);
+  if (!book) return { error: 'not_found' };
+
+  if ('date' in patch) {
+    const parsed = parseDate(patch.date);
+    if (!parsed.ok) return { error: 'invalid_date' };
+    db.prepare('UPDATE ebooks SET release_date = ?, year = ?, date_locked = 1 WHERE id = ?')
+      .run(parsed.date, parsed.year, book.id);
+  }
+
+  return { ok: true };
+}
+
 export function updateBook(bookId, patch) {
   const book = db.prepare('SELECT id FROM audiobooks WHERE id = ?').get(bookId);
   if (!book) return { error: 'not_found' };

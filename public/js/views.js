@@ -7,6 +7,7 @@ import { icon } from './icons.js';
 import * as fmt from './format.js';
 import { esc, art, coverMosaic, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
 import * as qualityPref from './quality.js';
+import { mountReader, readerHtml } from './reading.js';
 
 // --- Shared bits ------------------------------------------------------------
 
@@ -815,20 +816,172 @@ export const audiodramas = (_params, ctx) => spokenIndex(ctx, 'drama');
 export const dramaAuthor = (params) => spokenAuthor(params, 'drama');
 export const audiodrama = (params) => spokenBook(params, 'drama');
 
-// --- eBooks -------------------------------------------------------------------
+// --- E-Books ------------------------------------------------------------------
 
-// The shelf itself is the app's for now; the browser gets the entry and says so.
-// A nav item that led to "Seite nicht gefunden" would read as a broken link
-// rather than as a feature that has not arrived here yet.
-export async function ebooks() {
-  const { stats } = await api.ebooks();
-  const count = stats.books
-    ? `${fmt.number(stats.books)} ${stats.books === 1 ? 'Buch' : 'Bücher'} im Regal.`
-    : 'Noch kein Buch im Regal.';
+// Shaped like the spoken word's three pages, because a shelf is a shelf: the
+// authors, one author's books, and one book. The fourth page is the one that
+// makes this a reading app rather than a catalogue - see reading.js, whose
+// frame holds the very page the Android app holds.
+
+// What a book says about itself in a grid: who wrote it, and how far in.
+function ebookSub(b) {
+  if (b.progress.finished) return `${b.author} · gelesen`;
+  if (b.progress.started) {
+    return `${b.author} · noch ${Math.max(0, Math.round((1 - b.progress.read) * 100))} %`;
+  }
+  return `${b.author} · ${fmt.plural(b.documents, 'Kapitel', 'Kapitel')}`;
+}
+
+const ebookItem = (b) => ({
+  href: `/ebooks/books/${b.id}`,
+  cover: b.cover,
+  title: b.title,
+  sub: ebookSub(b),
+  meta: b.year ? String(b.year) : '',
+});
+
+export async function ebooks(_params, ctx) {
+  const data = await api.ebooks();
+  const view = collectionView(ctx, 'ebooks');
+
+  if (!data.authors.length) {
+    return {
+      title: 'E-Books',
+      html: `${pageHead('Bibliothek', 'E-Books', '')}
+        ${empty(
+          'Noch keine E-Books gefunden',
+          'Sonorus liest den Ordner, den du unter EBOOK_DIR eingehängt hast - ein Ordner je Autor, darin ein Ordner je Buch, darin die EPUB-Datei. Starte einen Scan, sobald dort etwas liegt.',
+          '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>'
+        )}`,
+    };
+  }
+
   return {
-    title: 'eBooks',
-    html: `${pageHead('Bibliothek', 'eBooks')}
-      ${empty('Zum Lesen in der App', `${count} Die Leseansicht gibt es bisher nur in der Android-App.`)}`,
+    title: 'E-Books',
+    html: `${pageHead(
+      'Bibliothek',
+      'E-Books',
+      facts([
+        fmt.plural(data.stats.authors, 'Autor', 'Autoren'),
+        fmt.plural(data.stats.books, 'Buch', 'Bücher'),
+      ]),
+      viewSwitch('ebooks', view)
+    )}
+      ${
+        data.continue.length
+          ? `<section class="section">
+              <div class="section-head"><h2>Weiterlesen</h2></div>
+              <div class="grid row">${data.continue.map((b) => card(ebookItem(b))).join('')}</div>
+            </section>`
+          : ''
+      }
+      <section class="section">
+        <div class="section-head"><h2>Autoren</h2></div>
+        ${collection(
+          view,
+          data.authors.map((a) => ({
+            href: `/ebooks/authors/${a.id}`,
+            cover: a.cover,
+            title: a.name,
+            sub: fmt.plural(a.bookCount, 'Buch', 'Bücher'),
+            round: true,
+          }))
+        )}
+      </section>`,
+  };
+}
+
+export async function ebookAuthor(params) {
+  const { author: data } = await api.ebookAuthor(params.id);
+  return {
+    title: data.name,
+    html: `${detailHead({
+      label: 'Autor',
+      title: data.name,
+      round: true,
+      artHtml: art(data.cover, data.name),
+      zoom: data.cover,
+      meta: facts([fmt.plural(data.books.length, 'Buch', 'Bücher')]),
+      // The same picture the spoken word's authors have, and literally the same
+      // author: both shelves read the `authors` table.
+      actions: `<button type="button" class="btn btn-ghost"
+          data-edit-author="${data.id}" data-kind="ebooks">
+          ${icon('edit', 16)} Bearbeiten
+        </button>`,
+    })}
+      <section class="section">
+        <div class="section-head"><h2>Bücher</h2></div>
+        <div class="grid">${data.books.map((b) => card(ebookItem(b))).join('')}</div>
+      </section>`,
+  };
+}
+
+export async function ebook(params) {
+  const { book } = await api.ebook(params.id);
+  const read = Math.round((book.progress.read || 0) * 100);
+
+  return {
+    title: book.title,
+    html: `${detailHead({
+      label: 'E-Book',
+      title: book.title,
+      artHtml: art(book.cover, book.title),
+      zoom: book.cover,
+      meta: facts([
+        book.authorId
+          ? `<a href="/ebooks/authors/${book.authorId}" data-link>${esc(book.author)}</a>`
+          : esc(book.author),
+        book.publisher ? esc(book.publisher) : '',
+        book.year ? String(book.year) : '',
+        fmt.plural(book.documents, 'Kapitel', 'Kapitel'),
+        book.progress.finished ? 'gelesen' : book.progress.started ? `${read} % gelesen` : '',
+      ]),
+      actions: `<a class="btn btn-primary" href="/ebooks/books/${book.id}/read" data-link>
+          ${icon('book-open', 16)} ${book.progress.started && !book.progress.finished ? 'Weiterlesen' : 'Lesen'}
+        </a>
+        <button type="button" class="btn btn-ghost" data-ebook-read="${book.id}"
+          data-done="${book.progress.finished ? '1' : '0'}">
+          ${icon(book.progress.finished ? 'refresh' : 'check-circle', 16)}
+          ${book.progress.finished ? 'Als ungelesen markieren' : 'Als gelesen markieren'}
+        </button>
+        <button type="button" class="btn btn-ghost" data-edit-ebook="${book.id}">
+          ${icon('edit', 16)} Bearbeiten
+        </button>`,
+    })}
+      ${
+        book.progress.started && !book.progress.finished
+          ? `<div class="book-progress">
+              <div class="book-bar"><span data-progress="${read}"></span></div>
+              <p class="book-place">${read} % gelesen</p>
+             </div>`
+          : ''
+      }
+      ${
+        book.description
+          ? `<section class="section">
+              <div class="section-head"><h2>Klappentext</h2></div>
+              <p class="prose">${esc(book.description)}</p>
+            </section>`
+          : ''
+      }`,
+    after: applyProgress,
+  };
+}
+
+/**
+ * The reading view.
+ *
+ * A page of its own rather than a dialog: it is the one screen in Sonorus that
+ * wants the whole window, and a book you can link to is a book you can come
+ * back to.
+ */
+export async function reader(params) {
+  const { book } = await api.ebook(params.id);
+  return {
+    title: book.title,
+    full: true,
+    html: readerHtml(book),
+    after: (root) => mountReader(root, book),
   };
 }
 

@@ -73,6 +73,9 @@ const ROUTES = [
   [/^\/audiodramas\/authors\/(\d+)$/, views.dramaAuthor, ['id']],
   [/^\/audiodramas\/books\/(\d+)$/, views.audiodrama, ['id']],
   [/^\/ebooks$/, views.ebooks],
+  [/^\/ebooks\/authors\/(\d+)$/, views.ebookAuthor, ['id']],
+  [/^\/ebooks\/books\/(\d+)$/, views.ebook, ['id']],
+  [/^\/ebooks\/books\/(\d+)\/read$/, views.reader, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -246,6 +249,9 @@ async function render({ keep = false } = {}) {
     if (seq !== renderSeq) return; // a newer render is already on screen
     view.tracks = result.tracks || [];
     view.playlistId = result.playlistId || null;
+    // The reading view is the one page that wants the window rather than the
+    // column everything else is read in.
+    content.classList.toggle('is-full', !!result.full);
     content.innerHTML = `<div class="content-inner">${result.html}</div>`;
     document.title = result.title ? `${result.title} · ${shell.siteName}` : shell.siteName;
     paintIcons(content);
@@ -350,7 +356,7 @@ function renderSidebar() {
   // read, not listened to, and the gap is what says so.
   const reading = navItem({
     href: '/ebooks',
-    label: 'eBooks',
+    label: 'E-Books',
     iconName: 'book-open',
     active: path.startsWith('/ebooks'),
   });
@@ -1013,10 +1019,16 @@ async function editAlbumDialog(albumId) {
 // its own function rather than a shared one with a table name passed in: the
 // two are alike today and an author is not an interpret, so the moment one of
 // them grows a field the shared version would have to be pulled apart again.
+// The same author, whichever shelf asked. Books that are heard and books that
+// are read share the `authors` table, so an author Florian both hears and reads
+// has one picture - only the endpoint differs.
 async function editAuthorDialog(authorId, base = 'audiobooks') {
+  const isEbook = base === 'ebooks';
   let author;
   try {
-    author = (await api.spokenAuthor(base, authorId)).author;
+    author = isEbook
+      ? (await api.ebookAuthor(authorId)).author
+      : (await api.spokenAuthor(base, authorId)).author;
   } catch (err) {
     return toast(err.message, 'err');
   }
@@ -1047,9 +1059,57 @@ async function editAuthorDialog(authorId, base = 'audiobooks') {
         e.preventDefault();
         if (cover === undefined) return closeModal();
         try {
-          await api.updateAuthor(base, authorId, { cover });
+          if (isEbook) await api.updateEbookAuthor(authorId, { cover });
+          else await api.updateAuthor(base, authorId, { cover });
           closeModal();
           toast('Profilbild gespeichert.');
+          render();
+        } catch (err) {
+          toast(err.message, 'err');
+        }
+      });
+    },
+  });
+}
+
+/**
+ * "E-Book bearbeiten": the year, and nothing else.
+ *
+ * Everything else on that page is already the truth from somewhere better - the
+ * title and the author are the folder names, the cover and the blurb come out
+ * of the EPUB. The year is the one an EPUB regularly has wrong, and the one a
+ * shelf sorts by.
+ */
+async function editEbookDialog(bookId) {
+  let book;
+  try {
+    book = (await api.ebook(bookId)).book;
+  } catch (err) {
+    return toast(err.message, 'err');
+  }
+
+  modal({
+    title: 'E-Book bearbeiten',
+    body: `<form id="ebook-form">
+        <div class="field">
+          <label for="eb-date">Erscheinungsdatum</label>
+          <input type="text" id="eb-date" inputmode="numeric"
+                 value="${esc(fmt.releaseDateInput(book.releaseDate))}" placeholder="z. B. 2020" />
+          <p class="panel-hint">${DATE_HINT}</p>
+        </div>
+        <p class="panel-hint">Titel, Autor, Cover und Klappentext kommen aus der EPUB-Datei und den
+          Ordnernamen - ein späterer Scan würde sie ohnehin wieder von dort lesen.</p>
+        ${EDIT_NOTE}
+      </form>`,
+    footer: `<button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+             <button type="submit" form="ebook-form" class="btn btn-primary">Speichern</button>`,
+    onOpen(root) {
+      root.querySelector('#ebook-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await api.updateEbook(bookId, { date: root.querySelector('#eb-date').value.trim() });
+          closeModal();
+          toast('E-Book gespeichert.');
           render();
         } catch (err) {
           toast(err.message, 'err');
@@ -1594,6 +1654,33 @@ content.addEventListener('click', async (e) => {
   const editAuthor = e.target.closest('[data-edit-author]');
   if (editAuthor) {
     editAuthorDialog(Number(editAuthor.dataset.editAuthor), editAuthor.dataset.kind || 'audiobooks');
+    return;
+  }
+
+  const ebookRead = e.target.closest('[data-ebook-read]');
+  if (ebookRead) {
+    e.preventDefault();
+    const id = Number(ebookRead.dataset.ebookRead);
+    const done = ebookRead.dataset.done !== '1';
+    try {
+      // The place in the book is kept on purpose: marking one unread should
+      // hand it back where it was, not at the beginning.
+      const { book } = await api.ebook(id);
+      await api.ebookProgress(id, {
+        doc: book.progress.doc,
+        ratio: book.progress.ratio,
+        finished: done,
+      });
+      render({ keep: true });
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+    return;
+  }
+
+  const editEbook = e.target.closest('[data-edit-ebook]');
+  if (editEbook) {
+    editEbookDialog(Number(editEbook.dataset.editEbook));
     return;
   }
 

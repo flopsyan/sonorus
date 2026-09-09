@@ -105,8 +105,12 @@ const APP_ROUTES = [
   '/audiodramas',
   '/audiodramas/authors/:id',
   '/audiodramas/books/:id',
-  // eBooks: the shelf. Reading itself happens in the app.
+  // E-Books: the shelf, one author, one book - and the book being read, which is
+  // a page of its own so that a book can be linked to and come back to.
   '/ebooks',
+  '/ebooks/authors/:id',
+  '/ebooks/books/:id',
+  '/ebooks/books/:id/read',
   '/playlists/:id',
   '/stars/:stars',
   '/search',

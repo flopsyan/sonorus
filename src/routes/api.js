@@ -99,6 +99,7 @@ import {
   updateSingle,
   updateArtistCover,
   updateAuthorCover,
+  updateEbook,
   updateBook,
 } from '../models/edits.js';
 import {
@@ -445,6 +446,26 @@ router.get('/ebooks/books/:id', (req, res) => {
   const book = getEbook(id(req.params.id), req.user.id);
   if (!book) return fail(res, 'not_found', 404);
   res.json({ ok: true, book });
+});
+
+// The picture, and nothing else - an author's name is the folder's name. The
+// same rule and the same call the spoken word's authors follow: they share the
+// `authors` table, so somebody Florian both hears and reads is one author with
+// one picture.
+router.patch('/ebooks/authors/:id', async (req, res) => {
+  if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
+  const result = await updateAuthorCover(id(req.params.id), req.body.cover);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, author: getEbookAuthor(id(req.params.id), req.user.id) });
+});
+
+// The year, for the book whose EPUB carries the wrong one. Everything else on
+// the page is the folder's name or the file's own metadata.
+router.patch('/ebooks/books/:id', (req, res) => {
+  if (!('date' in req.body)) return fail(res, 'nothing_to_edit');
+  const result = updateEbook(id(req.params.id), req.body);
+  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  res.json({ ok: true, book: getEbook(id(req.params.id), req.user.id) });
 });
 
 router.put('/ebooks/books/:id/progress', (req, res) => {

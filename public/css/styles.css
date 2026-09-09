@@ -1904,3 +1904,224 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   /* A sweep with no duration would park the bar off-screen, so hold it still. */
   .progress.indeterminate .progress-fill { animation: none !important; width: 100%; opacity: 0.5; }
 }
+
+/* --- The reading view -------------------------------------------------------
+   The page inside the frame brings its own typography - it is the same page the
+   Android app shows - so everything here is the furniture around it. The frame
+   itself is given a height rather than left to grow: the columns inside it are
+   laid out against the viewport, and a frame without a height has none to lay
+   them against. */
+
+/* The content area is a scroller everywhere else; for the reading view it is a
+   column that hands its leftover height to the page. `height: 100%` would not
+   do - it would be the height *before* the padding is taken off, and the last
+   line of the bar would end up under the player. */
+.content.is-full { display: flex; flex-direction: column; overflow: hidden; }
+.content.is-full .content-inner { max-width: none; margin: 0; flex: 1; min-height: 0; }
+
+/* The one view that is sized rather than scrolled: the columns inside the frame
+   are laid out against its height, so the height has to be a number before the
+   book is broken into pages. */
+.reader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 420px;
+}
+
+.reader-top,
+.reader-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+
+.reader-foot { flex-direction: column; align-items: stretch; gap: 6px; }
+
+.reader-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.reader-title strong,
+.reader-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-title span { color: var(--text-dim); font-size: 0.85rem; }
+
+.reader-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.reader-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: var(--bg);
+}
+
+/* The two thirds that turn a page. Transparent on purpose: the book is what the
+   reader looks at, and a visible button either side would be furniture in the
+   middle of it. */
+.reader-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 22%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.reader-zone-prev { left: 0; }
+.reader-zone-next { right: 0; }
+.reader-zone:hover { background: rgba(255, 255, 255, 0.03); }
+
+.reader-back {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.reader-panel {
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reader-panel label { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
+.reader-panel label input[type='range'] { flex: 1; }
+.reader-fonts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.reader-chapter {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reader-chapter:hover { background: var(--surface-2); }
+
+.reader-numbers {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+/* The bar is a real range input with the fill drawn behind it, so dragging it
+   is the browser's own job and the colour is still ours. */
+.reader-bar { position: relative; height: 18px; }
+
+.reader-bar input[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  height: 18px;
+  top: 0;
+}
+
+.reader-bar input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  margin-top: 8px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.reader-bar input[type='range']::-moz-range-track {
+  height: 3px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.reader-bar input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-top: 2.5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.reader-bar input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* Firefox paints its own filled track, which would sit under ours and show
+   through as a second, differently coloured progress. */
+.reader-bar input[type='range']::-moz-range-progress { background: transparent; }
+
+.reader-fill {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.reader-chapter-page {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* The tape measure: laid out at the size of the real frame, because a page
+   count is a fact about a window - and never seen. */
+.reader-measure {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+  /* `visibility: hidden` and not `display: none`: a frame that is not laid out
+     has no viewport, and a page with no viewport has no page count. */
+  visibility: hidden;
+}

@@ -897,7 +897,7 @@ function describeEbook(filePath) {
 }
 
 const selectEbook = db.prepare(
-  'SELECT id, size, mtime, cover FROM ebooks WHERE title = ? AND author_id IS ?'
+  'SELECT id, size, mtime, cover, date_locked FROM ebooks WHERE title = ? AND author_id IS ?'
 );
 const insertEbook = db.prepare(
   'INSERT INTO ebooks (title, author_id, path) VALUES (?, ?, ?)'
@@ -906,6 +906,16 @@ const updateEbook = db.prepare(`
   UPDATE ebooks
      SET path = @path, language = @language, publisher = @publisher,
          release_date = @release_date, year = @year, description = @description,
+         documents = @documents, size = @size, mtime = @mtime
+   WHERE id = @id
+`);
+
+// The same, for a book whose year somebody has corrected by hand. A locked date
+// is a decision, and a scan is not allowed to talk it out of the reader.
+const updateEbookKeepingDate = db.prepare(`
+  UPDATE ebooks
+     SET path = @path, language = @language, publisher = @publisher,
+         description = @description,
          documents = @documents, size = @size, mtime = @mtime
    WHERE id = @id
 `);
@@ -926,18 +936,23 @@ async function indexEbook(filePath, stat, force) {
 
   const book = readEpub(filePath);
   const id = known ? known.id : Number(insertEbook.run(place.title, aId, filePath).lastInsertRowid);
-  updateEbook.run({
+  const fields = {
     id,
     path: filePath,
     language: book.language,
     publisher: book.publisher,
-    release_date: book.date,
-    year: yearOf(book.date),
     description: book.description,
     documents: book.documents,
     size,
     mtime,
-  });
+  };
+  // The date is left out of the call entirely rather than written back the same:
+  // better-sqlite3 refuses a parameter its statement does not name.
+  if (known && known.date_locked) {
+    updateEbookKeepingDate.run(fields);
+  } else {
+    updateEbook.run({ ...fields, release_date: book.date, year: yearOf(book.date) });
+  }
 
   const row = db.prepare('SELECT cover FROM ebooks WHERE id = ?').get(id);
   if (book.cover && !row.cover) {
