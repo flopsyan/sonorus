@@ -260,6 +260,18 @@ export function setProgress(userId, id, { doc, ratio, finished }) {
   return { ok: true };
 }
 
+/**
+ * The EPUB itself, for a client that wants to take the book with it.
+ *
+ * The path rather than the bytes: the route sends the file, which is what gets
+ * a resumable download and a byte range for free.
+ */
+export function ebookFile(id) {
+  const row = db.prepare('SELECT path, title FROM ebooks WHERE id = ?').get(id);
+  if (!row || !row.path || !fs.existsSync(row.path)) return null;
+  return { path: row.path, title: row.title || 'Buch' };
+}
+
 export function ebookStats() {
   const row = db
     .prepare('SELECT COUNT(*) AS books, COUNT(DISTINCT author_id) AS authors FROM ebooks')

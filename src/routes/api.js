@@ -66,6 +66,7 @@ import {
   continueBooks as continueEbooks,
   setProgress as setEbookProgress,
   ebookStats,
+  ebookFile,
   readResource,
   readerDocument,
   READER_CSP,
@@ -450,6 +451,20 @@ router.put('/ebooks/books/:id/progress', (req, res) => {
   const result = setEbookProgress(req.user.id, id(req.params.id), req.body || {});
   if (result.error) return fail(res, result.error, 404);
   res.json({ ok: true, progress: getEbook(id(req.params.id), req.user.id).progress });
+});
+
+// The whole book, as the EPUB it is.
+//
+// For a client that wants to read it with the server out of reach. `sendFile`
+// sets `acceptRanges`, so a download that broke off is resumed rather than
+// started again - the same deal every downloaded song gets.
+router.get('/ebooks/books/:id/file', (req, res) => {
+  const book = ebookFile(id(req.params.id));
+  if (!book) return fail(res, 'not_found', 404);
+  res.type('application/epub+zip');
+  res.sendFile(book.path, (err) => {
+    if (err && !res.headersSent) fail(res, 'not_found', 404);
+  });
 });
 
 // One file out of the book, under the path it has inside the zip.
