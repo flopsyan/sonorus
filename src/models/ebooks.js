@@ -222,12 +222,19 @@ export const READER_CSP = [
  * at the first thing it dislikes and shows a blank page, and a book that
  * displays is worth more than one that is well-formed.
  */
-export function readerDocument(buffer) {
-  const html = String(buffer)
+export function readerDocument(buffer, language = '') {
+  let html = String(buffer)
     .replace(/<script\b[\s\S]*?<\/script>/gi, '')
     .replace(/<script\b[^>]*\/>/gi, '')
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
+
+  // Hyphenation needs to know the language, and a chapter of an EPUB usually
+  // carries none - the language lives in the book's metadata. Without it a
+  // justified column tears holes instead of breaking words.
+  if (language && !/<html[^>]*\slang=/i.test(html)) {
+    html = html.replace(/<html\b/i, `<html lang="${language.replace(/"/g, '')}"`);
+  }
 
   if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${READER_HEAD}</head>`);
   if (/<body\b[^>]*>/i.test(html)) {
@@ -277,7 +284,7 @@ export function searchEbooks(userId, words, limit = 10) {
  * is also what makes `..` harmless.
  */
 export function readResource(id, name) {
-  const row = db.prepare('SELECT path FROM ebooks WHERE id = ?').get(id);
+  const row = db.prepare('SELECT path, title, language FROM ebooks WHERE id = ?').get(id);
   if (!row) return null;
 
   const epub = openEpub(row.path);
@@ -292,6 +299,7 @@ export function readResource(id, name) {
       spine: epub.spine,
       toc: epub.toc,
       title: row.title,
+      language: row.language || '',
     };
   } finally {
     epub.close();

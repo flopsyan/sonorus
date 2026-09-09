@@ -473,7 +473,7 @@ router.get('/ebooks/books/:id/read/*name', (req, res) => {
   res.set('Content-Security-Policy', READER_CSP);
   if (piece.document >= 0) {
     res.type('text/html; charset=utf-8');
-    return res.send(readerDocument(piece.data));
+    return res.send(readerDocument(piece.data, piece.language));
   }
   res.type(piece.mime);
   res.set('Cache-Control', 'private, max-age=3600');

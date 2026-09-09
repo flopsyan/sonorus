@@ -81,6 +81,11 @@ body {
   font-size: 1rem !important;
   line-height: var(--reader-leading) !important;
   text-align: left;
+  /* Most books set their own justification, and a justified line in a column
+     this narrow tears holes without somewhere to break a word. */
+  -webkit-hyphens: auto;
+  hyphens: auto;
+  overflow-wrap: break-word;
   transform: translateX(0);
   will-change: transform;
 }
@@ -131,7 +136,13 @@ img, svg {
   object-fit: contain;
 }
 
-a, a * {
+/* Only a real link is coloured, and the `[href]` is the whole point. An `<a>`
+   without one is an anchor target, and EPUBs are full of them written as
+   `<a id="x"/>`. In a document served as text/html - which this one is, so a
+   book with one bad tag still displays - the parser reads that as an anchor
+   that is never closed and hands it the rest of the chapter. `a *` then paints
+   the entire chapter in the link colour. */
+a[href], a[href] * {
   color: var(--reader-accent) !important;
   text-decoration: none !important;
 }
