@@ -1,80 +1,91 @@
 # Sonorus
 
-Self-hosted music player for your own audio files. Sonorus scans a music folder
-you mount into the container and turns your folder structure into a browsable
-library: artists, albums, singles, genres, all tracks, and your own playlists.
+Selbst gehosteter Player für deine eigenen Audiodateien. Sonorus scannt einen
+Musikordner, den du in den Container einhängst, und macht aus deiner
+Ordnerstruktur eine begehbare Bibliothek: Interpreten, Alben, Singles, Genres,
+alle Songs und deine eigenen Playlists.
 
-Podcasts, audiobooks and radio plays live next to the music in roots of their
-own: one subfolder per show, the episodes in it. They are kept out of the music
-library on purpose - a show is not an artist and an episode is not a song - and
-they carry the one thing a song does not need, a remembered position, so a
-70-minute episode picks up where you stopped.
+Podcasts, Hörbücher und Hörspiele liegen neben der Musik in eigenen Wurzeln: ein
+Unterordner je Sendung, darin die Folgen. Sie werden absichtlich aus der
+Musikbibliothek herausgehalten - eine Sendung ist kein Interpret und eine Folge
+ist kein Song - und tragen das eine, was ein Song nicht braucht: eine gemerkte
+Position, damit eine 70-Minuten-Folge dort weitergeht, wo du aufgehört hast.
 
-The interface is a single page - navigating between artists, albums and
-playlists never interrupts playback. Design-wise it takes a loose cue from the
-classic media players (library tree on the left, transport bar across the
-bottom) and treats the app as a piece of audio equipment: a deep ink chassis,
-one warm amber accent, hi-fi style section labels and monospace readouts for
-every number. Dark is the default; a light theme and an "Auto" mode that
-follows the operating system are one click away in the header.
+E-Books sind die fünfte Bibliothek und die einzige, die gelesen statt gehört
+wird - mit einer Leseansicht im Browser und in der Android-App.
 
-Everything lives behind a login; there is no public access. The library itself
-is shared by all accounts, while playlists, star ratings and listening history
-belong to the account that created them.
+Die Oberfläche ist eine einzige Seite - zwischen Interpreten, Alben und Playlists
+zu wechseln unterbricht die Wiedergabe nie. Gestalterisch ist sie lose an die
+klassischen Medienplayer angelehnt (Bibliotheksbaum links, Transportleiste
+unten) und behandelt die App wie ein Stück Audiotechnik: ein tiefes,
+tintenfarbenes Gehäuse, ein warmer Bernsteinakzent, Abschnittsbeschriftungen im
+Hi-Fi-Stil und Monospace-Anzeigen für jede Zahl. Dunkel ist der Standard; ein
+helles Thema und ein "Auto"-Modus, der dem Betriebssystem folgt, sind einen
+Klick entfernt.
 
-## Features
+Alles liegt hinter einer Anmeldung, es gibt keinen öffentlichen Zugang. Die
+Bibliothek selbst teilen sich alle Konten, während Playlists, Sternebewertungen
+und Hörverlauf dem Konto gehören, das sie angelegt hat.
 
-### Library
+## Funktionen
 
-- **Alle Songs** - every track in the library, sortable and searchable. Clicking
-  a column header sorts by it, clicking it again reverses the direction, and the
-  sort is remembered on your account until you change it again.
-- **Interpreten** - all artists, with their albums, singles and tracks.
-- **Alben** - album grid with embedded cover art, track list per album. Sortable
-  by title, artist, year or number of songs, each in both directions ("Titel
-  Z-A", "Jahr, älteste zuerst"), and the choice is remembered like the one on
-  Alle Songs.
-- **Cover groß ansehen** - clicking the artwork on an album or artist page opens
-  it at full size; click anywhere or press Escape to close it again.
-- **Suche** - one question, not three. A query is cut into words and every word
-  has to match somewhere; which field it lands in is free, so "Fame Bowie
-  Americans" finds the song *Fame* by David Bowie on *Young Americans*. Results
-  are ranked rather than alphabetical: searching "Fame" puts the songs called
-  Fame above the ones that only sit on an album called "The Fame Monster".
-- **Genres** - everything grouped by genre (multi-genre tags supported). Every
-  card in the grid carries the same artwork as the page it leads to, singles
-  included: a genre made of loose files takes its covers from the files.
-- **A collection is introduced like an album.** A playlist, a star playlist and
-  a genre carry the same head as an album page: the artwork left of the name,
-  what it adds up to, and the play buttons. Without artwork of its own the tile
-  is a 2x2 mosaic of the covers of the first four records in it - fewer than
-  four and it shows the first cover alone.
-- **Several genres at once.** A genre page has a row of switches above it, one
-  per genre: switch on Rock and Jazz as well and you get one combined list of
-  both (`/genres/1,4`), every song in it once. Same idea as the star playlists
-  further down. A library with a hundred genres makes a very tall row, so it is
-  capped at three lines and folds open on demand - and whatever is switched on
-  is drawn first, so the current selection is never the part that is hidden.
-- **The folder structure is the library.** Artist, album, track number and title
-  come from the layout, not from the file tags:
+### Bibliothek
+
+- **Alle Songs** - jeder Titel der Bibliothek, sortierbar und durchsuchbar. Ein
+  Klick auf eine Spaltenüberschrift sortiert danach, ein zweiter dreht die
+  Richtung um, und die Sortierung wird auf deinem Konto gemerkt, bis du sie
+  wieder änderst.
+- **Interpreten** - alle Interpreten, mit ihren Alben, Singles und Titeln.
+- **Alben** - Album-Raster mit eingebettetem Cover, Titelliste je Album.
+  Sortierbar nach Titel, Interpret, Jahr oder Anzahl der Songs, jeweils in beide
+  Richtungen ("Titel Z-A", "Jahr, älteste zuerst"), und die Wahl wird gemerkt wie
+  die auf Alle Songs.
+- **Cover groß ansehen** - ein Klick auf das Bild einer Album- oder
+  Interpretenseite öffnet es in voller Größe; ein Klick irgendwohin oder Escape
+  schließt es wieder.
+- **Suche** - eine Frage, nicht drei. Eine Anfrage wird in Wörter zerlegt und
+  jedes Wort muss irgendwo passen; in welchem Feld, ist frei - "Fame Bowie
+  Americans" findet also den Song *Fame* von David Bowie auf *Young Americans*.
+  Die Treffer sind gewichtet statt alphabetisch: Wer "Fame" sucht, bekommt die
+  Songs, die Fame heißen, über die, die nur auf einem Album namens "The Fame
+  Monster" liegen.
+- **Genres** - alles nach Genre gruppiert (Mehrfach-Tags werden unterstützt).
+  Jede Karte im Raster trägt dasselbe Bild wie die Seite, zu der sie führt,
+  Singles eingeschlossen: Ein Genre aus losen Dateien nimmt seine Cover aus den
+  Dateien.
+- **Eine Sammlung wird vorgestellt wie ein Album.** Eine Playlist, eine
+  Sterne-Playlist und ein Genre tragen denselben Kopf wie eine Albumseite: das
+  Bild links vom Namen, was es zusammen ergibt, und die Abspielknöpfe. Ohne
+  eigenes Bild ist die Kachel ein 2x2-Mosaik aus den Covern der ersten vier
+  Platten darin - bei weniger als vier steht das erste Cover allein.
+- **Mehrere Genres auf einmal.** Über einer Genreseite steht eine Reihe
+  Schalter, einer je Genre: Schalte Rock und Jazz dazu und du bekommst eine
+  kombinierte Liste aus beidem (`/genres/1,4`), jeden Song darin einmal. Dieselbe
+  Idee wie bei den Sterne-Playlists weiter unten. Eine Bibliothek mit hundert
+  Genres ergibt eine sehr hohe Reihe, deshalb ist sie auf drei Zeilen gedeckelt
+  und klappt auf Wunsch auf - und was eingeschaltet ist, wird zuerst gezeichnet,
+  damit nie die aktuelle Auswahl der versteckte Teil ist.
+- **Die Ordnerstruktur ist die Bibliothek.** Interpret, Album, Titelnummer und
+  Titel kommen aus dem Aufbau, nicht aus den Datei-Tags:
 
   ```
   music/
     Twenty One Pilots/
       Vessel/
-        01 - Ode to Sleep.flac     album track, number 1 of "Vessel"
+        01 - Ode to Sleep.flac     Albumtitel, Nummer 1 von "Vessel"
         02 - Holding on to You.flac
-      Heathens.flac                single: no album, own "Singles" folder
+      Heathens.flac                Single: kein Album, eigener "Singles"-Ordner
   ```
 
-  A folder directly under the music folder is an artist, a folder inside it is
-  an album, and a leading number in the file name is the track number
-  (`01 - Titel`, `01 Titel`, `1-01 Titel` for disc 1). Files lying loose in an
-  artist folder are singles: they belong to no album and are not counted as one.
-  A `CD1` / `Disc 2` folder inside an album only supplies the disc number.
-- **Compilations go under `Various`.** That one artist folder is read
-  differently: an album in it is a sampler where every song has an interpret of
-  its own, and the file name says which, between the track number and the title.
+  Ein Ordner direkt unter dem Musikordner ist ein Interpret, ein Ordner darin ein
+  Album, und eine führende Zahl im Dateinamen ist die Titelnummer (`01 - Titel`,
+  `01 Titel`, `1-01 Titel` für CD 1). Dateien, die lose in einem
+  Interpretenordner liegen, sind Singles: Sie gehören zu keinem Album und werden
+  auch nicht als eines gezählt. Ein `CD1`- oder `Disc 2`-Ordner innerhalb eines
+  Albums liefert nur die CD-Nummer.
+- **Sampler gehören unter `Various`.** Dieser eine Interpretenordner wird anders
+  gelesen: Ein Album darin ist ein Sampler, bei dem jeder Song einen eigenen
+  Interpreten hat, und der Dateiname sagt zwischen Titelnummer und Titel, welchen.
 
   ```
   music/
@@ -83,114 +94,125 @@ belong to the account that created them.
         01 - Lovejoy - Privately Owned Spiral Galaxy.flac
   ```
 
-  The album stays under Various, the song shows "Lovejoy". Only the **first**
-  ` - ` after the number splits, so a title keeps every dash of its own
-  (`02 - Crywank - James Is Dead - Long Live James` is "James Is Dead - Long
-  Live James" by Crywank), and a hyphen without spaces around it stays part of
-  the name (`Jay-Z`). A file naming no interpret belongs to Various like any
-  other track. Everywhere else a dash in a title is just a dash - this exists
-  for that one folder name and nowhere else.
-- **A name may start with a dot - escape it with a backslash.** Anything whose
-  name begins with a dot is hidden and is not scanned, which would lose an album
-  like `...Baby One More Time`. Name the folder (or the file) `\...Baby One More
-  Time` instead: the backslash takes the hiding away, and Sonorus drops it again,
-  so the library shows `...Baby One More Time`. Works for artist folders, album
-  folders and file names alike. A name still starting with a real dot stays
-  hidden on purpose - that is how you keep a folder out of the library.
-- What a folder name cannot say is still read from the file (ID3v1/ID3v2, Vorbis
-  comments, MP4 atoms, APE): release date, genre, duration, format, lyrics and
-  the embedded cover art. An album with no embedded artwork in any of its files
-  picks up a `cover.jpg` / `folder.jpg` / `front.jpg` lying in the album folder.
-  Lyrics are read from `USLT` / `SYLT` / `LYRICS` and their equivalents, and a
-  lyric written in LRC (`[01:23.45]` per line) keeps its timestamps, so it can
-  follow the song. Sonorus never fetches anything from the internet: what the
-  files do not carry does not exist for it.
-- **The release date is kept as exactly as the file knows it** - a full day, a
-  month or a bare year. The **album page** is the one place that spells it out
-  ("17. Mai 2013"); every list, grid and card shows the year, which is all they
-  have room for. A file that only carries a year therefore only ever shows one.
-- **Alben bearbeiten** - the album page has a "Bearbeiten" button for the three
-  things the folder names cannot say: the release date, genres (comma separated,
-  applied to every track of the album) and the cover art (JPG, PNG or WebP,
-  uploaded in the dialog). The date is typed in as exactly as it is known -
-  `17.05.2013`, `05.2013` or `2013`. The edit is stored in Sonorus, **never
-  written into your files** - the music folder stays read-only - and each edited
-  field is locked, so a later scan does not put the file's version back. Title,
-  artist and track number are not editable: they come from the folder structure,
-  which the next scan reads again.
-  - **The edit belongs to the album, not to the songs that are in it today.**
-    Rename a file, retag it, add a new one to the folder - the album's date,
-    genres and cover still apply, and a song that joins later gets them the same
-    way. That is the difference to editing a file's tags: nothing you do to the
-    files can take the edit back. Only the album's own **folder name** can, since
-    a renamed folder is a different album as far as Sonorus is concerned.
-- **Singles bearbeiten** - a single belongs to no album, so nothing else can
-  carry its release date, its genres or its cover art: the list under "Singles"
-  has a Jahr column, and "Single bearbeiten" in the track's context menu sets all
-  three. Genres are comma separated like on an album, and an empty field removes
-  them. Locked and never written into the file, exactly like an album edit. The
-  Singles folder itself has no year - only the songs in it do.
-- **Interpret bearbeiten** - the artist page has a "Bearbeiten" button for the
-  profile picture. Without one the artist keeps borrowing the cover of one of the
-  albums, which is what it did before. The name is not editable: it is the name
-  of the folder, and the next scan would read it back again.
-- **Bildausschnitt verschieben** - a picture that is not exactly square is
-  **dragged inside the frame** of the dialog to pick which square of it becomes
-  the cover: left and right on a wide picture, up and down on a tall one. The
-  frame shows the result while you drag, and that square is what gets saved -
-  covers are shown square in every grid, on the detail page and in the phone's
-  notification, so the section is decided once, when the picture is added.
-  Works for album, single and artist pictures alike.
-- Every uploaded picture (album, single, artist) is **scaled down in the browser**
-  to at most 1000 px on its longer side and re-encoded as JPEG before it is sent.
-  A cover is never shown larger than that, and it keeps the upload small enough
-  for a reverse proxy in front of Sonorus to let it through - nginx, for one,
-  allows a 1 MB request body by default.
-- Rescan on demand from the settings; unchanged files are skipped, removed files
-  disappear from the library - **except when you rated them, put them in a
-  playlist or listened to them.** Those keep their row and are shown greyed out
-  and struck through, with the last known path in the tooltip, so a rating is
-  never lost to a moved file. Put the file back and the next scan clears the
-  mark.
+  Das Album bleibt unter Various, der Song zeigt "Lovejoy". Getrennt wird nur am
+  **ersten** ` - ` nach der Nummer, ein Titel behält also jeden eigenen
+  Bindestrich (`02 - Crywank - James Is Dead - Long Live James` ist "James Is Dead
+  - Long Live James" von Crywank), und ein Bindestrich ohne Leerzeichen bleibt
+  Teil des Namens (`Jay-Z`). Eine Datei, die keinen Interpreten nennt, gehört zu
+  Various wie jeder andere Titel. Überall sonst ist ein Bindestrich im Titel
+  einfach ein Bindestrich - das hier gilt für diesen einen Ordnernamen und sonst
+  nirgends.
+- **Ein Name darf mit einem Punkt beginnen - maskiert mit einem
+  Backslash.** Alles, dessen Name mit einem Punkt beginnt, ist versteckt und wird
+  nicht gescannt, was ein Album wie `...Baby One More Time` verlieren würde. Nenn
+  den Ordner (oder die Datei) stattdessen `\...Baby One More Time`: Der Backslash
+  nimmt das Verstecken weg, und Sonorus lässt ihn wieder fallen, die Bibliothek
+  zeigt also `...Baby One More Time`. Gilt für Interpretenordner, Albumordner und
+  Dateinamen gleichermaßen. Ein Name, der weiterhin mit einem echten Punkt
+  beginnt, bleibt absichtlich versteckt - so hält man einen Ordner aus der
+  Bibliothek heraus.
+- Was ein Ordnername nicht sagen kann, wird weiterhin aus der Datei gelesen
+  (ID3v1/ID3v2, Vorbis-Kommentare, MP4-Atome, APE): Erscheinungsdatum, Genre,
+  Länge, Format, Songtext und das eingebettete Cover. Ein Album, dessen Dateien
+  alle kein Bild eingebettet haben, nimmt eine `cover.jpg` / `folder.jpg` /
+  `front.jpg` aus dem Albumordner. Songtexte werden aus `USLT` / `SYLT` /
+  `LYRICS` und ihren Entsprechungen gelesen, und ein Text im LRC-Format
+  (`[01:23.45]` je Zeile) behält seine Zeitmarken, kann dem Song also folgen.
+  Sonorus holt nie etwas aus dem Internet: Was die Dateien nicht tragen,
+  existiert für Sonorus nicht.
+- **Das Erscheinungsdatum wird so genau behalten, wie die Datei es kennt** - ein
+  ganzer Tag, ein Monat oder ein nacktes Jahr. Die **Albumseite** ist der eine
+  Ort, der es ausschreibt ("17. Mai 2013"); jede Liste, jedes Raster und jede
+  Karte zeigt das Jahr, mehr passt dort nicht hin. Eine Datei, die nur ein Jahr
+  trägt, zeigt deshalb auch immer nur eines.
+- **Alben bearbeiten** - die Albumseite hat einen "Bearbeiten"-Knopf für die drei
+  Dinge, die die Ordnernamen nicht sagen können: Erscheinungsdatum, Genres (per
+  Komma getrennt, gelten für jeden Titel des Albums) und das Cover (JPG, PNG oder
+  WebP, im Dialog hochgeladen). Das Datum wird so genau eingetippt, wie es bekannt
+  ist - `17.05.2013`, `05.2013` oder `2013`. Die Änderung liegt in Sonorus,
+  **niemals in deinen Dateien** - der Musikordner bleibt nur lesbar - und jedes
+  geänderte Feld wird gesperrt, damit ein späterer Scan nicht die Version der
+  Datei zurückschreibt. Titel, Interpret und Titelnummer sind nicht änderbar: Sie
+  kommen aus der Ordnerstruktur, die der nächste Scan wieder liest.
+  - **Die Änderung gehört dem Album, nicht den Songs, die heute darin
+    liegen.** Benenne eine Datei um, tagge sie neu, leg eine neue in den Ordner -
+    Datum, Genres und Cover des Albums gelten weiter, und ein Song, der später
+    dazukommt, bekommt sie genauso. Das ist der Unterschied zum Bearbeiten von
+    Datei-Tags: Nichts, was du mit den Dateien tust, nimmt die Änderung zurück.
+    Nur der **Ordnername** des Albums kann das, denn ein umbenannter Ordner ist
+    für Sonorus ein anderes Album.
+- **Singles bearbeiten** - eine Single gehört zu keinem Album, also kann nichts
+  anderes ihr Erscheinungsdatum, ihre Genres oder ihr Cover tragen: Die Liste
+  unter "Singles" hat eine Jahr-Spalte, und "Single bearbeiten" im Kontextmenü des
+  Titels setzt alle drei. Genres per Komma getrennt wie bei einem Album, ein
+  leeres Feld entfernt sie. Gesperrt und nie in die Datei geschrieben, genau wie
+  bei einem Album. Der Singles-Ordner selbst hat kein Jahr - nur die Songs darin.
+- **Interpret bearbeiten** - die Interpretenseite hat einen "Bearbeiten"-Knopf für
+  das Profilbild. Ohne eines leiht sich der Interpret weiterhin das Cover eines
+  seiner Alben. Der Name ist nicht änderbar: Er ist der Name des Ordners, und der
+  nächste Scan würde ihn zurücklesen.
+- **Bildausschnitt verschieben** - ein Bild, das nicht genau quadratisch ist, wird
+  **im Rahmen des Dialogs gezogen**, um zu wählen, welches Quadrat daraus das
+  Cover wird: links und rechts bei einem breiten Bild, hoch und runter bei einem
+  hohen. Der Rahmen zeigt das Ergebnis beim Ziehen, und genau dieses Quadrat wird
+  gespeichert - Cover werden in jedem Raster, auf der Detailseite und in der
+  Benachrichtigung des Handys quadratisch gezeigt, der Ausschnitt wird also einmal
+  entschieden, wenn das Bild dazukommt. Gilt für Album-, Single- und
+  Interpretenbilder gleichermaßen.
+- Jedes hochgeladene Bild (Album, Single, Interpret) wird **im Browser
+  verkleinert** auf höchstens 1000 px an der längeren Seite und als JPEG neu
+  kodiert, bevor es abgeschickt wird. Größer wird ein Cover nie gezeigt, und es
+  hält den Upload klein genug, dass ein Reverse Proxy vor Sonorus ihn durchlässt -
+  nginx zum Beispiel erlaubt standardmäßig 1 MB Anfragekörper.
+- Erneuter Scan auf Zuruf aus den Einstellungen; unveränderte Dateien werden
+  übersprungen, entfernte Dateien verschwinden aus der Bibliothek - **außer du
+  hast sie bewertet, in eine Playlist gelegt oder gehört.** Die behalten ihre
+  Zeile und werden ausgegraut und durchgestrichen gezeigt, mit dem zuletzt
+  bekannten Pfad im Tooltip, damit eine Bewertung nie an eine verschobene Datei
+  verloren geht. Leg die Datei zurück, und der nächste Scan nimmt die Markierung
+  weg.
 
 ### Podcasts
 
-Spoken word is scanned from `PODCAST_DIR`, a root beside `MUSIC_DIR`. The layout
-is one folder per show, every audio file in it an episode:
+Gesprochenes wird aus `PODCAST_DIR` gescannt, einer Wurzel neben `MUSIC_DIR`.
+Der Aufbau ist ein Ordner je Sendung, jede Audiodatei darin eine Folge:
 
 ```
 podcasts/
   Some Show/
-    #001 First episode.mp3
-    #002 Second episode.mp3
+    #001 Erste Folge.mp3
+    #002 Zweite Folge.mp3
 ```
 
-- **Sendungen** - every show, as tiles or as a list, with how many of its
-  episodes are still unheard.
-- **Folgen** - the episode list of one show, newest first by default and
-  switchable to oldest first; the choice is remembered on your account. The
-  order reads the number in front of the file name (`#001`) first and the
-  publication date second, so a show that does not number its episodes still
-  sorts the way it was published.
-- **Weiterhören** - every episode you are part-way through, across all shows,
-  most recent first. Playing one resumes it at the second you stopped; an
-  episode you listened to the end of is marked heard, and so is one you stopped
-  in the last 30 seconds of. Both can be set by hand from the row menu.
-- Episodes are **not part of the music library**: they never appear under Alle
-  Songs, Interpreten, Alben, Genres, the star playlists, the Zufallsmix or the
-  music-shaped lists of the statistics, and they are neither rated nor added to
-  playlists. The search does find them, in a section of its own. Their listening
-  time does count on the statistics page, on a line of its own - see Statistik.
-- The **show carries the artwork**, not the episode. A podcast rebrands over the
-  years rather than drawing a cover per episode, so storing one picture per
-  episode would write the same handful of images hundreds of times.
-- Episode ordering aside, nothing here talks to the internet. Like the music,
-  everything Sonorus knows about a podcast comes out of the files themselves.
+- **Sendungen** - jede Sendung, als Kacheln oder als Liste, mit der Zahl ihrer
+  noch ungehörten Folgen.
+- **Folgen** - die Folgenliste einer Sendung, standardmäßig neueste zuerst und
+  umschaltbar auf älteste zuerst; die Wahl wird auf deinem Konto gemerkt. Die
+  Reihenfolge liest zuerst die Nummer vor dem Dateinamen (`#001`) und dann das
+  Veröffentlichungsdatum, eine Sendung ohne Nummerierung sortiert sich also
+  trotzdem so, wie sie erschienen ist.
+- **Weiterhören** - jede angefangene Folge, über alle Sendungen hinweg, zuletzt
+  gehörte zuerst. Eine davon zu spielen setzt sie auf die Sekunde fort, an der du
+  aufgehört hast; eine bis zum Ende gehörte Folge gilt als gehört, und eine, die
+  du in den letzten 30 Sekunden gestoppt hast, auch. Beides lässt sich im
+  Zeilenmenü von Hand setzen.
+- Folgen sind **nicht Teil der Musikbibliothek**: Sie tauchen nie unter Alle
+  Songs, Interpreten, Alben, Genres, den Sterne-Playlists, dem Zufallsmix oder
+  den musikförmigen Listen der Statistik auf, und sie werden weder bewertet noch
+  in Playlists gelegt. Die Suche findet sie, in einem eigenen Abschnitt. Ihre
+  Hörzeit zählt auf der Statistikseite mit, in einer eigenen Zeile - siehe
+  Statistik.
+- **Das Bild gehört der Sendung**, nicht der Folge. Ein Podcast wechselt über die
+  Jahre sein Erscheinungsbild, statt je Folge ein Cover zu zeichnen; eine Handvoll
+  Bilder je Folge zu speichern hieße, dieselben Bilder hundertfach abzulegen.
+- Von der Folgen-Reihenfolge abgesehen redet hier nichts mit dem Internet. Wie
+  bei der Musik kommt alles, was Sonorus über einen Podcast weiß, aus den Dateien
+  selbst.
 
-### Audiobooks
+### Hörbücher
 
-Audiobooks are scanned from `AUDIOBOOK_DIR`, a third root. One folder per
-author, one folder per book inside it, and the audio files in a book folder:
+Hörbücher werden aus `AUDIOBOOK_DIR` gescannt, einer dritten Wurzel. Ein Ordner
+je Autor, darin ein Ordner je Buch, darin die Audiodateien:
 
 ```
 audiobooks/
@@ -200,46 +222,47 @@ audiobooks/
       02 - Kapitel 2.mp3
 ```
 
-**A book is one thing, and the files it is made of are never shown.** However
-many parts the rip happened to produce - forty, or one - the book page has a
-cover, an author, a length and a single button, and nothing else. There is no
-parts list, and you do not have to merge anything beforehand: the parts are
-queued in order and play straight through.
+**Ein Buch ist eine Sache, und die Dateien, aus denen es besteht, werden nie
+gezeigt.** Wie viele Teile der Rip auch hergegeben hat - vierzig oder einen -,
+die Buchseite hat ein Cover, einen Autor, eine Länge und einen einzigen Knopf,
+sonst nichts. Es gibt keine Teileliste, und du musst vorher nichts
+zusammenfügen: Die Teile werden der Reihe nach eingereiht und laufen durch.
 
-- **Autoren** - every author, as tiles or as a list, with how many books they
-  have. Behind each one their books, behind each book the book itself.
-- **Weiterhören** - every book you are part-way through, most recent first.
-- The position is kept **across files**: "44 Sek. von 4 Min." counts the parts
-  already heard plus the seconds into the current one, and resuming opens the
-  right file at the right second. Ordering follows the number in front of the
-  file name where there is one, and the file name otherwise.
-- **Als gehört markieren** applies to the whole book, because that is the only
-  unit the interface offers.
-- **Chapters**, where the files carry them. An Audible-style `.m4b` is one file
-  of up to fifty hours with the marks written inside it, and Sonorus reads them
-  with `ffprobe`. The transport then names the chapter where a song has its
-  title, the book where it has its interpret and the author where it has its
-  album; the seek bar carries a hairline at every chapter start; the skip
-  buttons and the media keys move one chapter at a time; and the panel on the
-  right is the chapter list instead of the queue and the lyrics, which a book
-  has no use for. A book whose files carry no marks keeps its own title and one
-  long bar, exactly as before.
-- **Gesprochen von** and the **release date**, read from the file
-  (`composer` and `date`, which is what an Audible `.m4b` carries) and editable
-  under "Bearbeiten" - the tag knows the year, you may know the day. An author
-  can be given a picture of their own, the way an artist can.
-- Like podcasts, books are **not part of the music library** and are neither
-  rated nor added to playlists. The search finds them in a section of its own.
+- **Autoren** - jeder Autor, als Kacheln oder als Liste, mit der Zahl seiner
+  Bücher. Dahinter seine Bücher, dahinter das Buch selbst.
+- **Weiterhören** - jedes angefangene Buch, zuletzt gehörtes zuerst.
+- Die Position wird **über Dateigrenzen hinweg** gehalten: "44 Sek. von 4 Min."
+  zählt die bereits gehörten Teile plus die Sekunden im aktuellen, und
+  Fortsetzen öffnet die richtige Datei an der richtigen Sekunde. Die Reihenfolge
+  folgt der Nummer vor dem Dateinamen, wo es eine gibt, und sonst dem Dateinamen.
+- **Als gehört markieren** gilt für das ganze Buch, weil die Oberfläche keine
+  andere Einheit anbietet.
+- **Kapitel**, wo die Dateien sie tragen. Eine `.m4b` nach Audible-Art ist eine
+  einzige Datei von bis zu fünfzig Stunden mit den Marken darin, und Sonorus
+  liest sie mit `ffprobe`. Die Transportleiste nennt dann das Kapitel, wo ein Song
+  seinen Titel hat, das Buch, wo er seinen Interpreten hat, und den Autor, wo er
+  sein Album hat; die Suchleiste trägt eine Haarlinie an jedem Kapitelanfang; die
+  Sprungtasten und die Medientasten gehen ein Kapitel weiter; und die Leiste
+  rechts ist die Kapitelliste statt Warteschlange und Songtext, für die ein Buch
+  keine Verwendung hat. Ein Buch, dessen Dateien keine Marken tragen, behält
+  seinen Titel und einen langen Balken, genau wie vorher.
+- **Gesprochen von** und das **Erscheinungsdatum**, aus der Datei gelesen
+  (`composer` und `date`, was eine Audible-`.m4b` trägt) und unter "Bearbeiten"
+  änderbar - der Tag kennt das Jahr, du kennst vielleicht den Tag. Ein Autor kann
+  ein eigenes Bild bekommen, so wie ein Interpret.
+- Wie Podcasts sind Bücher **nicht Teil der Musikbibliothek** und werden weder
+  bewertet noch in Playlists gelegt. Die Suche findet sie in einem eigenen
+  Abschnitt.
 
-One thing worth knowing: the transition between two parts is not gapless. The
-browser has to open the next file, which costs a fraction of a second - at the
-end of a chapter this is essentially unnoticeable, but it is not the same as
-one continuous file.
+Eines ist wissenswert: Der Übergang zwischen zwei Teilen ist nicht lückenlos. Der
+Browser muss die nächste Datei öffnen, was den Bruchteil einer Sekunde kostet -
+am Kapitelende praktisch nicht zu merken, aber eben nicht dasselbe wie eine
+durchgehende Datei.
 
-### Radio plays
+### Hörspiele
 
-Radio plays are scanned from `AUDIODRAMA_DIR`, a fourth root laid out exactly
-like the audiobooks - one folder per author, one folder per play inside it:
+Hörspiele werden aus `AUDIODRAMA_DIR` gescannt, einer vierten Wurzel, genauso
+aufgebaut wie die Hörbücher - ein Ordner je Autor, darin ein Ordner je Hörspiel:
 
 ```
 audiodramas/
@@ -248,21 +271,23 @@ audiodramas/
       Passagier 23.m4b
 ```
 
-They get their own tab, their own author list and their own section in the
-search, because a play is a different thing to sit down to than a book. Behind
-the interface they are the same rows as an audiobook and behave the same way:
-one thing to the listener, the parts never shown, the position remembered,
-chapters where the files carry them.
+Sie bekommen einen eigenen Tab, eine eigene Autorenliste und einen eigenen
+Abschnitt in der Suche, denn ein Hörspiel ist etwas anderes, wofür man sich
+hinsetzt, als ein Buch. Hinter der Oberfläche sind es dieselben Zeilen wie ein
+Hörbuch und sie verhalten sich gleich: eine Sache für den Hörer, die Teile nie
+gezeigt, die Position gemerkt, Kapitel, wo die Dateien sie tragen.
 
-**The one difference is the narrator.** A play has a cast, not a reader, so it
-carries no "Gesprochen von" line and its edit dialog has no such field - a list
-of six actors under that heading would read as one person doing a bad job. The
-release date works exactly as it does for a book.
+**Der eine Unterschied ist der Sprecher.** Ein Hörspiel hat eine Besetzung, keinen
+Vorleser, also trägt es keine "Gesprochen von"-Zeile und sein Bearbeiten-Dialog
+kein solches Feld - eine Liste von sechs Schauspielern unter dieser Überschrift
+läse sich wie eine Person, die ihre Sache schlecht macht. Das Erscheinungsdatum
+funktioniert genau wie bei einem Buch.
 
-### eBooks
+### E-Books
 
-eBooks are scanned from `EBOOK_DIR`, a fifth root laid out like the audiobooks -
-one folder per author, one folder per book inside it. Only `.epub` is read:
+E-Books werden aus `EBOOK_DIR` gescannt, einer fünften Wurzel, aufgebaut wie die
+Hörbücher - ein Ordner je Autor, darin ein Ordner je Buch. Gelesen wird nur
+`.epub`:
 
 ```
 ebooks/
@@ -271,320 +296,375 @@ ebooks/
       The Ballad of Songbirds and Snakes.epub
 ```
 
-A book is read rather than played, so it has no queue, no rating and no
-playlist. What it has is a reading view: the EPUB is unpacked on the server and
-each document served as its own page, broken into columns so a tap on the right
-half turns forward and one on the left turns back. Font, size, line spacing and
-margin are the reader's; Ubuntu is served from the server, so nothing has to be
-installed on the device.
+Ein Buch wird gelesen statt gespielt, es hat also keine Warteschlange, keine
+Bewertung und keine Playlist. Was es hat, ist eine Leseansicht: Das EPUB wird auf
+dem Server ausgepackt und jedes Dokument als eigene Seite ausgeliefert, in Spalten
+umbrochen - ein Tipp auf die rechte Hälfte blättert vor, einer auf die linke
+zurück. Schriftart, Größe, Zeilenabstand und Rand gehören dem Leser; Ubuntu
+kommt vom Server, es muss also nichts auf dem Gerät installiert sein.
 
-- **A book is identified by its title and author, not by its path**, so a
-  renamed file is still the same book and keeps its reading position.
-- **The position is a share of a document, not a page number.** A page is
-  whatever fits on the screen at the chosen size, so it means nothing on the
-  next device; the share means the same everywhere.
-- Both EPUB 2 (`toc.ncx`) and EPUB 3 (`nav`) tables of contents are read.
+**Dieselbe Leseansicht läuft im Browser und in der Android-App.** Sie liegt in
+`public/reader/` und spricht mit dem, der sie hält, über zwei Objekte:
+`window.Reader` hinein und `window.SonorusReader` heraus. Der Browser hängt sein
+eigenes Objekt in einen Frame gleichen Ursprungs, die App in eine WebView - die
+Seite selbst ist beide Male dieselbe.
 
-### Playback
+- **Ein Buch wird über Titel und Autor erkannt, nicht über seinen Pfad**, eine
+  umbenannte Datei ist also weiterhin dasselbe Buch und behält ihren Lesestand.
+- **Die Stelle ist ein Anteil eines Dokuments, keine Seitenzahl.** Eine Seite ist,
+  was bei der gewählten Größe auf den Bildschirm passt, sie bedeutet auf dem
+  nächsten Gerät also nichts; der Anteil bedeutet überall dasselbe.
+- **Die Seitenzahl des ganzen Buchs wird gemessen.** Ein EPUB hat keine, also wird
+  jedes Kapitel einmal unsichtbar gesetzt und gezählt, gespeichert je Buch,
+  Schrift und Fenstergröße. Bis das durch ist, steht dort eine Schätzung aus den
+  Zeichenzahlen, damit ein Buch aufgeht, statt zu laden.
+- **Eine ziehbare Fortschrittsleiste** durch das ganze Buch, und danach ein Weg
+  zurück an die verlassene Stelle.
+- **Das Jahr eines Buchs ist änderbar** und wird dann gesperrt, damit der nächste
+  Scan nicht das falsche Jahr aus der Datei zurückschreibt. Ein Autor kann ein
+  eigenes Bild bekommen - es ist derselbe Autor wie beim Hörbuch, beide Regale
+  lesen dieselbe Tabelle.
+- Inhaltsverzeichnisse werden sowohl aus EPUB 2 (`toc.ncx`) als auch aus EPUB 3
+  (`nav`) gelesen.
+- Die Android-App kann ein Buch **herunterladen** und dann ohne Server lesen -
+  siehe das README dort.
 
-- Play/pause, previous/next track, elapsed and total time. "Back" starts the
-  running track over once it is more than three seconds in; press it again and
-  it goes to the track that really played before, shuffle included.
-- The seek bar is the top edge of the transport: full width, grab it anywhere.
-- Shuffle and repeat (off / repeat all / repeat one).
-- Volume slider with mute. The mouse wheel over it works too: up is louder.
-- **Zu Playlist hinzufügen** - a plus next to the stars of what is playing puts
-  the running song on one of your playlists. Playlists only: the rating sits
-  right next to it, and the track's own menu carries everything else.
-- **Aktuelle Wiedergabeliste** - the live queue in a side panel, showing the
-  real upcoming order even while shuffle is on; drag to reorder, click to jump.
-- **Songtext** - the lyrics a file carries, in a panel next to the queue. When
-  the file also says when each line is sung, the line being sung is highlighted
-  and the panel scrolls along; it stops following for a few seconds after you
-  scroll somewhere else in it. A line appears a second before it is sung, the
-  way a karaoke lead-in does, and clicking one jumps the song there. Without
-  timestamps the whole text simply stands there. Nothing is fetched from
-  anywhere - a file whose tags carry no lyrics has none here.
-- **Versatz** - files disagree about where a line belongs, so every song can be
-  corrected by itself, in tenths of a second and in both directions. The control
-  is an overlay over the running text rather than a dialog: nothing stops while
-  it is open, which is the only way to see whether the number is right. Zero is
-  the second of lead-in above, not the file's own stamp. The correction is saved
-  on the server per song, so it holds for every account, every client and every
-  next time.
-- A live level meter in the transport and a **big view** for what is playing,
-  opened by clicking the title in the bar (or with `V`). It takes the content
-  area and leaves the sidebar and the topbar standing, and carries three tabs:
-  the song with its artwork, its text, and a visualizer driven by the actual
-  audio through a Web Audio analyser.
-- Media Session support, so the lock screen and hardware media keys show the
-  current track and work as expected: the card with cover art, previous and
-  next, and the progress bar the notification draws from the reported position.
-  Whether the notification then shows all of it is the browser's decision. If
-  it only offers pause, the page was almost certainly opened over plain HTTP,
-  where the Media Session API does not exist at all.
-- The queue, volume and the shuffle/repeat modes survive a reload. Volume,
-  shuffle and repeat are stored on the account, so they follow you to another
-  device; the queue itself stays in the browser you built it in.
-- **Qualität** - under Einstellungen you pick whether this device streams the
-  original file or a smaller copy at Opus 128 kbps. The choice is per **device**,
-  not per account: it lives in the browser, because a machine on your own network
-  and a laptop on hotel Wi-Fi do not want the same thing. Changing it reopens the
-  running track where it stands, so you can hear the difference without stopping
-  the music.
+### Wiedergabe
 
-### On a phone
+- Play/Pause, vorheriger/nächster Titel, verstrichene und gesamte Zeit. "Zurück"
+  beginnt den laufenden Titel von vorn, sobald er mehr als drei Sekunden läuft;
+  noch einmal gedrückt geht es zu dem Titel, der wirklich davor lief, Zufall
+  eingeschlossen.
+- Die Suchleiste ist die Oberkante der Transportleiste: volle Breite, überall zu
+  greifen.
+- Zufall und Wiederholung (aus / alle wiederholen / eines wiederholen).
+- Lautstärkeregler mit Stummschaltung. Das Mausrad darüber funktioniert auch:
+  nach oben ist lauter.
+- **Zu Playlist hinzufügen** - ein Plus neben den Sternen des Laufenden legt den
+  Song auf eine deiner Playlists. Nur Playlists: Die Bewertung sitzt direkt
+  daneben, und das Menü des Titels trägt alles Übrige.
+- **Aktuelle Wiedergabeliste** - die laufende Warteschlange in einer Seitenleiste,
+  die die echte kommende Reihenfolge zeigt, auch bei eingeschaltetem Zufall;
+  ziehen zum Umsortieren, klicken zum Springen.
+- **Songtext** - der Text, den eine Datei trägt, in einer Leiste neben der
+  Warteschlange. Sagt die Datei auch, wann welche Zeile gesungen wird, ist die
+  laufende Zeile hervorgehoben und die Leiste scrollt mit; sie hört für ein paar
+  Sekunden auf zu folgen, wenn du selbst woanders hinscrollst. Eine Zeile
+  erscheint eine Sekunde, bevor sie gesungen wird, so wie ein Karaoke-Vorlauf, und
+  ein Klick darauf springt den Song dorthin. Ohne Zeitmarken steht der ganze Text
+  einfach da. Nichts wird von irgendwoher geholt - eine Datei, deren Tags keinen
+  Text tragen, hat hier keinen.
+- **Versatz** - Dateien sind sich uneinig, wo eine Zeile hingehört, also lässt
+  sich jeder Song einzeln korrigieren, in Zehntelsekunden und in beide
+  Richtungen. Das Bedienelement liegt über dem laufenden Text statt in einem
+  Dialog: Nichts hält an, solange es offen ist, und nur so sieht man, ob die Zahl
+  stimmt. Null ist die Sekunde Vorlauf von oben, nicht die Marke der Datei
+  selbst. Die Korrektur liegt je Song auf dem Server, gilt also für jedes Konto,
+  jeden Client und jedes nächste Mal.
+- Eine Pegelanzeige in der Transportleiste und eine **große Ansicht** für das
+  Laufende, geöffnet mit einem Klick auf den Titel in der Leiste (oder mit `V`).
+  Sie nimmt den Inhaltsbereich und lässt Seitenleiste und Kopfzeile stehen, und
+  sie trägt drei Reiter: den Song mit seinem Bild, seinen Text und einen
+  Visualizer, der vom echten Ton durch einen Web-Audio-Analyser getrieben wird.
+- Media-Session-Unterstützung, damit Sperrbildschirm und Medientasten den
+  laufenden Titel zeigen und tun, was man erwartet: die Karte mit Cover, Zurück
+  und Weiter, und die Fortschrittsleiste, die die Benachrichtigung aus der
+  gemeldeten Position zeichnet. Ob die Benachrichtigung das alles dann zeigt,
+  entscheidet der Browser. Bietet sie nur Pause an, wurde die Seite mit ziemlicher
+  Sicherheit über einfaches HTTP geöffnet, wo es die Media-Session-API gar nicht
+  gibt.
+- Warteschlange, Lautstärke und die Zufalls-/Wiederholungsmodi überleben ein
+  Neuladen. Lautstärke, Zufall und Wiederholung liegen auf dem Konto, folgen dir
+  also auf ein anderes Gerät; die Warteschlange selbst bleibt in dem Browser, in
+  dem du sie gebaut hast.
+- **Qualität** - unter Einstellungen wählst du, ob dieses Gerät die Originaldatei
+  streamt oder eine kleinere Kopie mit Opus 128 kbps. Die Wahl gilt pro **Gerät**,
+  nicht pro Konto: Sie liegt im Browser, denn ein Rechner im eigenen Netz und ein
+  Laptop im Hotel-WLAN wollen nicht dasselbe. Eine Änderung öffnet den laufenden
+  Titel dort wieder, wo er steht, du kannst den Unterschied also hören, ohne die
+  Musik anzuhalten.
 
-The whole app is one layout; below 900 px it rearranges itself rather than
-dropping features.
+### Am Handy
 
-- **The transport opens as a full screen.** Tap what is playing and the bar
-  becomes a screen with big artwork, the stars and a seek bar a thumb can hit.
-  It arrives and leaves as a sheet, and a wipe down over the artwork follows the
-  finger.
-- **The line being sung** stands between the artwork and the title in that full
-  screen, for a song whose lyrics carry timestamps. Tapping it opens the rest.
-- **The back button closes what lies over the page** - the full screen, the
-  drawer, the queue, the lyrics, a dialog, a menu - before it leaves the app.
-- **Holding a track opens its menu**, the same one the "..." button opens, as a
-  sheet from the bottom edge. A tap on the row plays it.
-- **Rating** happens in the full screen player or through "Bewerten …" in that
-  menu; below 560 px the star column has no room in the track list. Above that
-  it stays - a window at half a screen keeps the rating, the time counter and
-  the controls on the right of the bar, and the title cuts off instead. A title
-  that had to be cut off says its full name on hover.
-- The seek bar can be dragged, the theme is picked under Einstellungen, and
-  nothing keeps a hover state after a tap.
-- On a desktop the sidebar folds away, and Interpreten, Alben and Genres can be
-  shown as tiles or as one row per entry. Both choices are stored on the
-  account, the list/tile one per collection.
+Die ganze App ist ein Layout; unter 900 px ordnet sie sich um, statt Funktionen
+wegzulassen.
 
-### Keyboard shortcuts
+- **Die Transportleiste öffnet sich als Vollbild.** Tippe auf das Laufende, und
+  die Leiste wird ein Bildschirm mit großem Bild, den Sternen und einer
+  Suchleiste, die ein Daumen trifft. Sie kommt und geht wie ein Blatt, und ein
+  Wisch nach unten über das Bild folgt dem Finger.
+- **Die gerade gesungene Zeile** steht in diesem Vollbild zwischen Bild und
+  Titel, bei einem Song, dessen Text Zeitmarken trägt. Ein Tipp darauf öffnet den
+  Rest.
+- **Die Zurück-Taste schließt, was über der Seite liegt** - das Vollbild, die
+  Schublade, die Warteschlange, den Songtext, einen Dialog, ein Menü - bevor sie
+  die App verlässt.
+- **Einen Titel gedrückt zu halten öffnet sein Menü**, dasselbe, das der
+  "..."-Knopf öffnet, als Blatt von der Unterkante. Ein Tipp auf die Zeile spielt
+  ihn.
+- **Bewertet** wird im Vollbild-Player oder über "Bewerten …" in jenem Menü; unter
+  560 px hat die Sternespalte in der Titelliste keinen Platz. Darüber bleibt sie -
+  ein Fenster auf halbem Bildschirm behält Bewertung, Zeitanzeige und die
+  Bedienelemente rechts in der Leiste, und stattdessen wird der Titel
+  abgeschnitten. Ein abgeschnittener Titel nennt seinen vollen Namen beim
+  Überfahren.
+- Die Suchleiste lässt sich ziehen, das Thema wird unter Einstellungen gewählt,
+  und nichts behält nach einem Tipp einen Hover-Zustand.
+- Auf dem Desktop klappt die Seitenleiste weg, und Interpreten, Alben und Genres
+  lassen sich als Kacheln oder als eine Zeile je Eintrag zeigen. Beide Wahlen
+  liegen auf dem Konto, die Listen-/Kachelwahl je Sammlung.
 
-| Key | Action |
+### Tastenkürzel
+
+| Taste | Wirkung |
 | --- | --- |
-| `Space` | Play / pause |
-| `←` / `→` | 5 seconds back / forward |
-| `Shift` + `←` / `→` | Previous / next track |
-| `1` - `5` | Rate the current track |
-| `0` | Clear the rating |
-| `S` | Toggle shuffle |
-| `R` | Cycle repeat |
-| `M` | Mute |
-| `Q` | Show / hide the queue |
-| `L` | Show / hide the lyrics |
-| `V` | Show / hide the big view |
-| `/` | Jump to the search field |
+| `Leertaste` | Play / Pause |
+| `←` / `→` | 5 Sekunden zurück / vor |
+| `Umschalt` + `←` / `→` | Vorheriger / nächster Titel |
+| `1` - `5` | Den laufenden Titel bewerten |
+| `0` | Bewertung löschen |
+| `S` | Zufall an/aus |
+| `R` | Wiederholung durchschalten |
+| `M` | Stumm |
+| `Q` | Warteschlange zeigen / verstecken |
+| `L` | Songtext zeigen / verstecken |
+| `V` | Große Ansicht zeigen / verstecken |
+| `/` | Ins Suchfeld springen |
 
 ### Playlists
 
-- Create, rename and delete playlists; add tracks from any view.
-- **Playlist folders** to group playlists in the sidebar.
-- Drag and drop to reorder tracks inside a playlist.
-- **Drag and drop in the sidebar** to arrange the playlists themselves: up and
-  down inside their list, onto a folder to move them in, or back out to the top
-  level. The order is stored on your account.
-- **Anpinnen** keeps a playlist at the top of its list, marked with a pin.
-  Right-click it in the sidebar, or use the button on the playlist page.
-- **Sterne-Playlists** - rate any track from 1 to 5 stars from any track list or
-  from the transport; Sonorus keeps one automatic playlist per rating that
-  always reflects the current ratings. Clicking a track's current rating again
-  clears it. **Nicht bewertet** is the counterpart: everything still waiting for
-  a rating. Rating a track there moves it out of the list, but **your place in
-  the list stays** - working through a few hundred unrated songs does not send
-  you back to the top after every star.
-- **Several ratings at once.** Every star playlist has a row of switches above
-  it, one per rating: switch on 4 and 5 and you get one combined list of both
-  (`/stars/5,4`), best rated first. "Nicht bewertet" can join in too.
-- **Die Sterne eines Interpreten.** The artist page carries the same switches
-  under "Nach Bewertung", one per rating that artist actually has: one click
-  gives you only that artist's 5-star songs (`/artists/7/stars/5`), and they
-  combine the same way (`/artists/7/stars/5,4`). The list keeps the order of the
-  artist page.
-- **Unbewertete mischen** - the second button on the home page, next to
-  "Zufallsmix starten": a random run through everything that has no star yet.
-  Rating a library is a job you do by ear, and this is what saves picking the
-  next one out of a list of a few thousand by hand. It only appears while there
-  is anything left to rate.
-- Automatic views for recently added, recently played and most played tracks.
-  "Am häufigsten gehört" means time listened, not times started - a
-  twenty-minute piece heard twice is more listening than a three-minute song
-  heard five times. The songs of an artist are ordered the same way.
+- Playlists anlegen, umbenennen und löschen; Titel aus jeder Ansicht hinzufügen.
+- **Playlist-Ordner**, um Playlists in der Seitenleiste zu gruppieren.
+- Ziehen und Ablegen, um Titel innerhalb einer Playlist umzusortieren.
+- **Ziehen und Ablegen in der Seitenleiste**, um die Playlists selbst zu ordnen:
+  hoch und runter innerhalb ihrer Liste, auf einen Ordner, um sie
+  hineinzuschieben, oder wieder heraus auf die oberste Ebene. Die Reihenfolge
+  liegt auf deinem Konto.
+- **Anpinnen** hält eine Playlist oben in ihrer Liste, mit einer Nadel markiert.
+  Rechtsklick in der Seitenleiste, oder der Knopf auf der Playlist-Seite.
+- **Sterne-Playlists** - bewerte jeden Titel von 1 bis 5 Sternen, aus jeder
+  Titelliste oder aus der Transportleiste; Sonorus hält je Bewertung eine
+  automatische Playlist, die immer den aktuellen Stand zeigt. Ein Klick auf die
+  aktuelle Bewertung eines Titels löscht sie wieder. **Nicht bewertet** ist das
+  Gegenstück: alles, was noch auf eine Bewertung wartet. Einen Titel dort zu
+  bewerten nimmt ihn aus der Liste, **deine Stelle in der Liste bleibt aber** -
+  ein paar hundert unbewertete Songs durchzuarbeiten wirft dich nicht nach jedem
+  Stern wieder nach oben.
+- **Mehrere Bewertungen auf einmal.** Über jeder Sterne-Playlist steht eine Reihe
+  Schalter, einer je Bewertung: Schalte 4 und 5 an und du bekommst eine
+  kombinierte Liste aus beidem (`/stars/5,4`), bestbewertete zuerst. "Nicht
+  bewertet" darf mitmachen.
+- **Die Sterne eines Interpreten.** Die Interpretenseite trägt dieselben Schalter
+  unter "Nach Bewertung", einen je Bewertung, die dieser Interpret wirklich hat:
+  Ein Klick gibt dir nur die 5-Sterne-Songs dieses Interpreten
+  (`/artists/7/stars/5`), und sie kombinieren sich genauso
+  (`/artists/7/stars/5,4`). Die Liste behält die Reihenfolge der
+  Interpretenseite.
+- **Unbewertete mischen** - der zweite Knopf auf der Startseite, neben "Zufallsmix
+  starten": ein Zufallslauf durch alles, was noch keinen Stern hat. Eine
+  Bibliothek zu bewerten ist Arbeit nach Gehör, und das hier erspart es, den
+  nächsten Titel aus einer Liste von ein paar tausend von Hand zu suchen. Er
+  erscheint nur, solange es überhaupt noch etwas zu bewerten gibt.
+- Automatische Ansichten für zuletzt hinzugefügt, zuletzt gehört und meistgehört.
+  "Am häufigsten gehört" heißt gehörte Zeit, nicht Anzahl der Starts - ein
+  zwanzigminütiges Stück zweimal gehört ist mehr Hören als ein Dreiminüter fünfmal.
+  Die Songs eines Interpreten sind genauso geordnet.
 
 ### Statistik
 
-A page of its own, next to the settings. The listening history lives on the
-server and belongs to the account, so the phone and the desktop count into the
-same numbers.
+Eine eigene Seite, neben den Einstellungen. Der Hörverlauf liegt auf dem Server
+und gehört dem Konto, Handy und Desktop zählen also in dieselben Zahlen.
 
-- Library at a glance: songs, artists, albums, singles, genres, total playtime.
-- **Gesprochenes**, the same for the three spoken libraries: shows and episodes,
-  books and authors, radio plays and authors, each with its length and how much
-  of it is still unheard. Every row leads to that library.
-- Time listened in total, since the first play, with the number of days
-  something actually ran and the day the most of it ran.
-- Averages: per day (quiet days included), per day something actually ran, per
-  play, and plays per day. **Measured, never projected** - there is no "per
-  year" after two days of listening.
-- A column chart of the time listened, by day, week, month or year, with the
-  time above each bar and the number of plays below it. A period nothing was
-  played in is shown as the zero it is instead of being left out.
-- **Spielzeit**, the selected period split by library: Musik, Podcasts,
-  Hörbücher, Hörspiele and the total, each with its share, its play count and
-  its time. A library that was silent keeps its row - that is what says it is
-  counted here at all.
-- The most played tracks, artists and albums, with play count and time. These
-  three stay **music only**: one 70-minute episode outweighs a dozen songs, and
-  a mixed list would be a list of podcasts.
-- **Meistgehörtes Gesprochenes**, one list for all three spoken libraries. What
-  is ranked is the show, the book or the radio play - never the file, because a
-  book is one thing whose parts are never shown.
+- Die Bibliothek auf einen Blick: Songs, Interpreten, Alben, Singles, Genres,
+  Gesamtspielzeit.
+- **Gesprochenes**, dasselbe für die drei gesprochenen Bibliotheken: Sendungen und
+  Folgen, Bücher und Autoren, Hörspiele und Autoren, jeweils mit Länge und dem,
+  was davon noch ungehört ist. Jede Zeile führt in diese Bibliothek.
+- Gehörte Zeit insgesamt, seit der ersten Wiedergabe, mit der Zahl der Tage, an
+  denen wirklich etwas lief, und dem Tag, an dem am meisten lief.
+- Durchschnitte: pro Tag (stille Tage eingerechnet), pro Tag mit Wiedergabe, pro
+  Wiedergabe und Wiedergaben pro Tag. **Gemessen, nie hochgerechnet** - es gibt
+  kein "pro Jahr" nach zwei Tagen Hören.
+- Ein Säulendiagramm der gehörten Zeit, nach Tag, Woche, Monat oder Jahr, mit der
+  Zeit über und der Zahl der Wiedergaben unter jeder Säule. Ein Zeitraum, in dem
+  nichts lief, wird als die Null gezeigt, die er ist, statt weggelassen zu
+  werden.
+- **Eine Wiedergabe wird über die Stunden verteilt, durch die sie wirklich lief.**
+  Ein Hörspiel, das um 14:40 beginnt und zweieinhalb Stunden läuft, sind zwanzig
+  Minuten in der 14-Uhr-Säule, je eine Stunde in 15 und 16 Uhr und zehn Minuten in
+  17 Uhr - keine Säule kann also mehr als sechzig Minuten tragen, und eine
+  Wiedergabe über Mitternacht landet auf beiden Tagen. Gezählt wird sie trotzdem
+  als **eine** Wiedergabe.
+- **Die Uhr ist die des Servers.** Welche Stunde, welcher Tag und welches Jahr
+  eine Wiedergabe bekommt, entscheidet der Server, damit dieselbe Vergangenheit
+  auf jedem Gerät und in jedem Land gleich aussieht. Deshalb muss `TZ` gesetzt
+  sein - ein Container ohne läuft auf UTC.
+- **Spielzeit**, der gewählte Zeitraum nach Bibliothek aufgeteilt: Musik,
+  Podcasts, Hörbücher, Hörspiele und die Summe, jeweils mit Anteil, Zahl der
+  Wiedergaben und Zeit. Eine Bibliothek, die still war, behält ihre Zeile - das
+  ist es, was sagt, dass sie hier überhaupt gezählt wird.
+- Die meistgehörten Titel, Interpreten und Alben, mit Zahl und Zeit. Diese drei
+  bleiben **nur Musik**: Eine 70-Minuten-Folge wiegt ein Dutzend Songs auf, und
+  eine gemischte Liste wäre eine Liste von Podcasts.
+- **Meistgehörtes Gesprochenes**, eine Liste für alle drei gesprochenen
+  Bibliotheken. Gereiht wird die Sendung, das Buch oder das Hörspiel - nie die
+  Datei, denn ein Buch ist eine Sache, deren Teile nie gezeigt werden.
 
-A play is counted once a track has run for 30 seconds - a third of its length
-for tracks shorter than that, which can never reach the mark. What is counted is
-the **time actually listened**: the player keeps reporting how far it really
-got, so skipping away after a minute counts as a minute, not as a whole track.
-That holds for every library: an episode and a part of a book are counted the
-same way a song is, which is why the total playtime is the total.
+Eine Wiedergabe zählt, sobald ein Titel 30 Sekunden gelaufen ist - bei Titeln,
+die kürzer sind und die Marke nie erreichen können, ein Drittel ihrer Länge.
+Gezählt wird die **wirklich gehörte Zeit**: Der Player meldet weiter, wie weit er
+tatsächlich kam, eine Minute und dann weggeklickt zählt also als eine Minute und
+nicht als ganzer Titel. Das gilt für jede Bibliothek: Eine Folge und ein Buchteil
+werden genauso gezählt wie ein Song, und deshalb ist die Gesamtspielzeit die
+Gesamtspielzeit.
 
-### CSV import
+### CSV-Import
 
-Playlists exported from a streaming service can be imported as CSV. Expected
-columns (header row required, order does not matter):
+Aus einem Streamingdienst exportierte Playlists lassen sich als CSV importieren.
+Erwartete Spalten (Kopfzeile nötig, Reihenfolge egal):
 
-| Column | Meaning | Also accepted |
+| Spalte | Bedeutung | Ebenfalls akzeptiert |
 | --- | --- | --- |
-| `playlist` | Playlist name; one CSV may contain several playlists | `playlist name` |
-| `title` | Track title | `track name`, `track`, `song`, `name`, `titel` |
-| `artists` | Artist, or several artists separated by commas | `artist`, `artist name(s)`, `interpret` |
-| `album` | Album title | `album name` |
+| `playlist` | Name der Playlist; eine CSV darf mehrere enthalten | `playlist name` |
+| `title` | Titel | `track name`, `track`, `song`, `name`, `titel` |
+| `artists` | Interpret, oder mehrere per Komma getrennt | `artist`, `artist name(s)`, `interpret` |
+| `album` | Albumtitel | `album name` |
 
-Only `title` is required. Comma, semicolon and tab separated files are all
-recognised, as are quoted fields and a UTF-8 BOM. Without a `playlist` column
-the whole file becomes one playlist, named after the file.
+Nur `title` ist Pflicht. Komma-, Semikolon- und Tab-getrennte Dateien werden
+gleichermaßen erkannt, ebenso Felder in Anführungszeichen und ein UTF-8-BOM. Ohne
+`playlist`-Spalte wird die ganze Datei zu einer Playlist, benannt nach der Datei.
 
-Sonorus matches every row against the library in four passes, strict first:
+Sonorus gleicht jede Zeile in vier Durchgängen gegen die Bibliothek ab, streng
+zuerst:
 
-1. exact title plus artist,
-2. title plus artist with case, accents, punctuation and version suffixes
-   (`- Remastered 2011`, `(Live)`, `- Single Version`) ignored,
-3. that same loose title plus the album,
-4. the loose title on its own, but only when it is unique in the library.
+1. Titel und Interpret exakt,
+2. Titel und Interpret, wobei Groß-/Kleinschreibung, Akzente, Satzzeichen und
+   Versionszusätze (`- Remastered 2011`, `(Live)`, `- Single Version`) ignoriert
+   werden,
+3. derselbe lose Titel zusammen mit dem Album,
+4. der lose Titel allein, aber nur, wenn er in der Bibliothek eindeutig ist.
 
-Matched rows go into the playlist.
+Getroffene Zeilen wandern in die Playlist.
 
-Rows that cannot be matched are **not** silently dropped: they are recorded as
-import issues and stay visible under **Einstellungen -> Mitteilungen** with
-playlist, title, artist and album, so you know exactly which songs are missing
-from your library. Entries stay until you dismiss them, and disappear
-automatically once a matching file shows up in a later scan.
+Zeilen, die nicht zugeordnet werden können, fallen **nicht** stillschweigend
+unter den Tisch: Sie werden als Import-Hinweise festgehalten und bleiben unter
+**Einstellungen -> Mitteilungen** sichtbar, mit Playlist, Titel, Interpret und
+Album, damit du genau weißt, welche Songs in deiner Bibliothek fehlen. Einträge
+bleiben, bis du sie wegklickst, und verschwinden von selbst, sobald bei einem
+späteren Scan eine passende Datei auftaucht.
 
-## Quick start (Docker)
+## Schnellstart (Docker)
 
 ```bash
 git clone https://github.com/flopsyan/sonorus.git
 cd sonorus
-cp .env.example .env      # set MUSIC_DIR (and PODCAST_DIR, if you have any)
+cp .env.example .env      # MUSIC_DIR setzen (und PODCAST_DIR, falls vorhanden)
 docker compose up -d --build
 ```
 
-Open http://localhost:3000. On the first visit you are guided through a one-time
-setup page to create the first administrator account. After that, log in and
-manage further accounts from the account menu behind your avatar (admins
-only - nobody else sees the account list).
+http://localhost:3000 öffnen. Beim ersten Besuch führt dich eine einmalige
+Einrichtungsseite durch das Anlegen des ersten Administratorkontos. Danach
+anmelden und weitere Konten über das Kontomenü hinter deinem Avatar verwalten
+(nur Administratoren - niemand sonst sieht die Kontenliste).
 
-Alternatively, bootstrap the first admin non-interactively by setting
-`AUTH_PASSWORD` (and optionally `AUTH_USER`) in `.env` before the first start.
+Alternativ lässt sich der erste Administrator ohne Nachfragen anlegen, indem du
+vor dem ersten Start `AUTH_PASSWORD` (und optional `AUTH_USER`) in `.env` setzt.
 
-The first scan starts automatically once the library is empty; you can trigger
-further scans any time under **Einstellungen**.
+Der erste Scan startet von selbst, solange die Bibliothek leer ist; weitere Scans
+lassen sich jederzeit unter **Einstellungen** auslösen.
 
-## Configuration
+## Konfiguration
 
-All settings are read from the environment (see `.env.example`):
+Alle Einstellungen kommen aus der Umgebung (siehe `.env.example`):
 
-| Variable | Default | Purpose |
+| Variable | Standard | Zweck |
 | --- | --- | --- |
-| `MUSIC_DIR` | `./music` | Host path of your music folder, mounted read-only into the container |
-| `PODCAST_DIR` | `./podcasts` | Host path of your podcast folder (one subfolder per show), mounted read-only. May point at nothing; it must not lie inside `MUSIC_DIR` |
-| `AUDIOBOOK_DIR` | `./audiobooks` | Host path of your audiobook folder (one folder per author, one per book inside it), mounted read-only. Same rules as `PODCAST_DIR` |
-| `AUDIODRAMA_DIR` | `./audiodramas` | Host path of your radio-play folder, laid out like `AUDIOBOOK_DIR` and mounted read-only. Same rules |
-| `EBOOK_DIR` | `./ebooks` | Host path of your ebook folder, laid out like `AUDIOBOOK_DIR` and mounted read-only. Same rules |
-| `PORT` | `3000` | Host port the app is reachable on |
-| `SITE_NAME` | `Sonorus` | Name shown in the header and browser tab |
-| `AUTH_USER` | `admin` | Username for the bootstrapped first admin |
-| `AUTH_PASSWORD` | *(empty)* | Set to bootstrap the first admin without the setup page |
-| `AUTH_SECRET` | *(random)* | Secret for signing session cookies; a stable random one is generated and stored if unset |
-| `TRUST_PROXY` | `1` | Reverse proxies in front of the app; set to `false` when exposed directly |
-| `SCAN_ON_START` | `auto` | `auto` scans only when the library is empty, `always` scans on every start, `never` disables it |
+| `MUSIC_DIR` | `./music` | Host-Pfad deines Musikordners, nur lesend in den Container eingehängt |
+| `PODCAST_DIR` | `./podcasts` | Host-Pfad deines Podcast-Ordners (ein Unterordner je Sendung), nur lesend. Darf ins Leere zeigen; er darf nicht innerhalb von `MUSIC_DIR` liegen |
+| `AUDIOBOOK_DIR` | `./audiobooks` | Host-Pfad deines Hörbuch-Ordners (ein Ordner je Autor, darin einer je Buch), nur lesend. Dieselben Regeln wie `PODCAST_DIR` |
+| `AUDIODRAMA_DIR` | `./audiodramas` | Host-Pfad deines Hörspiel-Ordners, aufgebaut wie `AUDIOBOOK_DIR`, nur lesend. Dieselben Regeln |
+| `EBOOK_DIR` | `./ebooks` | Host-Pfad deines E-Book-Ordners, aufgebaut wie `AUDIOBOOK_DIR`, nur lesend. Dieselben Regeln |
+| `TZ` | `Europe/Berlin` | Die Uhr, nach der die Statistik zählt. Ohne sie läuft der Container auf UTC, und jede Stunde, jeder Tag und jedes Jahr der Statistik verschiebt sich mit |
+| `PORT` | `3000` | Host-Port, unter dem die App erreichbar ist |
+| `SITE_NAME` | `Sonorus` | Name in Kopfzeile und Browser-Tab |
+| `AUTH_USER` | `admin` | Benutzername für den ersten Administrator |
+| `AUTH_PASSWORD` | *(leer)* | Gesetzt, um den ersten Administrator ohne Einrichtungsseite anzulegen |
+| `AUTH_SECRET` | *(zufällig)* | Geheimnis zum Signieren der Sitzungs-Cookies; ohne Angabe wird ein stabiles zufälliges erzeugt und gespeichert |
+| `TRUST_PROXY` | `1` | Reverse Proxies vor der App; auf `false` setzen, wenn sie direkt exponiert ist |
+| `SCAN_ON_START` | `auto` | `auto` scannt nur bei leerer Bibliothek, `always` bei jedem Start, `never` gar nicht |
 
-## Supported formats
+## Unterstützte Formate
 
-Tags are read for MP3, M4A/AAC/ALAC, FLAC, OGG, Opus, WAV, AIFF, WMA, APE,
-WavPack and Musepack; of those, current Firefox and Chromium play MP3, M4A/AAC,
-FLAC, OGG, Opus and WAV.
+Tags werden gelesen für MP3, M4A/AAC/ALAC, FLAC, OGG, Opus, WAV, AIFF, WMA, APE,
+WavPack und Musepack; davon spielen aktuelle Firefox und Chromium MP3, M4A/AAC,
+FLAC, OGG, Opus und WAV.
 
-By default Sonorus streams the original file, so playback depends on what your
-browser can decode. The **Qualität** setting is the other option: it serves a
-copy at Opus 128 kbps instead, which every current browser and the Android app
-play whatever the source was.
+Standardmäßig streamt Sonorus die Originaldatei, die Wiedergabe hängt also davon
+ab, was dein Browser dekodieren kann. Die Einstellung **Qualität** ist die andere
+Möglichkeit: Sie liefert stattdessen eine Kopie mit Opus 128 kbps, die jeder
+aktuelle Browser und die Android-App spielen, egal was die Quelle war.
 
-That copy is made once with ffmpeg and kept, so nothing is encoded while you
-wait for a song to start. Three rules decide what you actually get:
+Diese Kopie wird einmal mit ffmpeg gemacht und behalten, es wird also nichts
+kodiert, während du auf den Anfang eines Songs wartest. Drei Regeln entscheiden,
+was du tatsächlich bekommst:
 
-- **Only lossless shrinks.** FLAC, WAV, AIFF, ALAC, APE, WavPack and DSD are
-  re-encoded, which is where the setting earns its keep - a FLAC album is
-  ungefähr three times the size of the same album in Opus.
-- **A lossy file is never re-encoded at all.** MP3, AAC, Opus and Vorbis are
-  handed over as they lie, whatever their bitrate. ffmpeg goes down the ladder
-  and never sideways: turning one lossy file into another costs a generation of
-  loss on a file that was already small enough. A 320 kbps MP3 therefore streams
-  at 320 kbps even with the smaller quality picked.
-- **You are told which of the two happened.** The app shows the format really
-  being played under the transport, not the one that was asked for.
+- **Kleiner wird nur Verlustfreies.** FLAC, WAV, AIFF, ALAC, APE, WavPack und DSD
+  werden neu kodiert, und dort verdient die Einstellung ihr Geld - ein
+  FLAC-Album ist ungefähr dreimal so groß wie dasselbe Album in Opus.
+- **Eine verlustbehaftete Datei wird nie neu kodiert.** MP3, AAC, Opus und Vorbis
+  werden ausgeliefert, wie sie liegen, egal mit welcher Bitrate. ffmpeg geht die
+  Leiter hinunter und nie seitwärts: Aus einer verlustbehafteten Datei eine andere
+  zu machen kostet eine Generation Verlust an einer Datei, die ohnehin klein genug
+  war. Eine 320-kbps-MP3 streamt also mit 320 kbps, auch wenn die kleinere
+  Qualität gewählt ist.
+- **Dir wird gesagt, welches von beidem passiert ist.** Die App zeigt unter der
+  Transportleiste das Format, das wirklich gespielt wird, nicht das gewünschte.
 
-Whether a file is lossless is read from the codec, not from the extension: a
-compressed WAV and a hybrid WavPack count as lossy, and so does anything whose
-container carries no such flag at all (WMA, Musepack) - the safe side.
+Ob eine Datei verlustfrei ist, wird am Codec gelesen, nicht an der Endung: Ein
+komprimiertes WAV und ein hybrides WavPack gelten als verlustbehaftet, und alles,
+dessen Container gar kein solches Kennzeichen trägt (WMA, Musepack), ebenfalls -
+die sichere Seite.
 
-Without ffmpeg on the server the app runs exactly as before and serves originals
-only; Einstellungen says so instead of offering a choice that cannot work. The
-Docker image ships ffmpeg, so this only applies to a bare `npm start`.
+Ohne ffmpeg auf dem Server läuft die App genau wie vorher und liefert nur
+Originale; die Einstellungen sagen das, statt eine Wahl anzubieten, die nicht
+funktionieren kann. Das Docker-Image bringt ffmpeg mit, das betrifft also nur ein
+nacktes `npm start`.
 
-The copies are made in one batch at the end of every **Bibliothek scannen**, and
-the progress bar covers that phase like the others. They live in their own
-volume (`TRANSCODE_DIR`, `/app/transcodes`) rather than next to the database:
-they are large, they are worthless in a backup, and every one of them can be
-made again from the file it came from.
+Die Kopien werden am Ende jedes **Bibliothek scannen** in einem Rutsch gemacht,
+und der Fortschrittsbalken deckt diese Phase wie die anderen ab. Sie liegen in
+einem eigenen Volume (`TRANSCODE_DIR`, `/app/transcodes`) statt neben der
+Datenbank: Sie sind groß, in einem Backup wertlos, und jede von ihnen lässt sich
+aus der Datei, aus der sie kam, wieder herstellen.
 
-`TRANSCODE_MAX_GB` is an **eviction threshold**, not a budget: nothing is
-refused for being over it, the least recently used copies are deleted once the
-folder passes it. Default 60. **Set it to 0 and nothing is ever evicted** -
-which is the right answer when the folder sits on a volume with room to spare
-and you would rather keep every copy than re-encode it on the next long drive.
-Einstellungen prints what the folder holds and which of the two applies.
+`TRANSCODE_MAX_GB` ist eine **Räumungsschwelle**, kein Budget: Nichts wird
+abgelehnt, weil es darüber liegt, sondern die am längsten nicht benutzten Kopien
+werden gelöscht, sobald der Ordner sie überschreitet. Standard 60. **Auf 0
+gesetzt wird nie geräumt** - die richtige Antwort, wenn der Ordner auf einem
+Volume mit Platz liegt und du lieber jede Kopie behältst, als sie vor der
+nächsten langen Fahrt neu zu kodieren. Die Einstellungen zeigen, was der Ordner
+hält und welches von beidem gilt.
 
-## Data & backup
+## Daten und Sicherung
 
-Your music folder is mounted **read-only** - Sonorus never writes to it. Only
-the database (library index, accounts, playlists, ratings, import issues) and
-the extracted cover art live in the `sonorus-data` Docker volume under
-`/app/data`. Back up that volume to keep your playlists and ratings; the library
-itself can always be rebuilt with a rescan.
+Dein Musikordner ist **nur lesend** eingehängt - Sonorus schreibt nie hinein. Nur
+die Datenbank (Bibliotheksindex, Konten, Playlists, Bewertungen, Import-Hinweise)
+und die extrahierten Cover liegen im Docker-Volume `sonorus-data` unter
+`/app/data`. Sichere dieses Volume, um Playlists und Bewertungen zu behalten; die
+Bibliothek selbst lässt sich jederzeit mit einem erneuten Scan aufbauen.
 
-## Running without Docker
+## Ohne Docker betreiben
 
 ```bash
 npm install
-MUSIC_DIR=/path/to/music npm start
+MUSIC_DIR=/pfad/zur/musik npm start
 ```
 
-Requires Node 20 or newer. The database and covers are written to `./data`
-(override with `DATA_DIR`), and so are the re-encoded copies (override with
-`TRANSCODE_DIR`). Install `ffmpeg` and put it on `PATH` - or point `FFMPEG_PATH`
-at it - if you want the smaller streaming quality; without it the app serves
-originals only.
+Braucht Node 20 oder neuer. Datenbank und Cover werden nach `./data` geschrieben
+(mit `DATA_DIR` änderbar), die neu kodierten Kopien ebenso (mit `TRANSCODE_DIR`).
+Installiere `ffmpeg` und leg es in den `PATH` - oder zeig mit `FFMPEG_PATH`
+darauf -, wenn du die kleinere Streaming-Qualität willst; ohne liefert die App
+nur Originale.
 
-## License
+## Lizenz
 
-Apache License 2.0 - see [LICENSE](LICENSE).
+Apache License 2.0 - siehe [LICENSE](LICENSE).
