@@ -288,7 +288,7 @@ const nearlyDone = (duration) => Math.min(NEARLY_DONE, (duration || 0) * 0.05);
 
 // Spoken word is anything that remembers where it stopped: a podcast episode
 // and a part of an audiobook alike. A song remembers nothing.
-const isSpoken = (track) => !!(track && (track.podcastId || track.audiobookId));
+export const isSpoken = (track) => !!(track && (track.podcastId || track.audiobookId));
 
 let progressTrack = null;
 let progressSeconds = 0;
@@ -687,6 +687,24 @@ export function seekToTime(seconds) {
   audio.currentTime = Math.max(0, Math.min(total, seconds));
 }
 
+/**
+ * How far one skip moves the playhead in spoken word.
+ *
+ * Florian asked for fifteen seconds, which is also what every reader uses. The
+ * Android client holds the same number in `PlayerController`.
+ */
+export const SKIP_SECONDS = 15;
+
+/**
+ * A jump of [seconds] from where the playhead is, clamped to the file.
+ *
+ * What the two skip buttons do for spoken word: a chapter is not a track, and
+ * stepping to the next file is not what "back" means in the middle of one.
+ */
+export function skipBy(seconds) {
+  seekToTime((audio.currentTime || 0) + seconds);
+}
+
 // --- Queue edits ------------------------------------------------------------
 
 // Appends to the end of the queue. With shuffle on the new tracks are appended
@@ -905,6 +923,7 @@ const canPosition = !!session && typeof session.setPositionState === 'function';
 
 function updateMediaSession(track) {
   if (!session || !track) return;
+  wireMediaSession(isSpoken(track));
   const artwork = track.cover
     ? [{ src: track.cover, sizes: '512x512', type: 'image/jpeg' }]
     : [];
@@ -985,13 +1004,31 @@ function clearMediaSession() {
   }
 }
 
-function wireMediaSession() {
-  if (!session) return;
+// Which of the two sets is registered, so the swap only runs when the kind of
+// track changes rather than on every load.
+let wiredSpoken = null;
+
+/**
+ * The notification's buttons, and which pair it gets.
+ *
+ * A notification has room for a few buttons and the browser picks them from
+ * what is **registered**, so the two pairs cannot both be on. A song gets the
+ * track skips; spoken word gets the fifteen seconds and gives up the track
+ * skips for them - in the middle of a three-hour play "next" meant the next
+ * *file*, which is not a thing anybody reaches for on a lock screen.
+ *
+ * Handing `setActionHandler` a null is what takes a button away again.
+ */
+function wireMediaSession(spoken) {
+  if (!session || wiredSpoken === spoken) return;
+  wiredSpoken = spoken;
   const handlers = {
     play: () => start(),
     pause: () => audio.pause(),
-    previoustrack: () => previous(),
-    nexttrack: () => next(true),
+    previoustrack: spoken ? null : () => previous(),
+    nexttrack: spoken ? null : () => next(true),
+    seekbackward: spoken ? (d) => skipBy(-((d && d.seekOffset) || SKIP_SECONDS)) : null,
+    seekforward: spoken ? (d) => skipBy((d && d.seekOffset) || SKIP_SECONDS) : null,
     seekto: (details) => {
       if (!details || typeof details.seekTime !== 'number') return;
       if (details.fastSeek && typeof audio.fastSeek === 'function') audio.fastSeek(details.seekTime);
@@ -999,9 +1036,6 @@ function wireMediaSession() {
       updatePositionState(true);
     },
   };
-  // Deliberately no seekbackward/seekforward: a notification only has room for
-  // a few buttons and the browser picks them from what is registered, so those
-  // two would compete with skipping a track - which is what this is for.
   for (const [action, handler] of Object.entries(handlers)) {
     try {
       session.setActionHandler(action, handler);
@@ -1119,4 +1153,5 @@ audio.addEventListener('error', () => {
   if (audio.getAttribute('src')) next(true);
 });
 
-wireMediaSession();
+// Music until a track says otherwise; `updateMediaSession` does the swap.
+wireMediaSession(false);

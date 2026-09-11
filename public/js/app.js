@@ -1992,6 +1992,8 @@ const el = {
   nextBtn: document.getElementById('btn-next'),
   shuffleBtn: document.getElementById('btn-shuffle'),
   repeatBtn: document.getElementById('btn-repeat'),
+  back15Btn: document.getElementById('btn-back15'),
+  fwd15Btn: document.getElementById('btn-fwd15'),
   muteBtn: document.getElementById('btn-mute'),
   queueBtn: document.getElementById('btn-queue'),
   visualBtn: document.getElementById('btn-visualizer'),
@@ -2037,6 +2039,8 @@ const el = {
 el.playBtn.addEventListener('click', () => player.toggle());
 el.prevBtn.addEventListener('click', () => player.previous());
 el.nextBtn.addEventListener('click', () => player.next(true));
+el.back15Btn.addEventListener('click', () => player.skipBy(-player.SKIP_SECONDS));
+el.fwd15Btn.addEventListener('click', () => player.skipBy(player.SKIP_SECONDS));
 el.shuffleBtn.addEventListener('click', () => player.setShuffle(!player.state.shuffle));
 el.repeatBtn.addEventListener('click', () => player.cycleRepeat());
 el.muteBtn.addEventListener('click', () => player.toggleMute());
@@ -2553,6 +2557,20 @@ function renderPlayer(s) {
     closeChapters();
   }
 
+  // Spoken word gets a transport of its own: the two fifteen-second skips in
+  // place of prev/next, and no shuffle or repeat with them. Stepping to the
+  // next *file* is not what "weiter" means in the middle of a three-hour play,
+  // and a book is one thing played in one order - so both modes mean as little
+  // here as the rating the stars already stop offering below. With nothing
+  // playing the bar keeps the music transport rather than emptying out.
+  const spoken = player.isSpoken(track);
+  el.shuffleBtn.hidden = spoken;
+  el.repeatBtn.hidden = spoken;
+  el.prevBtn.hidden = spoken;
+  el.nextBtn.hidden = spoken;
+  el.back15Btn.hidden = !spoken;
+  el.fwd15Btn.hidden = !spoken;
+
   if (track) {
     el.nowArt.innerHTML = art(track.cover, track.album || track.title);
 
@@ -2592,7 +2610,6 @@ function renderPlayer(s) {
         : esc(track.artist);
     // Spoken word is neither rated nor put into playlists, so the two controls
     // that offer exactly that have nothing to say about an episode.
-    const spoken = !!(track.podcastId || track.audiobookId);
     el.nowStars.innerHTML = spoken ? '' : starButtons(track.stars, track.id);
     el.nowAdd.hidden = spoken;
   } else {

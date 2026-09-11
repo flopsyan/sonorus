@@ -69,6 +69,28 @@ const FILL = {
   pause: '<rect x="6.5" y="4.5" width="4" height="15" rx="1.2"/><rect x="13.5" y="4.5" width="4" height="15" rx="1.2"/>',
   'skip-back': '<path d="M18.5 5.4v13.2L9 12z"/><rect x="5" y="5" width="2.6" height="14" rx="1.2"/>',
   'skip-forward': '<path d="M5.5 5.4v13.2L15 12z"/><rect x="16.4" y="5" width="2.6" height="14" rx="1.2"/>',
+  // The two skips spoken word gets instead. The circular arrow carries the
+  // number rather than wearing it in the glyph: fifteen is exactly the step no
+  // ready-made icon set draws, and an arrow that says 10 while the button jumps
+  // 15 is a control that lies about what it does.
+  //
+  // The ring is drawn rather than taken from Material's Replay, and that is the
+  // whole point: Replay's circle is small enough inside its box that a
+  // two-digit number at a readable size runs onto the stroke (measured, not
+  // guessed - 8.02 units of text in a 12-unit opening). This one is a stroked
+  // arc at r=8.5 with the top-left quarter left open for the arrowhead, so the
+  // opening is 14.8 units wide and the number sits in it with room to spare.
+  // Forward is the same arc and head mirrored, with the number left the right
+  // way round.
+  'skip-back-15':
+    '<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M12 0.4v6.2L7.8 3.5z"/>' +
+    '<text x="12" y="15.2" text-anchor="middle" font-size="9" font-weight="700">15</text>',
+  'skip-forward-15':
+    '<g transform="translate(24,0) scale(-1,1)">' +
+    '<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M12 0.4v6.2L7.8 3.5z"/></g>' +
+    '<text x="12" y="15.2" text-anchor="middle" font-size="9" font-weight="700">15</text>',
   more: '<circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/>',
   grip: '<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',
   star: '<path d="m12 2.6 2.9 6 6.6.9-4.8 4.7 1.2 6.6L12 17.7l-5.9 3.1 1.2-6.6L2.5 9.5l6.6-.9z"/>',

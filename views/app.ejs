@@ -143,7 +143,14 @@
       <div class="transport-buttons">
         <button type="button" class="icon-btn" id="btn-shuffle" aria-label="Zufallswiedergabe" aria-pressed="false" data-icon="shuffle"></button>
         <button type="button" class="icon-btn" id="btn-prev" aria-label="Vorheriger Titel" data-icon="skip-back"></button>
+        <!-- Spoken word takes these two in place of prev/next, and drops shuffle
+             and repeat with them. Drawn a little larger than the arrows they
+             stand in for, because they have to carry a two-digit number. -->
+        <button type="button" class="icon-btn" id="btn-back15" hidden
+                aria-label="15 Sekunden zurück" data-icon="skip-back-15" data-icon-size="24"></button>
         <button type="button" class="play-btn" id="btn-play" aria-label="Wiedergabe" data-icon="play"></button>
+        <button type="button" class="icon-btn" id="btn-fwd15" hidden
+                aria-label="15 Sekunden vor" data-icon="skip-forward-15" data-icon-size="24"></button>
         <button type="button" class="icon-btn" id="btn-next" aria-label="Nächster Titel" data-icon="skip-forward"></button>
         <button type="button" class="icon-btn" id="btn-repeat" aria-label="Wiederholen: aus" data-icon="repeat"></button>
       </div>
