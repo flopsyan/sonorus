@@ -407,12 +407,6 @@ addColumn('audiobooks', 'year', 'INTEGER');
 addColumn('audiobooks', 'narrator_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('audiobooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
-// A year set by hand on a book that is read. Locked for the same reason the
-// spoken word's date is: an EPUB that carries the wrong year carries it on
-// every scan, so a correction has to say "leave this alone" or it lasts until
-// the next one.
-addColumn('ebooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
-
 // 'book' or 'drama'. Everything that reads this table takes it as an argument,
 // so the two libraries stay apart everywhere the listener looks while sharing
 // every query, every edit and every chapter behind it. Existing rows default to
@@ -488,6 +482,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ebook_progress_user
     ON ebook_progress(user_id, updated_at DESC);
 `);
+
+// A year set by hand on a book that is read. Locked for the same reason the
+// spoken word's date is: an EPUB that carries the wrong year carries it on
+// every scan, so a correction has to say "leave this alone" or it lasts until
+// the next one.
+//
+// Down here rather than up with the other columns, and that is the whole point:
+// ebooks is created below the migration block, so on a *fresh* database the
+// ALTER ran against a table that did not exist yet and the server died on
+// "no such table: ebooks" before it ever listened. An existing install had the
+// table from an earlier release and never noticed. Same trap as audiobooks.kind
+// in August: a migration may only stand after the table it names.
+addColumn('ebooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
 // --- One-off data migrations ------------------------------------------------
 // Unlike the columns above, these rewrite rows, so they must not run twice. The
