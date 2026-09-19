@@ -909,6 +909,11 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 }
 .stars .star .icon { width: 15px; height: 15px; }
 .stars .star.on { color: var(--accent); }
+/* A rating the server has not confirmed yet: the same amber, turned down. The
+   tap has been registered and is queued, and the full colour is what says it
+   really arrived. A rating being taken away keeps its stars lit here until the
+   server agrees, which is why this can show while the value is already 0. */
+.stars.waiting .star.on { color: var(--accent-dim); }
 /* A read-only widget is spans, so there is nothing to click anyway - but the
    rule stays for the one that is buttons: the rating dialog renders the same
    widget disabled. pointer-events is what lets a click through to the album

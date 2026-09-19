@@ -32,7 +32,13 @@ async function request(method, path, body, extra) {
     );
   }
   if (!res.ok || data.ok === false) {
-    throw new Error(data.message || 'Da ist etwas schiefgelaufen.');
+    const error = new Error(data.message || 'Da ist etwas schiefgelaufen.');
+    // The server's own word for what went wrong, for the callers that have to
+    // tell "this can never work" from "not right now". The rating queue is the
+    // one that needs it: a track someone deleted must not block everything
+    // queued behind it, and nothing else may be dropped.
+    error.code = data.error || `http_${res.status}`;
+    throw error;
   }
   return data;
 }

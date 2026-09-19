@@ -3,6 +3,7 @@
 
 import { icon, paintIcons } from './icons.js';
 import { duration, releaseDate } from './format.js';
+import { draft } from './pending.js';
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -81,10 +82,21 @@ function starRow(value, attrs, readonly) {
 }
 
 // The stars of one song.
+//
+// A rating still on its way to the server is drawn instead of the value the
+// caller holds, and the widget says so with `waiting`. Reading the queue here
+// rather than at each of the four call sites is what makes the pale state
+// survive a re-render, a navigation and a reload without any of them knowing
+// the queue exists.
 export function stars(value, trackId, readonly = false) {
-  const inner = starRow(value, (n) => `data-rate="${n}" data-track-id="${trackId}"`, readonly);
-  return `<div class="stars${readonly ? ' readonly' : ''}" data-stars-for="${trackId}"
-            role="group" aria-label="Bewertung">${inner}</div>`;
+  const waiting = draft(trackId);
+  const inner = starRow(
+    waiting ? waiting.shown : value,
+    (n) => `data-rate="${n}" data-track-id="${trackId}"`,
+    readonly
+  );
+  return `<div class="stars${readonly ? ' readonly' : ''}${waiting ? ' waiting' : ''}"
+            data-stars-for="${trackId}" role="group" aria-label="Bewertung">${inner}</div>`;
 }
 
 // --- Track list -------------------------------------------------------------

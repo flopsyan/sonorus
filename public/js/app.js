@@ -14,6 +14,7 @@ import {
 import * as views from './views.js';
 import * as player from './player.js';
 import * as qualityPref from './quality.js';
+import * as pendingRatings from './pending.js';
 
 const content = document.getElementById('content');
 const sidebarNav = document.getElementById('sidebar-nav');
@@ -1881,30 +1882,92 @@ async function markEpisode(track, completed) {
   }
 }
 
+// A rating is written down where the user can see it and sent afterwards.
+//
+// It used to be the other way round, and a request that failed left nothing but
+// a toast behind: on a connection that drops for a second the rating was gone,
+// and the song turned up unrated again days later in the middle of a random
+// run. Now it goes into a queue that outlives the page, the stars show pale
+// until the server has it, and [flushRatings] sends what is left on the next
+// connection.
 async function rate(trackId, value) {
   const track = view.tracks.find((t) => t.id === trackId) || player.currentTrack();
+  const onScreen = track && track.id === trackId ? track.stars : 0;
   // Clicking the star a track already has clears the rating - the usual way to
-  // undo a rating without a separate control.
-  const next = track && track.stars === value ? 0 : value;
+  // undo one without a separate control. What counts as "already has" is the
+  // queue's value where there is one, or a second click would be measured
+  // against the rating the server still holds.
+  const current = pendingRatings.currentStars(trackId, onScreen);
+  const next = current === value ? 0 : value;
+  // Taking a rating away keeps its stars on screen, pale, until the server
+  // agrees: a row that empties at once has nothing left to show as waiting.
+  pendingRatings.put(trackId, next, next || current);
+  paintRating(trackId, next);
   try {
     const res = await api.rate(trackId, next);
+    pendingRatings.clear(trackId);
     shell.starCounts = res.counts;
-    for (const t of view.tracks) if (t.id === trackId) t.stars = res.stars;
-    // The player bar redraws itself through applyRating -> renderPlayer, so
-    // only the widgets inside the current view are replaced here.
-    player.applyRating(trackId, res.stars);
-    content.querySelectorAll(`[data-stars-for="${trackId}"]`).forEach((node) => {
-      node.outerHTML = stars(res.stars, trackId, node.classList.contains('readonly'));
-    });
+    paintRating(trackId, res.stars);
     renderSidebar();
     // The star playlists are generated, so the list you are looking at changes -
     // but the user did not navigate anywhere, so they stay where they were. The
     // same goes for the ratings of one artist, which are that list narrowed down.
     if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
-  } catch (err) {
-    toast(err.message, 'err');
+  } catch {
+    // Deliberately not an error: nothing was lost, it is written down. Saying
+    // "schiefgelaufen" about a rating that is safely queued is exactly what
+    // makes someone give it a second time.
+    toast('Bewertung gemerkt, wird übertragen sobald der Server da ist.');
   }
 }
+
+// Every widget showing this track's rating, plus the copies the queue holds.
+// `stars()` reads the queue itself, so the value handed in here only decides
+// what is drawn once the entry is gone.
+function paintRating(trackId, value) {
+  for (const t of view.tracks) if (t.id === trackId) t.stars = value;
+  // The player bar redraws itself through applyRating -> renderPlayer, so only
+  // the widgets inside the current view are replaced here.
+  player.applyRating(trackId, value);
+  content.querySelectorAll(`[data-stars-for="${trackId}"]`).forEach((node) => {
+    node.outerHTML = stars(value, trackId, node.classList.contains('readonly'));
+  });
+}
+
+// Errors that will read exactly the same way tomorrow. Everything else - a
+// proxy, a server mid-restart, no network at all - is a "not now" and the
+// rating stays queued. Dropping one over a hiccup is the bug this queue exists
+// for, so the benefit of the doubt goes to keeping it.
+const PERMANENT_RATING_ERRORS = new Set(['not_found', 'invalid_stars']);
+
+// What the queue still holds. Runs when the page comes up and whenever the
+// browser says there is a network again, so a rating given in a dead spot goes
+// up by itself instead of having to be given a second time.
+async function flushRatings() {
+  let sent = 0;
+  for (const [trackId, value] of pendingRatings.entries()) {
+    try {
+      const res = await api.rate(trackId, value);
+      pendingRatings.clear(trackId);
+      shell.starCounts = res.counts;
+      paintRating(trackId, res.stars);
+      sent += 1;
+    } catch (err) {
+      if (err && PERMANENT_RATING_ERRORS.has(err.code)) {
+        pendingRatings.clear(trackId);
+        continue;
+      }
+      // No server. The rest of the queue is not worth trying now.
+      break;
+    }
+  }
+  if (sent) {
+    renderSidebar();
+    if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
+  }
+}
+
+window.addEventListener('online', flushRatings);
 
 // --- Names that had to be cut off -------------------------------------------
 
@@ -2631,6 +2694,12 @@ function starButtons(value, trackId) {
   const wrapper = document.createElement('div');
   wrapper.innerHTML = stars(value, trackId);
   el.nowStars.dataset.starsFor = trackId;
+  // Only the buttons come from the widget, so the waiting state has to be
+  // carried onto the container by hand - it is the .stars element here.
+  el.nowStars.classList.toggle(
+    'waiting',
+    wrapper.firstElementChild.classList.contains('waiting')
+  );
   return wrapper.firstElementChild.innerHTML;
 }
 
@@ -3739,6 +3808,9 @@ async function boot() {
   renderPlayer(player.state);
 
   await render();
+
+  // Anything rated in a dead spot the last time this page was open.
+  flushRatings();
 
   // A scan kicked off by the server on start finishes without anyone watching;
   // refresh the shell once it is done so the counts are right.
