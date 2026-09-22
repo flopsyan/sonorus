@@ -79,6 +79,7 @@ const ROUTES = [
   [/^\/ebooks\/authors\/(\d+)$/, views.ebookAuthor, ['id']],
   [/^\/ebooks\/books\/(\d+)$/, views.ebook, ['id']],
   [/^\/ebooks\/books\/(\d+)\/read$/, views.reader, ['id']],
+  [/^\/videos$/, videoViews.videos],
   [/^\/movies$/, videoViews.movies],
   [/^\/movies\/(\d+)$/, videoViews.movie, ['id']],
   [/^\/shows$/, videoViews.shows],
@@ -381,14 +382,13 @@ function renderSidebar() {
     active: path.startsWith('/ebooks'),
   });
 
-  const watching = [
-    { href: '/movies', label: 'Filme', iconName: 'film', also: ['/collections'] },
-    { href: '/shows', label: 'Serien', iconName: 'tv', also: [] },
-  ]
-    .map(({ also, ...item }) =>
-      navItem({ ...item, active: [item.href, ...also].some((p) => path.startsWith(p)) })
-    )
-    .join('');
+  // One entry for both, right under E-Books; the page splits them into tabs.
+  const watching = navItem({
+    href: '/videos',
+    label: 'Filme & Serien',
+    iconName: 'film',
+    active: ['/videos', '/movies', '/shows', '/collections', '/people'].some((p) => path.startsWith(p)),
+  });
 
   const starItems = [5, 4, 3, 2, 1]
     .map((n) =>
@@ -459,9 +459,6 @@ function renderSidebar() {
 
     <nav class="nav-group">
       ${reading}
-    </nav>
-
-    <nav class="nav-group">
       ${watching}
     </nav>
 

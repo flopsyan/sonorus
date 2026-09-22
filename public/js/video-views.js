@@ -220,7 +220,16 @@ function noTmdbHint(data) {
   return `<p class="v-hint">${icon('info', 15)} Ohne <code>TMDB_API_KEY</code> zeigt Sonorus nur, was in den Ordnern liegt: keine Beschreibungen, keine Besetzung, keine Genres.</p>`;
 }
 
-// --- Filme -----------------------------------------------------------------------------
+// --- Filme & Serien: Übersicht, Filme, Serien ---------------------------------------------
+
+// One sidebar entry, three tabs. The tabs are links, so each has its own address.
+function tabs(active) {
+  const tab = (href, key, label) =>
+    `<a class="v-tab${key === active ? ' active' : ''}" href="${href}" data-link role="tab" aria-selected="${key === active}">${label}</a>`;
+  return `<nav class="v-tabs" role="tablist" aria-label="Filme und Serien">
+      ${tab('/videos', 'home', 'Übersicht')}${tab('/movies', 'movies', 'Filme')}${tab('/shows', 'shows', 'Serien')}
+    </nav>`;
+}
 
 function pickFeatured(list) {
   const withArt = list.filter((t) => t.backdrop);
@@ -232,39 +241,49 @@ function pickFeatured(list) {
   return pool[day % pool.length];
 }
 
-export async function movies(_params, ctx) {
-  const data = await api.movies();
-  if (!data.movies.length) {
+function featuredHero(t) {
+  const film = t.kind === 'movie';
+  return hero({
+    backdrop: t.backdrop,
+    logo: t.logo,
+    title: t.title,
+    label: film ? 'Film-Tipp' : 'Serien-Tipp',
+    meta: facts([
+      t.year,
+      certLabel(t.certification),
+      film ? (t.duration ? fmt.durationLong(t.duration) : '') : t.seasons ? fmt.plural(t.seasons, 'Staffel', 'Staffeln') : '',
+    ]),
+    overview: t.overview,
+    actions: film
+      ? `<a class="btn btn-primary" href="/watch/${t.videoId}" data-link>${icon('play', 16)} ${t.progress.started ? 'Fortsetzen' : 'Abspielen'}</a>
+         <a class="btn btn-ghost" href="/movies/${t.id}" data-link>${icon('info', 16)} Mehr Infos</a>`
+      : `<a class="btn btn-primary" href="/shows/${t.id}" data-link>${icon('info', 16)} Zur Serie</a>`,
+  });
+}
+
+const settingsLink = '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>';
+
+export async function videos() {
+  const data = await api.videoHome();
+  if (!data.movies.length && !data.shows.length) {
     return {
-      title: 'Filme',
-      html: `<div class="page-head"><span class="rack-label">Bibliothek</span><h1>Filme</h1></div>
-        ${empty('Noch keine Filme gefunden', 'Sonorus liest den Ordner unter MOVIE_DIR: ein Ordner je Film, etwa "Fight Club (1999)", darin die Videodatei. Starte einen Scan, sobald dort etwas liegt.', '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>')}`,
+      title: 'Filme & Serien',
+      html: `${tabs('home')}
+        ${empty('Noch keine Filme und Serien gefunden', 'Sonorus liest den Ordner unter VIDEO_DIR: darin "movies" mit einem Ordner je Film und "shows" mit einem Ordner je Serie. Starte einen Scan, sobald dort etwas liegt.', settingsLink)}`,
     };
   }
-
-  const featured = pickFeatured(data.movies);
-  const recent = data.movies.slice().sort(SORTS.added.cmp).slice(0, 16);
-  const state = browseState(ctx, 'movies');
+  const featured = pickFeatured([...data.movies, ...data.shows]);
+  const newMovies = data.movies.slice().sort(SORTS.added.cmp).slice(0, 16);
+  const newShows = data.shows.slice().sort(SORTS.added.cmp).slice(0, 16);
 
   return {
-    title: 'Filme',
-    html: `${
-      featured
-        ? hero({
-            backdrop: featured.backdrop,
-            logo: featured.logo,
-            title: featured.title,
-            label: 'Film-Tipp',
-            meta: facts([featured.year, certLabel(featured.certification), featured.duration ? fmt.durationLong(featured.duration) : '']),
-            overview: featured.overview,
-            actions: `<a class="btn btn-primary" href="/watch/${featured.videoId}" data-link>${icon('play', 16)} ${featured.progress.started ? 'Fortsetzen' : 'Abspielen'}</a>
-              <a class="btn btn-ghost" href="/movies/${featured.id}" data-link>${icon('info', 16)} Mehr Infos</a>`,
-          })
-        : `<div class="page-head"><span class="rack-label">Bibliothek</span><h1>Filme</h1></div>`
-    }
+    title: 'Filme & Serien',
+    html: `${tabs('home')}
+      ${featured ? featuredHero(featured) : ''}
       ${noTmdbHint(data)}
       ${wideShelf('Weiterschauen', data.continue)}
-      ${shelf('Zuletzt hinzugefügt', recent.map(movieCard))}
+      ${shelf('Neue Filme', newMovies.map(movieCard), data.movies.length ? '<a class="rack-label" href="/movies" data-link>Alle Filme</a>' : '')}
+      ${shelf('Neue Folgen', newShows.map(showCard), data.shows.length ? '<a class="rack-label" href="/shows" data-link>Alle Serien</a>' : '')}
       ${shelf(
         'Filmreihen',
         data.collections.map((c) =>
@@ -277,63 +296,41 @@ export async function movies(_params, ctx) {
           })
         ),
         data.collections.length ? '<a class="rack-label" href="/collections" data-link>Alle Reihen</a>' : ''
-      )}
-      <section class="section">
-        <div class="section-head"><h2>Alle Filme</h2></div>
-        ${browseBar('movies', data.genres, state)}
-        <div class="grid v-grid" data-browse-grid="movies"></div>
-      </section>`,
-    after: (root) => {
-      applyProgress(root);
-      wireBrowse(root, ctx, 'movies', data.movies, movieCard);
-    },
+      )}`,
+    after: applyProgress,
   };
 }
 
-// --- Serien ----------------------------------------------------------------------------
-
-export async function shows(_params, ctx) {
-  const data = await api.shows();
-  if (!data.shows.length) {
+// The whole list of one kind, with the filters.
+async function browsePage(ctx, key) {
+  const film = key === 'movies';
+  const data = film ? await api.movies() : await api.shows();
+  const items = film ? data.movies : data.shows;
+  const title = film ? 'Filme' : 'Serien';
+  if (!items.length) {
     return {
-      title: 'Serien',
-      html: `<div class="page-head"><span class="rack-label">Bibliothek</span><h1>Serien</h1></div>
-        ${empty('Noch keine Serien gefunden', 'Sonorus liest den Ordner unter SHOW_DIR: ein Ordner je Serie, darin "Season 01" usw. mit den Folgen. Starte einen Scan, sobald dort etwas liegt.', '<a href="/settings" class="btn btn-primary" data-link>Zu den Einstellungen</a>')}`,
+      title,
+      html: `${tabs(key)}
+        ${empty(
+          film ? 'Noch keine Filme gefunden' : 'Noch keine Serien gefunden',
+          film
+            ? 'Sonorus liest VIDEO_DIR/movies: ein Ordner je Film, etwa "Fight Club (1999)", darin die Videodatei.'
+            : 'Sonorus liest VIDEO_DIR/shows: ein Ordner je Serie, darin "Season 01" usw. mit den Folgen.',
+          settingsLink
+        )}`,
     };
   }
-  const featured = pickFeatured(data.shows);
-  const recent = data.shows.slice().sort(SORTS.added.cmp).slice(0, 16);
-  const state = browseState(ctx, 'shows');
-
   return {
-    title: 'Serien',
-    html: `${
-      featured
-        ? hero({
-            backdrop: featured.backdrop,
-            logo: featured.logo,
-            title: featured.title,
-            label: 'Serien-Tipp',
-            meta: facts([featured.year, certLabel(featured.certification), featured.seasons ? fmt.plural(featured.seasons, 'Staffel', 'Staffeln') : '']),
-            overview: featured.overview,
-            actions: `<a class="btn btn-primary" href="/shows/${featured.id}" data-link>${icon('info', 16)} Zur Serie</a>`,
-          })
-        : `<div class="page-head"><span class="rack-label">Bibliothek</span><h1>Serien</h1></div>`
-    }
-      ${noTmdbHint(data)}
-      ${wideShelf('Weiterschauen', data.continue)}
-      ${shelf('Neue Folgen', recent.map(showCard))}
-      <section class="section">
-        <div class="section-head"><h2>Alle Serien</h2></div>
-        ${browseBar('shows', data.genres, state)}
-        <div class="grid v-grid" data-browse-grid="shows"></div>
-      </section>`,
-    after: (root) => {
-      applyProgress(root);
-      wireBrowse(root, ctx, 'shows', data.shows, showCard);
-    },
+    title,
+    html: `${tabs(key)}
+      ${browseBar(key, data.genres, browseState(ctx, key))}
+      <div class="grid v-grid" data-browse-grid="${key}"></div>`,
+    after: (root) => wireBrowse(root, ctx, key, items, film ? movieCard : showCard),
   };
 }
+
+export const movies = (_params, ctx) => browsePage(ctx, 'movies');
+export const shows = (_params, ctx) => browsePage(ctx, 'shows');
 
 // --- Shared detail parts ------------------------------------------------------------------
 
@@ -721,7 +718,9 @@ export async function collection(params) {
       meta: facts([fmt.plural(c.movies.length, 'Film', 'Filme'), watched ? `${watched} gesehen` : '']),
       overview: c.overview,
       actions: next
-        ? `<a class="btn btn-primary" href="/watch/${next.videoId}" data-link>${icon('play', 16)} ${esc(watched ? `Weiter mit ${next.title}` : 'Mit dem ersten Film beginnen')}</a>`
+        ? `<a class="btn btn-primary" href="/watch/${next.videoId}" data-link>${icon('play', 16)} ${esc(
+            next.progress.started ? `${next.title} fortsetzen` : watched ? `Weiter mit ${next.title}` : 'Mit dem ersten Film beginnen'
+          )}</a>`
         : '',
     })}
       <section class="section">

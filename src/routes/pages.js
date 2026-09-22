@@ -111,6 +111,7 @@ const APP_ROUTES = [
   '/ebooks/authors/:id',
   '/ebooks/books/:id',
   '/ebooks/books/:id/read',
+  '/videos',
   '/movies',
   '/movies/:id',
   '/shows',

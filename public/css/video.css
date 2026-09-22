@@ -13,6 +13,23 @@
   --lamp-ink: #24170a;
 }
 
+/* --- Tabs: Übersicht, Filme, Serien ------------------------------------------ */
+
+.v-tabs { display: flex; gap: 26px; margin: 2px 0 22px; border-bottom: 1px solid var(--line); }
+.v-tab {
+  position: relative; padding: 4px 0 12px;
+  font-size: 1.05rem; font-weight: 650; color: var(--text-dim);
+}
+.v-tab:hover { text-decoration: none; }
+@media (hover: hover) {
+  .v-tab:hover { color: var(--text); }
+}
+.v-tab.active { color: var(--text); }
+.v-tab.active::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  border-radius: 2px; background: var(--accent);
+}
+
 /* --- Hero ----------------------------------------------------------------- */
 
 .v-hero {

@@ -43,6 +43,19 @@ function notFound(res) {
   return res.status(404).json({ ok: false, error: 'not_found', message: 'Nicht gefunden.' });
 }
 
+// The Übersicht tab: both lists, and what is running in either, newest first.
+router.get('/video-home', (req, res) => {
+  const cont = continueWatching(req.user.id);
+  res.json({
+    ok: true,
+    movies: listMovies(req.user.id),
+    shows: listShows(req.user.id),
+    continue: [...cont.movies, ...cont.shows].sort((a, b) => String(b.at).localeCompare(String(a.at))),
+    collections: listCollections(req.user.id),
+    tmdb: tmdbEnabled(),
+  });
+});
+
 router.get('/movies', (req, res) => {
   const cont = continueWatching(req.user.id);
   res.json({

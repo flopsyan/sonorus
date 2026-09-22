@@ -15,9 +15,10 @@ Position, damit eine 70-Minuten-Folge dort weitergeht, wo du aufgehört hast.
 E-Books sind die fünfte Bibliothek und die einzige, die gelesen statt gehört
 wird - mit einer Leseansicht im Browser und in der Android-App.
 
-Filme und Serien kommen als eigene Bibliotheken dazu, mit Postern, Besetzung,
+Filme und Serien teilen sich einen Eintrag direkt unter den E-Books: eine
+Übersicht und je ein Reiter für Filme und für Serien, mit Postern, Besetzung,
 Filmreihen und einem Player, der sich die Stelle merkt und die nächste Folge von
-selbst startet. Die Ordner dafür sind so aufgebaut wie bei Jellyfin.
+selbst startet. Der Ordner dafür ist so aufgebaut wie bei Jellyfin.
 
 Die Oberfläche ist eine einzige Seite - zwischen Interpreten, Alben und Playlists
 zu wechseln unterbricht die Wiedergabe nie. Gestalterisch ist sie lose an die
@@ -336,25 +337,27 @@ Seite selbst ist beide Male dieselbe.
 
 ### Filme und Serien
 
-Filme kommen aus `MOVIE_DIR`, Serien aus `SHOW_DIR`. Der Aufbau ist der von
+Filme und Serien liegen zusammen in `VIDEO_DIR`, darin `movies/` und `shows/`
+(Jellyfins `Movies/` und `Shows/` werden auch erkannt). Der Aufbau ist der von
 Jellyfin und Kodi, eine bestehende Mediathek lässt sich also so übernehmen, wie
 sie liegt:
 
 ```
-movies/
-  Fight Club (1999)/
-    Fight Club (1999).mkv
-    Fight Club (1999).de.srt        Untertitel (optional)
-    folder.jpg  backdrop.jpg  logo.png
+videos/
+  movies/
+    Fight Club (1999)/
+      Fight Club (1999).mkv
+      Fight Club (1999).de.srt        Untertitel (optional)
+      folder.jpg  backdrop.jpg  logo.png
 
-shows/
-  Breaking Bad (2008)/
-    folder.jpg  backdrop.jpg  logo.png  season01-poster.jpg
-    Season 01/
-      01 - Pilot.mkv                auch "S01E01 Pilot.mkv" oder "1x01"
-      01 - Pilot.en.srt
-      01 - Pilot-thumb.jpg
-    Specials/                       Staffel 0
+  shows/
+    Breaking Bad (2008)/
+      folder.jpg  backdrop.jpg  logo.png  season01-poster.jpg
+      Season 01/
+        01 - Pilot.mkv                auch "S01E01 Pilot.mkv" oder "1x01"
+        01 - Pilot.en.srt
+        01 - Pilot-thumb.jpg
+      Specials/                       Staffel 0
 ```
 
 - **Der Ordnername ist Titel und Jahr.** `[tmdbid-550]` im Namen legt den
@@ -369,6 +372,10 @@ shows/
   Filmreihen und jedes Bild, das im Ordner fehlt. Deutsch, mit Englisch als
   Rückfall. Ohne Schlüssel bleibt Sonorus offline und zeigt nur, was die Ordner
   hergeben. Über das Menü eines Titels lässt sich ein anderer TMDB-Treffer wählen.
+- **Ein Eintrag, drei Reiter.** "Filme & Serien" in der Seitenleiste öffnet die
+  Übersicht (Weiterschauen aus beiden, neue Filme, neue Folgen, Filmreihen);
+  die Reiter Filme und Serien zeigen die ganze Liste mit Genre, Sortierung und
+  "Nur ungesehene".
 - **Weiterschauen**: Die Stelle wird je Konto gespeichert. Ab 90 % gilt ein
   Titel als gesehen; Filme, Folgen, Staffeln und ganze Serien lassen sich auch von
   Hand als gesehen markieren. Bei Serien steht unter "Weiterschauen" die nächste
@@ -672,8 +679,7 @@ Alle Einstellungen kommen aus der Umgebung (siehe `.env.example`):
 | `AUDIOBOOK_DIR` | `./audiobooks` | Host-Pfad deines Hörbuch-Ordners (ein Ordner je Autor, darin einer je Buch), nur lesend. Dieselben Regeln wie `PODCAST_DIR` |
 | `AUDIODRAMA_DIR` | `./audiodramas` | Host-Pfad deines Hörspiel-Ordners, aufgebaut wie `AUDIOBOOK_DIR`, nur lesend. Dieselben Regeln |
 | `EBOOK_DIR` | `./ebooks` | Host-Pfad deines E-Book-Ordners, aufgebaut wie `AUDIOBOOK_DIR`, nur lesend. Dieselben Regeln |
-| `MOVIE_DIR` | `./movies` | Host-Pfad deines Film-Ordners (ein Ordner je Film), nur lesend. Darf ins Leere zeigen |
-| `SHOW_DIR` | `./shows` | Host-Pfad deines Serien-Ordners (ein Ordner je Serie, darin je Staffel), nur lesend. Darf ins Leere zeigen |
+| `VIDEO_DIR` | `./videos` | Host-Pfad des Ordners für Filme und Serien, darin `movies/` (ein Ordner je Film) und `shows/` (ein Ordner je Serie, darin je Staffel), nur lesend. Darf ins Leere zeigen |
 | `TMDB_API_KEY` | *(leer)* | Kostenloser Schlüssel von themoviedb.org für Beschreibungen, Besetzung und fehlende Bilder. Das Einzige, womit Sonorus ins Internet geht |
 | `TZ` | `Europe/Berlin` | Die Uhr, nach der die Statistik zählt. Ohne sie läuft der Container auf UTC, und jede Stunde, jeder Tag und jedes Jahr der Statistik verschiebt sich mit |
 | `PORT` | `3000` | Host-Port, unter dem die App erreichbar ist |

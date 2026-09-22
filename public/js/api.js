@@ -57,6 +57,7 @@ const keep = (keepalive) => (keepalive ? { keepalive: true } : undefined);
 export const api = {
   bootstrap: () => request('GET', '/api/bootstrap'),
 
+  videoHome: () => request('GET', '/api/video-home'),
   movies: () => request('GET', '/api/movies'),
   movie: (id) => request('GET', `/api/movies/${id}`),
   shows: () => request('GET', '/api/shows'),
