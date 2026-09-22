@@ -2573,6 +2573,10 @@ function renderPlayer(s) {
   const key = [
     track ? track.id : 0,
     track ? track.stars : 0,
+    // The server confirming a rating changes no number above, only whether the
+    // stars are still pale - so without this they stayed pale until something
+    // else in the bar changed.
+    track ? !!pendingRatings.draft(track.id) : false,
     s.playing,
     s.shuffle,
     s.repeat,
