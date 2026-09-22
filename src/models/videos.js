@@ -3,7 +3,7 @@
 
 import path from 'node:path';
 
-import db, { movieDir, showDir } from '../db.js';
+import db, { movieRoot, showRoot } from '../db.js';
 
 const art = (name) => (name ? `/video-art/${name}` : null);
 const json = (text, fallback) => {
@@ -20,7 +20,7 @@ const EPISODE_ORDER = `v.season = 0, v.season, v.episode IS NULL, v.episode, v.n
 const RESUME_MIN = 30;
 
 export function absolutePath(video, kind) {
-  return path.join(kind === 'movie' ? movieDir : showDir, video.path);
+  return path.join(kind === 'movie' ? movieRoot() : showRoot(), video.path);
 }
 
 function genresOf(titleId) {

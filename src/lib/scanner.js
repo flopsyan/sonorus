@@ -50,8 +50,9 @@ import db, {
   audiobookDir,
   audiodramaDir,
   ebookDir,
-  movieDir,
-  showDir,
+  videoDir,
+  movieRoot,
+  showRoot,
   getMeta,
   setMeta,
 } from '../db.js';
@@ -114,7 +115,9 @@ const state = {
 export function scanState() {
   return {
     ...state,
-    musicDir, podcastDir, audiobookDir, audiodramaDir, ebookDir, movieDir, showDir,
+    musicDir, podcastDir, audiobookDir, audiodramaDir, ebookDir, videoDir,
+    movieDir: movieRoot(),
+    showDir: showRoot(),
     tmdb: tmdbEnabled(),
     tmdbError: getMeta('tmdb_error') || '',
   };

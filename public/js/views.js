@@ -2011,8 +2011,10 @@ function scanBlock(scan, lastScan) {
       ${dirRow('Podcast-Ordner', scan.podcastDir, ['Podcast / #001 Titel.mp3'])}
       ${dirRow('Hörbuch-Ordner', scan.audiobookDir, ['Autor / Buch / 01 - Teil.mp3'])}
       ${dirRow('Hörspiel-Ordner', scan.audiodramaDir, ['Autor / Hörspiel / 01 - Teil.mp3'])}
-      ${dirRow('Film-Ordner', scan.movieDir, ['Titel (Jahr) / Titel (Jahr).mkv'])}
-      ${dirRow('Serien-Ordner', scan.showDir, ['Serie (Jahr) / Season 01 / 01 - Titel.mkv'])}
+      ${dirRow('Film- und Serien-Ordner', scan.videoDir, [
+        'movies / Titel (Jahr) / Titel (Jahr).mkv',
+        'shows / Serie (Jahr) / Season 01 / 01 - Titel.mkv',
+      ])}
       <div class="setting-row">
         <div>
           <div class="setting-label">Metadaten für Filme und Serien</div>

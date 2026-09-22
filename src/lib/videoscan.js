@@ -1,9 +1,9 @@
-// Films and series: walks MOVIE_DIR and SHOW_DIR and writes what it finds into
-// the video tables. The layout is the one Jellyfin and Kodi use:
+// Films and series: walks VIDEO_DIR/movies and VIDEO_DIR/shows and writes what
+// it finds into the video tables. The layout is the one Jellyfin and Kodi use:
 //
-//   movies/<Titel (Jahr)>/<Titel (Jahr)>.mkv
-//   shows/<Serie (Jahr)>/Season 01/01 - Titel.mkv     (also S01E01, 1x01)
-//   shows/<Serie (Jahr)>/Specials/...                  season 0
+//   videos/movies/<Titel (Jahr)>/<Titel (Jahr)>.mkv
+//   videos/shows/<Serie (Jahr)>/Season 01/01 - Titel.mkv     (also S01E01, 1x01)
+//   videos/shows/<Serie (Jahr)>/Specials/...                  season 0
 //
 // Artwork lying next to the files (folder.jpg, backdrop.jpg, logo.png,
 // season01-poster.jpg, <Folge>-thumb.jpg) wins over anything TMDB offers.
@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import db, { movieDir, showDir, videoArtDir, getMeta, setMeta } from '../db.js';
+import db, { movieRoot, showRoot, videoArtDir, getMeta, setMeta } from '../db.js';
 import { probeVideo, resizeImage } from './media.js';
 
 const VIDEO_EXT = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.avi', '.webm', '.ts', '.m2ts', '.mpg', '.mpeg', '.wmv']);
@@ -142,7 +142,9 @@ async function videosUnder(dir, depth = 0) {
  * that belong to it. Read before anything is written, so the scan can count.
  */
 export async function collectVideoWork() {
-  const work = { movies: [], shows: [], files: 0, roots: {} };
+  const movieDir = movieRoot();
+  const showDir = showRoot();
+  const work = { movies: [], shows: [], files: 0, roots: {}, dirs: { movie: movieDir, show: showDir } };
 
   work.roots.movie = fs.existsSync(movieDir);
   for (const entry of work.roots.movie ? await readDir(movieDir) : []) {
@@ -355,7 +357,7 @@ export async function indexVideos(work, stats) {
     seenTitles.add(id);
     const file = movie.files[0];
     const base = path.basename(file, path.extname(file));
-    await tryFile(() => indexVideo(id, movieDir, file, { season: null, episode: null, episodeEnd: null, name: '' }, force, stats));
+    await tryFile(() => indexVideo(id, work.dirs.movie, file, { season: null, episode: null, episodeEnd: null, name: '' }, force, stats));
     if (!movie.loose) applyLocalArt('video_titles', { sql: 'id = ?', args: [id] }, await titleArt(movie.dir, base), row);
   }
 
@@ -374,7 +376,7 @@ export async function indexVideos(work, stats) {
       if (season === null) season = parsed.season ?? 1;
       const place = { season, episode: parsed.episode, episodeEnd: parsed.episodeEnd, name: parsed.name };
       await tryFile(async () => {
-        const videoId = await indexVideo(id, showDir, file, place, force, stats);
+        const videoId = await indexVideo(id, work.dirs.show, file, place, force, stats);
         const still = await localArt(
           await findImage(path.dirname(file), [`${base}-thumb`, base]),
           ART_WIDTH.still
@@ -418,7 +420,7 @@ export function pruneVideos(work, seen) {
     const found = kind === 'movie' ? work.movies.length : work.shows.length;
     const rows = db.prepare('SELECT COUNT(*) AS c FROM video_titles WHERE kind = ?').get(kind).c;
     if ((!work.roots[kind] || !found) && rows) {
-      console.warn(`Sonorus: ${kind === 'movie' ? 'MOVIE_DIR' : 'SHOW_DIR'} is missing or empty, keeping its ${rows} titles.`);
+      console.warn(`Sonorus: ${work.dirs[kind]} is missing or empty, keeping its ${rows} titles.`);
       continue;
     }
     const videos = db

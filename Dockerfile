@@ -19,8 +19,7 @@ ENV NODE_ENV=production \
     DATA_DIR=/app/data \
     TRANSCODE_DIR=/app/transcodes \
     MUSIC_DIR=/music \
-    MOVIE_DIR=/movies \
-    SHOW_DIR=/shows \
+    VIDEO_DIR=/videos \
     SITE_NAME=Sonorus
 
 WORKDIR /app

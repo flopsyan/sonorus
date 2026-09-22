@@ -45,10 +45,22 @@ const audiodramaDir = path.resolve(process.env.AUDIODRAMA_DIR || path.join(proje
 // both hears and reads is one author.
 const ebookDir = path.resolve(process.env.EBOOK_DIR || path.join(projectRoot, 'ebooks'));
 
-// Films and series, one root each, laid out the way Jellyfin and Kodi lay them
-// out so an existing library can be copied over as it is.
-const movieDir = path.resolve(process.env.MOVIE_DIR || path.join(projectRoot, 'movies'));
-const showDir = path.resolve(process.env.SHOW_DIR || path.join(projectRoot, 'shows'));
+// Films and series share one root with a folder for each, laid out the way
+// Jellyfin and Kodi lay them out so an existing library can be copied over as it
+// is. Jellyfin's own folder names (Movies, Shows) are found as well.
+const videoDir = path.resolve(process.env.VIDEO_DIR || path.join(projectRoot, 'videos'));
+
+// Looked up on every call, so a folder created after the start is found by the
+// next scan without a restart.
+function videoRoot(names) {
+  for (const name of names) {
+    const candidate = path.join(videoDir, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(videoDir, names[0]);
+}
+export const movieRoot = () => videoRoot(['movies', 'Movies']);
+export const showRoot = () => videoRoot(['shows', 'Shows']);
 
 // Posters, backdrops, stills and portraits, resized once. Apart from the music
 // covers because a rescan of the video side rewrites it independently.
@@ -510,7 +522,7 @@ db.exec(`
 addColumn('ebooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
 // --- Films and series ---------------------------------------------------------
-// A title is a film or a series: one folder under MOVIE_DIR or SHOW_DIR. The
+// A title is a film or a series: one folder under VIDEO_DIR/movies or /shows. The
 // folder name is its identity and its name, the way the music library works;
 // TMDB only adds what a folder cannot say. Paths in `videos` are relative to
 // the root, so remounting the library somewhere else keeps every position.
@@ -792,8 +804,7 @@ export {
   audiobookDir,
   audiodramaDir,
   ebookDir,
-  movieDir,
-  showDir,
+  videoDir,
   videoArtDir,
   subtitleDir,
 };
