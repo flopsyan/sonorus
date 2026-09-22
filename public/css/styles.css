@@ -1644,6 +1644,9 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   .issue.missing { grid-template-columns: 1fr auto; }
   .issue.missing .stars { grid-column: 1; }
 }
+/* Counted down from the page while entries go, so it has to be able to hide -
+   and `display` on the class would beat the attribute on its own. */
+.issue-count[hidden] { display: none; }
 .issue-count {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--danger-soft); color: var(--danger);

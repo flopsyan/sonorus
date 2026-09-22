@@ -2092,6 +2092,11 @@ export async function settings(_params, ctx) {
     api.quality().catch(() => null),
   ]);
 
+  // Both kinds in one number, and the span is always there even at zero: it is
+  // counted down again from the page as entries go, and a span that was never
+  // rendered cannot be written to.
+  const openNotices = issueData.issues.length + missingData.missing.length;
+
   return {
     title: 'Einstellungen',
     html: `${pageHead('Konto & Bibliothek', 'Einstellungen', '')}
@@ -2114,13 +2119,9 @@ export async function settings(_params, ctx) {
 
       <div class="panel">
         <h2>Mitteilungen
-          ${
-            issueData.issues.length + missingData.missing.length
-              ? `<span class="issue-count">${fmt.number(
-                  issueData.issues.length + missingData.missing.length
-                )}</span>`
-              : ''
-          }
+          <span class="issue-count" id="notice-count"${openNotices ? '' : ' hidden'}>${
+            openNotices ? fmt.number(openNotices) : ''
+          }</span>
         </h2>
 
         <div class="rack-label mt-sm">Datei weg, Bewertung geblieben</div>
@@ -2369,6 +2370,16 @@ function applyProgress(root) {
 // Settings is the one view with enough interaction to warrant its own wiring.
 function wireSettings(root, ctx) {
   let scanTimer = null;
+  // The number beside the heading is written at render time, so it has to be
+  // counted down again here - otherwise clearing the last notice leaves a page
+  // that still says there are two, until it is reloaded.
+  const drawNoticeCount = () => {
+    const badge = root.querySelector('#notice-count');
+    if (!badge) return;
+    const open = root.querySelectorAll('#missing-block .issue, #issues-block .issue').length;
+    badge.textContent = open ? fmt.number(open) : '';
+    badge.hidden = !open;
+  };
   // root is #content and outlives the view, so the delegated listener below has
   // to go when the view does - otherwise a second visit to the settings page
   // leaves two handlers behind and every click fires twice.
@@ -2429,6 +2440,7 @@ function wireSettings(root, ctx) {
         const res = await api.dropMissing(drop.dataset.dropMissing);
         const block = root.querySelector('#missing-block');
         if (block) block.innerHTML = missingRows(res.missing);
+        drawNoticeCount();
         ctx.refreshShell();
       } catch (err) {
         toast(err.message, 'err');
@@ -2441,6 +2453,7 @@ function wireSettings(root, ctx) {
       try {
         await api.dismissIssue(dismiss.dataset.dismissIssue);
         dismiss.closest('.issue').remove();
+        drawNoticeCount();
         ctx.refreshShell();
       } catch (err) {
         toast(err.message, 'err');
