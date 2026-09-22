@@ -1980,6 +1980,70 @@ async function flushRatings() {
 
 window.addEventListener('online', flushRatings);
 
+// --- Scrollbars that keep out of the way ------------------------------------
+
+// The half of the Chromium scrollbar in styles.css that CSS cannot do: shown
+// while the pointer moves or anything scrolls, gone after a second of rest,
+// full width under the pointer. 1000 ms and a 400 ms fade are Firefox's own
+// timings on GTK. Firefox draws its own bar and skips all of this.
+if (!touch.matches && CSS.supports('selector(::-webkit-scrollbar)')) {
+  const REST_MS = 1000;
+  const FADE_STEP_MS = 100;
+  const FADE_STEPS = 3;
+  const root = document.documentElement;
+  let restTimer = null;
+  let hovered = null;
+
+  const fade = (step) => {
+    if (hovered) return;
+    if (step > FADE_STEPS) {
+      root.classList.remove('scrollbars-shown');
+      delete root.dataset.scrollbarFade;
+      return;
+    }
+    root.dataset.scrollbarFade = String(step);
+    restTimer = setTimeout(() => fade(step + 1), FADE_STEP_MS);
+  };
+
+  const wake = () => {
+    root.classList.add('scrollbars-shown');
+    delete root.dataset.scrollbarFade;
+    clearTimeout(restTimer);
+    restTimer = setTimeout(() => fade(1), REST_MS);
+  };
+
+  document.addEventListener('pointermove', (e) => {
+    // Held down means the thumb is being dragged, and the bar stays wide even
+    // when the pointer drifts off it.
+    if (!e.buttons) {
+      // Over its own scrollbar an element is the target itself, with the
+      // pointer past the edge of its client box.
+      const el = e.target;
+      const onBar =
+        el instanceof Element &&
+        ((el.scrollHeight > el.clientHeight && e.offsetX >= el.clientWidth) ||
+          (el.scrollWidth > el.clientWidth && e.offsetY >= el.clientHeight))
+          ? el
+          : null;
+      if (onBar !== hovered) {
+        hovered?.classList.remove('scrollbar-hover');
+        onBar?.classList.add('scrollbar-hover');
+        hovered = onBar;
+      }
+    }
+    wake();
+  }, { passive: true });
+  document.addEventListener('scroll', wake, { capture: true, passive: true });
+  // The bar sits on the window's edge, so the pointer often leaves right off it,
+  // and no pointermove ever comes to say it is gone.
+  document.addEventListener('mouseout', (e) => {
+    if (e.relatedTarget || !hovered) return;
+    hovered.classList.remove('scrollbar-hover');
+    hovered = null;
+    wake();
+  });
+}
+
 // --- Names that had to be cut off -------------------------------------------
 
 // A title too long for its column ends in an ellipsis, and hovering it says
