@@ -58,21 +58,32 @@ const LEFT_IN_HOUR = (c) => `(strftime('%s', ${HOUR_END(c)}) - strftime('%s', ${
  * a year, off by an hour, and the alternative is arithmetic in UTC that would
  * cut a half-hour zone in the wrong place every day.
  */
+//
+// Films and episodes come from `video_plays` and ride along with a negative id,
+// so a play of each kind can never be counted as the same play.
 const WITH_SLICES = `
-WITH RECURSIVE slice(id, user_id, track_id, at, remaining) AS (
-  SELECT p.id, p.user_id, p.track_id,
+WITH RECURSIVE source(id, user_id, track_id, video_id, at, remaining) AS (
+  SELECT p.id, p.user_id, p.track_id, NULL,
          datetime(p.played_at, 'localtime'),
          ${RAW_SECONDS}
     FROM plays p
     JOIN tracks t ON t.id = p.track_id
    WHERE p.user_id = @userId
   UNION ALL
-  SELECT id, user_id, track_id, ${HOUR_END('at')}, remaining - ${LEFT_IN_HOUR('at')}
+  SELECT -vp.id, vp.user_id, NULL, vp.video_id,
+         datetime(vp.played_at, 'localtime'), vp.seconds
+    FROM video_plays vp
+   WHERE vp.user_id = @userId AND vp.seconds > 0
+),
+slice(id, user_id, track_id, video_id, at, remaining) AS (
+  SELECT id, user_id, track_id, video_id, at, remaining FROM source
+  UNION ALL
+  SELECT id, user_id, track_id, video_id, ${HOUR_END('at')}, remaining - ${LEFT_IN_HOUR('at')}
     FROM slice
    WHERE remaining > ${LEFT_IN_HOUR('at')}
 ),
 sliced AS (
-  SELECT id, user_id, track_id, at AS played_at,
+  SELECT id, user_id, track_id, video_id, at AS played_at,
          MIN(remaining, ${LEFT_IN_HOUR('at')}) AS seconds
     FROM slice
 )`;
@@ -94,8 +105,10 @@ const PLAYS = 'COUNT(DISTINCT p.id)';
 // into a list of podcasts.
 const FROM_ALL = `
   FROM sliced p
-  JOIN tracks t ON t.id = p.track_id
+  LEFT JOIN tracks t ON t.id = p.track_id
   LEFT JOIN audiobooks b ON b.id = t.audiobook_id
+  LEFT JOIN videos v ON v.id = p.video_id
+  LEFT JOIN video_titles vt ON vt.id = v.title_id
 `;
 
 const FROM = `
@@ -108,7 +121,8 @@ const FROM = `
 // them. A book part is told from a radio play by `audiobooks.kind` alone - both
 // live in the same table, which is exactly why the join above is a LEFT one.
 const KIND = `
-  CASE WHEN t.podcast_id IS NOT NULL  THEN 'podcast'
+  CASE WHEN p.video_id IS NOT NULL THEN (CASE WHEN vt.kind = 'movie' THEN 'movie' ELSE 'show' END)
+       WHEN t.podcast_id IS NOT NULL  THEN 'podcast'
        WHEN b.kind = 'drama'          THEN 'drama'
        WHEN t.audiobook_id IS NOT NULL THEN 'book'
        ELSE 'music' END
@@ -118,7 +132,7 @@ const KIND = `
 // are music words - a podcast episode has no interpret and a book has no album
 // - so those three stay music however wide the time standing next to them is.
 const musicOnly = (column) =>
-  `COUNT(DISTINCT CASE WHEN t.podcast_id IS NULL AND t.audiobook_id IS NULL THEN ${column} END)`;
+  `COUNT(DISTINCT CASE WHEN p.track_id IS NOT NULL AND t.podcast_id IS NULL AND t.audiobook_id IS NULL THEN ${column} END)`;
 
 // The five ways of slicing the history.
 //
@@ -204,7 +218,7 @@ function periodTotals(userId, range, period) {
 // to. Every kind comes back, zeroes included: a row reading "Podcasts 0:00"
 // tells the reader that podcasts are counted here, and a missing row tells them
 // nothing at all.
-const KINDS = ['music', 'podcast', 'book', 'drama'];
+const KINDS = ['music', 'podcast', 'book', 'drama', 'movie', 'show'];
 
 function byKind(userId, range, period) {
   const { where, params } = scope(userId, range, period);
@@ -340,6 +354,25 @@ function topSpoken(userId, range, period, limit) {
     .map((r) => ({ ...r, cover: r.cover ? `/covers/${r.cover}` : null }));
 }
 
+// Films and series, ranked as a whole: a series is one thing, not its episodes.
+function topVideos(userId, range, period, limit) {
+  const { where, params } = scope(userId, range, period);
+  return db
+    .prepare(
+      `${WITH_SLICES} SELECT vt.kind, vt.id, vt.title, vt.poster AS cover,
+              ${PLAYS} AS plays, ROUND(SUM(${SECONDS})) AS seconds
+         FROM sliced p
+         JOIN videos v ON v.id = p.video_id
+         JOIN video_titles vt ON vt.id = v.title_id
+        WHERE ${where}
+        GROUP BY vt.id
+        ORDER BY seconds DESC, plays DESC
+        LIMIT @limit`
+    )
+    .all({ ...params, limit })
+    .map((r) => ({ ...r, cover: r.cover ? `/video-art/${r.cover}` : null }));
+}
+
 /**
  * Everything the statistics page shows, for one account.
  *
@@ -427,6 +460,7 @@ export function listeningStats(userId, options = {}) {
       artists: topArtists(userId, range, period, top),
       albums: topAlbums(userId, range, period, top),
       spoken: topSpoken(userId, range, period, top),
+      videos: topVideos(userId, range, period, top),
     },
   };
 }

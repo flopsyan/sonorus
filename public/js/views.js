@@ -1292,8 +1292,14 @@ export async function search(params) {
   const episodes = data.episodes || [];
   const books = data.books || [];
   const dramas = data.dramas || [];
+  const movies = data.movies || [];
+  const shows = data.shows || [];
   const nothing = !data.tracks.length && !data.artists.length && !data.albums.length
-    && !episodes.length && !books.length && !dramas.length;
+    && !episodes.length && !books.length && !dramas.length && !movies.length && !shows.length;
+  const videoGrid = (list, base) =>
+    `<div class="grid">${list
+      .map((t) => card({ href: `/${base}/${t.id}`, cover: t.poster, title: t.title, sub: t.year ? String(t.year) : '', portrait: true }))
+      .join('')}</div>`;
 
   return {
     title: `Suche: ${q}`,
@@ -1308,6 +1314,8 @@ export async function search(params) {
       episodes.length ? fmt.plural(episodes.length, 'Folge', 'Folgen') : '',
       books.length ? fmt.plural(books.length, 'Hörbuch', 'Hörbücher') : '',
       dramas.length ? fmt.plural(dramas.length, 'Hörspiel', 'Hörspiele') : '',
+      movies.length ? fmt.plural(movies.length, 'Film', 'Filme') : '',
+      shows.length ? fmt.plural(shows.length, 'Serie', 'Serien') : '',
     ]))}
       ${
         nothing
@@ -1373,7 +1381,9 @@ export async function search(params) {
             ? `<section class="section"><div class="section-head"><h2>Hörspiele</h2></div>
                 <div class="grid">${dramas.map((b) => card(bookItem(b))).join('')}</div></section>`
             : ''
-        }`
+        }
+        ${movies.length ? `<section class="section"><div class="section-head"><h2>Filme</h2></div>${videoGrid(movies, 'movies')}</section>` : ''}
+        ${shows.length ? `<section class="section"><div class="section-head"><h2>Serien</h2></div>${videoGrid(shows, 'shows')}</section>` : ''}`
       }`,
     after: applyProgress,
   };
@@ -1668,8 +1678,10 @@ const readoutCell = (label, value, opts = {}) =>
 
 // The four libraries, in the order they are worth reading: the big one first,
 // then the spoken ones in the order the sidebar lists them.
-const KIND_LABELS = { music: 'Musik', podcast: 'Podcasts', book: 'Hörbücher', drama: 'Hörspiele' };
-const KIND_ORDER = ['music', 'podcast', 'book', 'drama'];
+const KIND_LABELS = {
+  music: 'Musik', podcast: 'Podcasts', book: 'Hörbücher', drama: 'Hörspiele', movie: 'Filme', show: 'Serien',
+};
+const KIND_ORDER = ['music', 'podcast', 'book', 'drama', 'movie', 'show'];
 
 // The selected period's listening time, split by the library it came from.
 //
@@ -1695,7 +1707,7 @@ function kindTable(kinds) {
   return `<div class="panel">
       <h2>Spielzeit</h2>
       <p class="panel-hint">Was in diesem Zeitraum wirklich gelaufen ist, nach Bibliothek
-        getrennt. Gesprochenes zählt genauso mit wie Musik.</p>
+        getrennt. Gesprochenes, Filme und Serien zählen genauso mit wie Musik.</p>
       <div class="kind-list">
         ${KIND_ORDER.map((k) => row(k, KIND_LABELS[k], kinds[k])).join('')}
         ${row('total', 'Gesamt', kinds.total)}
@@ -1809,7 +1821,13 @@ function periodSection(listening) {
     )}
     ${topList('Meistgehörte Interpreten', listening.top.artists, (r) => `/artists/${r.id}`)}
     ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}
-    ${topList('Meistgehörtes Gesprochenes', listening.top.spoken, spokenHref, spokenSub)}`;
+    ${topList('Meistgehörtes Gesprochenes', listening.top.spoken, spokenHref, spokenSub)}
+    ${topList(
+      'Meistgesehen',
+      listening.top.videos || [],
+      (r) => `/${r.kind === 'movie' ? 'movies' : 'shows'}/${r.id}`,
+      (r) => (r.kind === 'movie' ? 'Film' : 'Serie')
+    )}`;
 }
 
 // Where a row of the spoken top list leads. The three libraries have three
@@ -1977,7 +1995,13 @@ function scanBlock(scan, lastScan) {
     // By far the longest of the four, and the reason the bar is worth watching:
     // the whole library is re-encoded once so no phone ever waits for one.
     transcoding: 'Kleinere Qualität wird erzeugt',
+    metadata: 'Film- und Seriendaten von TMDB',
   };
+  const tmdbState = scan.tmdb
+    ? scan.tmdbError
+      ? `Fehler: ${scan.tmdbError}`
+      : 'Verbunden. Beschreibungen, Besetzung und fehlende Bilder kommen beim Scan von TMDB.'
+    : 'Kein TMDB_API_KEY gesetzt. Filme und Serien zeigen nur, was in den Ordnern liegt.';
 
   return `<div id="scan-block">
       ${dirRow('Musikordner', scan.musicDir, [
@@ -1987,6 +2011,14 @@ function scanBlock(scan, lastScan) {
       ${dirRow('Podcast-Ordner', scan.podcastDir, ['Podcast / #001 Titel.mp3'])}
       ${dirRow('Hörbuch-Ordner', scan.audiobookDir, ['Autor / Buch / 01 - Teil.mp3'])}
       ${dirRow('Hörspiel-Ordner', scan.audiodramaDir, ['Autor / Hörspiel / 01 - Teil.mp3'])}
+      ${dirRow('Film-Ordner', scan.movieDir, ['Titel (Jahr) / Titel (Jahr).mkv'])}
+      ${dirRow('Serien-Ordner', scan.showDir, ['Serie (Jahr) / Season 01 / 01 - Titel.mkv'])}
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Metadaten für Filme und Serien</div>
+          <div class="setting-sub">${esc(tmdbState)}</div>
+        </div>
+      </div>
       <div class="setting-row">
         <div>
           <div class="setting-label">Letzter Scan</div>
