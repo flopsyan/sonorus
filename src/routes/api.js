@@ -186,8 +186,14 @@ router.get('/bootstrap', (req, res) => {
 
 // --- Library ----------------------------------------------------------------
 
+// No cap on the page size, deliberately. There used to be one of 5000, and what
+// it produced was a library that lied: the header counted every song, the list
+// held the first few thousand, and "Abspielen", "Mischen" and the phone's
+// download button all quietly meant that slice - 2026-09-22, "obwohl es sich um
+// 8168 Songs handelt". A caller that wants a page asks for one; a caller that
+// asks for everything is asking for the library it can already see the count of.
 router.get('/tracks', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 0, 5000);
+  const limit = Math.max(Number(req.query.limit) || 0, 0);
   res.json({
     ok: true,
     total: countTracks({ q: req.query.q }),

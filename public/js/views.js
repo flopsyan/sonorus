@@ -195,7 +195,9 @@ export async function tracks(params, ctx) {
   const saved = ctx.prefs.trackSort || {};
   const sort = params.get('sort') || saved.key || 'title';
   const dir = params.get('dir') || saved.dir || 'asc';
-  const { tracks: list, total } = await api.tracks({ sort, dir, limit: 2000 });
+  // The whole library, not a page of it: the buttons under this head play what
+  // is in `list`, so a limit here is a limit on what "Abspielen" means.
+  const { tracks: list, total } = await api.tracks({ sort, dir });
 
   return {
     title: 'Alle Songs',
