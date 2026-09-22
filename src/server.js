@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { coversDir } from './db.js'; // initializes database & schema
+import { coversDir, videoArtDir } from './db.js'; // initializes database & schema
 import pagesRouter from './routes/pages.js';
 import apiRouter from './routes/api.js';
 import { attachAuth, bootstrapAdmin, setupRequired } from './lib/auth.js';
@@ -61,6 +61,8 @@ app.use(
   })
 );
 app.use('/covers', express.static(coversDir, { maxAge: '1h', fallthrough: false }));
+// Named after their content, so a changed picture is a new name and can be cached long.
+app.use('/video-art', express.static(videoArtDir, { maxAge: '30d', immutable: true, fallthrough: false }));
 
 // Container healthcheck (no auth)
 app.get('/healthz', (req, res) => res.json({ ok: true }));

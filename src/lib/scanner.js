@@ -50,6 +50,8 @@ import db, {
   audiobookDir,
   audiodramaDir,
   ebookDir,
+  movieDir,
+  showDir,
   getMeta,
   setMeta,
 } from '../db.js';
@@ -60,6 +62,9 @@ import { normalize, loosen, primaryArtist, isVarious } from './normalize.js';
 import { parseReleaseDate, yearOf } from './dates.js';
 import { extractLyrics } from './lyrics.js';
 import { resolveIssuesForUser } from '../models/issues.js';
+import { collectVideoWork, indexVideos, pruneVideos, sweepVideoArt } from './videoscan.js';
+import { refreshDueMetadata } from './videometa.js';
+import { tmdbEnabled } from './tmdb.js';
 
 // Extensions music-metadata can read tags from. Whether a browser can play a
 // given file is a separate question (see the README).
@@ -107,7 +112,12 @@ const state = {
 };
 
 export function scanState() {
-  return { ...state, musicDir, podcastDir, audiobookDir, audiodramaDir, ebookDir };
+  return {
+    ...state,
+    musicDir, podcastDir, audiobookDir, audiodramaDir, ebookDir, movieDir, showDir,
+    tmdb: tmdbEnabled(),
+    tmdbError: getMeta('tmdb_error') || '',
+  };
 }
 
 export function isScanning() {
@@ -1031,8 +1041,10 @@ export async function runScan() {
     // And a fifth, which is read rather than played and therefore lands in a
     // table of its own.
     const ebooks = fs.existsSync(ebookDir) ? await collectFiles(ebookDir, EBOOK_EXT) : [];
+    const videoWork = await collectVideoWork();
     state.total =
-      files.length + episodes.length + bookParts.length + dramaParts.length + ebooks.length;
+      files.length + episodes.length + bookParts.length + dramaParts.length + ebooks.length +
+      videoWork.files;
     state.phase = 'reading';
 
     // After a change to how a file is read, the size/mtime shortcut would keep
@@ -1067,6 +1079,7 @@ export async function runScan() {
       const id = await indexEbook(file, stat, force);
       if (id) seenBooks.add(id);
     });
+    const seenVideos = await indexVideos(videoWork, state);
 
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();
@@ -1084,12 +1097,16 @@ export async function runScan() {
       }
     }
     prune();
+    state.removed += pruneVideos(videoWork, seenVideos);
 
     // Songs that were missing at import time may exist now.
     resolveIssuesForUser(null);
 
     setMeta('scanner_version', SCANNER_VERSION);
     setMeta('last_scan', new Date().toISOString());
+
+    await refreshDueMetadata(state);
+    sweepVideoArt();
 
     // The smaller copies, made in one batch rather than one at a time on the
     // first play of every song. This is the last phase of the scan on purpose:

@@ -45,6 +45,17 @@ const audiodramaDir = path.resolve(process.env.AUDIODRAMA_DIR || path.join(proje
 // both hears and reads is one author.
 const ebookDir = path.resolve(process.env.EBOOK_DIR || path.join(projectRoot, 'ebooks'));
 
+// Films and series, one root each, laid out the way Jellyfin and Kodi lay them
+// out so an existing library can be copied over as it is.
+const movieDir = path.resolve(process.env.MOVIE_DIR || path.join(projectRoot, 'movies'));
+const showDir = path.resolve(process.env.SHOW_DIR || path.join(projectRoot, 'shows'));
+
+// Posters, backdrops, stills and portraits, resized once. Apart from the music
+// covers because a rescan of the video side rewrites it independently.
+const videoArtDir = path.join(dataDir, 'video-art');
+// Embedded subtitles, extracted on first use: that means reading the whole file.
+const subtitleDir = path.join(dataDir, 'subtitles');
+
 // The smaller copies of the songs, made on demand and kept. A root of its own
 // rather than a folder in dataDir, because it is the one directory here that
 // grows with the size of the library rather than with the number of rows: the
@@ -55,6 +66,8 @@ const transcodeDir = path.resolve(process.env.TRANSCODE_DIR || path.join(dataDir
 
 fs.mkdirSync(coversDir, { recursive: true });
 fs.mkdirSync(transcodeDir, { recursive: true });
+fs.mkdirSync(videoArtDir, { recursive: true });
+fs.mkdirSync(subtitleDir, { recursive: true });
 
 const dbPath = path.join(dataDir, 'sonorus.sqlite');
 const db = new Database(dbPath);
@@ -496,6 +509,147 @@ db.exec(`
 // in August: a migration may only stand after the table it names.
 addColumn('ebooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
+// --- Films and series ---------------------------------------------------------
+// A title is a film or a series: one folder under MOVIE_DIR or SHOW_DIR. The
+// folder name is its identity and its name, the way the music library works;
+// TMDB only adds what a folder cannot say. Paths in `videos` are relative to
+// the root, so remounting the library somewhere else keeps every position.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS video_collections (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    tmdb_id   INTEGER NOT NULL UNIQUE,
+    name      TEXT NOT NULL,
+    overview  TEXT NOT NULL DEFAULT '',
+    poster    TEXT NOT NULL DEFAULT '',
+    backdrop  TEXT NOT NULL DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS video_titles (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind          TEXT NOT NULL,
+    folder        TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    year          INTEGER,
+    tmdb_id       INTEGER,
+    -- Set when the match was picked by hand, so no scan second-guesses it.
+    tmdb_locked   INTEGER NOT NULL DEFAULT 0,
+    original_title TEXT NOT NULL DEFAULT '',
+    overview      TEXT NOT NULL DEFAULT '',
+    tagline       TEXT NOT NULL DEFAULT '',
+    release_date  TEXT NOT NULL DEFAULT '',
+    end_date      TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT '',
+    certification TEXT NOT NULL DEFAULT '',
+    vote          REAL,
+    studios       TEXT NOT NULL DEFAULT '[]',
+    collection_id INTEGER REFERENCES video_collections(id) ON DELETE SET NULL,
+    poster        TEXT NOT NULL DEFAULT '',
+    backdrop      TEXT NOT NULL DEFAULT '',
+    logo          TEXT NOT NULL DEFAULT '',
+    thumb         TEXT NOT NULL DEFAULT '',
+    meta_at       TEXT NOT NULL DEFAULT '',
+    added_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (kind, folder)
+  );
+  CREATE INDEX IF NOT EXISTS idx_video_titles_kind ON video_titles(kind, title COLLATE NOCASE);
+
+  CREATE TABLE IF NOT EXISTS video_seasons (
+    title_id  INTEGER NOT NULL REFERENCES video_titles(id) ON DELETE CASCADE,
+    season    INTEGER NOT NULL,
+    name      TEXT NOT NULL DEFAULT '',
+    overview  TEXT NOT NULL DEFAULT '',
+    air_date  TEXT NOT NULL DEFAULT '',
+    poster    TEXT NOT NULL DEFAULT '',
+    meta_at   TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (title_id, season)
+  );
+
+  -- One playable file: the film itself, or one episode.
+  CREATE TABLE IF NOT EXISTS videos (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_id    INTEGER NOT NULL REFERENCES video_titles(id) ON DELETE CASCADE,
+    path        TEXT NOT NULL,
+    season      INTEGER,
+    episode     INTEGER,
+    episode_end INTEGER,
+    name        TEXT NOT NULL DEFAULT '',
+    overview    TEXT NOT NULL DEFAULT '',
+    air_date    TEXT NOT NULL DEFAULT '',
+    still       TEXT NOT NULL DEFAULT '',
+    duration    REAL NOT NULL DEFAULT 0,
+    width       INTEGER,
+    height      INTEGER,
+    container   TEXT NOT NULL DEFAULT '',
+    -- The streams ffprobe found and the subtitle files lying next to the video,
+    -- as JSON. Read whole by the player, never queried.
+    streams     TEXT NOT NULL DEFAULT '{}',
+    subtitles   TEXT NOT NULL DEFAULT '[]',
+    size        INTEGER NOT NULL DEFAULT 0,
+    mtime       INTEGER NOT NULL DEFAULT 0,
+    added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (title_id, path)
+  );
+  CREATE INDEX IF NOT EXISTS idx_videos_title ON videos(title_id, season, episode);
+
+  CREATE TABLE IF NOT EXISTS video_genres (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+  );
+  CREATE TABLE IF NOT EXISTS video_title_genres (
+    title_id INTEGER NOT NULL REFERENCES video_titles(id) ON DELETE CASCADE,
+    genre_id INTEGER NOT NULL REFERENCES video_genres(id) ON DELETE CASCADE,
+    PRIMARY KEY (title_id, genre_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_video_title_genres_genre ON video_title_genres(genre_id);
+
+  CREATE TABLE IF NOT EXISTS video_people (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    tmdb_id INTEGER NOT NULL UNIQUE,
+    name    TEXT NOT NULL,
+    photo   TEXT NOT NULL DEFAULT ''
+  );
+  -- role: 'cast', 'director', 'writer', 'creator', 'composer'.
+  CREATE TABLE IF NOT EXISTS video_credits (
+    title_id  INTEGER NOT NULL REFERENCES video_titles(id) ON DELETE CASCADE,
+    person_id INTEGER NOT NULL REFERENCES video_people(id) ON DELETE CASCADE,
+    role      TEXT NOT NULL,
+    character TEXT NOT NULL DEFAULT '',
+    ord       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (title_id, person_id, role)
+  );
+  CREATE INDEX IF NOT EXISTS idx_video_credits_person ON video_credits(person_id);
+
+  CREATE TABLE IF NOT EXISTS video_progress (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id   INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    position   REAL NOT NULL DEFAULT 0,
+    completed  INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, video_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_video_progress_user ON video_progress(user_id, updated_at DESC);
+
+  -- Stars for a film or a whole series, not for a single episode.
+  CREATE TABLE IF NOT EXISTS video_ratings (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title_id   INTEGER NOT NULL REFERENCES video_titles(id) ON DELETE CASCADE,
+    stars      INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, title_id)
+  );
+
+  -- Time watched, for the statistics. The twin of plays, which cannot carry a
+  -- video because its track_id is NOT NULL.
+  CREATE TABLE IF NOT EXISTS video_plays (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    video_id  INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    seconds   INTEGER NOT NULL DEFAULT 0,
+    played_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_video_plays_user ON video_plays(user_id, played_at DESC);
+`);
+
 // --- One-off data migrations ------------------------------------------------
 // Unlike the columns above, these rewrite rows, so they must not run twice. The
 // key in `meta` is what makes that so.
@@ -638,5 +792,9 @@ export {
   audiobookDir,
   audiodramaDir,
   ebookDir,
+  movieDir,
+  showDir,
+  videoArtDir,
+  subtitleDir,
 };
 export default db;

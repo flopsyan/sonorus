@@ -110,6 +110,8 @@ import {
   resolveIssuesForUser,
 } from '../models/issues.js';
 import { listMissing, countMissing, dropMissing } from '../models/missing.js';
+import { searchVideos } from '../models/videos.js';
+import videoRouter from './video.js';
 import { importEntries, importIntoPlaylist } from '../models/import.js';
 import {
   listUsers,
@@ -127,6 +129,8 @@ const router = express.Router();
 
 // Everything below the /api prefix needs a logged-in account.
 router.use(requireAuthApi);
+
+router.use(videoRouter);
 
 // German messages for the error codes the models return.
 const ERRORS = {
@@ -573,6 +577,7 @@ router.get('/search', (req, res) => {
     episodes: searchEpisodes({ userId: req.user.id, q, limit: 40 }),
     books: searchBooks({ userId: req.user.id, q, limit: 20, kind: BOOK }),
     dramas: searchBooks({ userId: req.user.id, q, limit: 20, kind: DRAMA }),
+    ...searchVideos(q, req.user.id),
   });
 });
 
