@@ -1514,10 +1514,14 @@ content.addEventListener('click', async (e) => {
       player.playTracks(
         list,
         0,
-        tile?.querySelector('.card-title, .list-title')?.textContent || '',
+        tile
+          ? tile.querySelector('.card-title, .list-title')?.textContent || ''
+          : document.title.split(' · ')[0],
         // The card's own link: what was put on is the album or the interpret it
-        // points at, not the shelf it was picked off.
-        tile?.getAttribute('href') || ''
+        // points at, not the shelf it was picked off. A button in the page head
+        // has no card, and then the list is the page - without its key every
+        // row on it would read as playing from somewhere else.
+        tile ? tile.getAttribute('href') || '' : currentSourceKey()
       );
     } catch (err) {
       toast(err.message, 'err');
