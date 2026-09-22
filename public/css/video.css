@@ -140,7 +140,11 @@
   .v-wide-row, .v-people { scrollbar-width: thin; }
 }
 .v-wide { flex: 0 0 300px; min-width: 0; display: block; color: var(--text); }
-.v-wide:hover { text-decoration: none; }
+.v-wide-text { display: block; color: var(--text); }
+.v-wide:hover, .v-wide-text:hover { text-decoration: none; }
+@media (hover: hover) {
+  .v-wide-text:hover .card-title { text-decoration: underline; }
+}
 .v-wide-art {
   position: relative; display: block; aspect-ratio: 16 / 9; margin-bottom: 9px;
   border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); box-shadow: var(--shadow-sm);

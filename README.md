@@ -379,7 +379,8 @@ videos/
 - **Weiterschauen**: Die Stelle wird je Konto gespeichert. Ab 90 % gilt ein
   Titel als gesehen; Filme, Folgen, Staffeln und ganze Serien lassen sich auch von
   Hand als gesehen markieren, auch direkt auf der Kachel unter "Weiterschauen".
-  Bei Serien steht dort die nächste ungesehene Folge.
+  Bei Serien steht dort die nächste ungesehene Folge; das Bild spielt sie ab, der
+  Text darunter führt zur Serie und dort gleich in die richtige Staffel.
 - **Nächste Folge**: 30 Sekunden vor dem Ende wird sie vorgeschlagen und startet
   danach von selbst - abschaltbar im Player.
 - **Der Player** hat Ton- und Untertitelwahl (die gewählte Sprache wird für das

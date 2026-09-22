@@ -73,23 +73,28 @@ const showCard = (s) =>
 function wideCard(item) {
   const t = item.title;
   const v = item.video;
-  const picture = item.kind === 'show' ? v.still || t.thumb || t.backdrop : t.thumb || t.backdrop;
+  const show = item.kind === 'show';
+  const picture = show ? v.still || t.thumb || t.backdrop : t.thumb || t.backdrop;
   const left = v.duration - (v.progress ? v.progress.position : 0);
-  const sub =
-    item.kind === 'show'
-      ? `${episodeCode(v.season, v.episode, v.episodeEnd)}${v.name ? ` · ${v.name}` : ''}`
-      : `noch ${fmt.durationLong(left)}`;
-  return `<a class="v-wide" href="/watch/${v.id}" data-link data-continue-title="${t.id}">
-      <span class="v-wide-art">
+  const sub = show
+    ? `${episodeCode(v.season, v.episode, v.episodeEnd)}${v.name ? ` · ${v.name}` : ''}`
+    : `noch ${fmt.durationLong(left)}`;
+  // The picture plays; the words under it lead to the title, a series straight
+  // into the season the episode is from.
+  const page = show ? `/shows/${t.id}?season=${v.season}` : `/movies/${t.id}`;
+  return `<div class="v-wide" data-continue-title="${t.id}">
+      <a class="v-wide-art" href="/watch/${v.id}" data-link aria-label="${esc(t.title)} abspielen">
         ${img(picture, t.title)}
         <span class="v-wide-play">${icon('play', 22)}</span>
         ${v.progress && v.progress.started ? progressBar(v.progress.fraction) : ''}
         <button type="button" class="v-wide-done" data-continue-done="${v.id}"
           aria-label="Als gesehen markieren" title="Als gesehen markieren">${icon('check', 16)}</button>
-      </span>
-      <span class="card-title">${esc(t.title)}</span>
-      <span class="card-sub">${esc(sub)}</span>
-    </a>`;
+      </a>
+      <a class="v-wide-text" href="${page}" data-link>
+        <span class="card-title">${esc(t.title)}</span>
+        <span class="card-sub">${esc(sub)}</span>
+      </a>
+    </div>`;
 }
 
 function shelf(title, cards, more = '') {
