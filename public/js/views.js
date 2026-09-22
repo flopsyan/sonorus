@@ -5,7 +5,7 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, coverMosaic, mosaic, trackList, episodeList, card, listRow, empty, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, coverMosaic, mosaic, trackList, episodeList, card, listRow, empty, stars, toast, modal, closeModal, confirmDialog } from './ui.js';
 import * as qualityPref from './quality.js';
 import { mountReader, readerHtml } from './reading.js';
 
@@ -2043,10 +2043,50 @@ function issueRows(issues) {
     .join('')}</div>`;
 }
 
+// A song whose file is gone and that something still holds on to: a rating, a
+// place in a playlist, or both. Which of the two it is is the first line,
+// because it is also what the button is about to let go of.
+//
+// The album is a link when the record still has files of its own, and it opens
+// in its own tab - this is a page you work through, and losing your place in it
+// after every third entry would be the whole annoyance back again.
+function missingRows(list) {
+  if (!list.length) {
+    return `<div class="empty small"><p>Nichts vermisst. Hier landen Songs, deren Datei weg ist und die du bewertet oder in eine Playlist gelegt hast.</p></div>`;
+  }
+  return `<div class="issue-list">${list
+    .map((m) => {
+      // Since when, and what it is still hanging in. The stars are not repeated
+      // here - they are drawn as stars, on the right.
+      const why = [
+        fmt.date(m.missingAt) ? `Fehlt seit ${fmt.date(m.missingAt)}` : 'Fehlt',
+        ...m.playlists.map((n) => esc(n)),
+      ].join(' <span class="dot">·</span> ');
+      const album = m.album
+        ? m.albumId
+          ? `<a href="/albums/${m.albumId}" target="_blank" rel="noopener">${esc(m.album)}</a>`
+          : esc(m.album)
+        : '';
+      return `<div class="issue missing" data-missing="${m.id}">
+        <div class="issue-text">
+          <div class="issue-playlist">${why}</div>
+          <div class="issue-title">${esc(m.title)}</div>
+          <div class="issue-sub">${[esc(m.artist), album].filter(Boolean).join(' · ')}</div>
+          <div class="issue-path" title="${esc(m.path)}">${esc(m.path)}</div>
+        </div>
+        ${stars(m.stars, m.id, true)}
+        <button type="button" class="btn btn-ghost btn-sm" data-drop-missing="${m.id}"
+          data-title="${esc(m.title)}">Entfernen</button>
+      </div>`;
+    })
+    .join('')}</div>`;
+}
+
 export async function settings(_params, ctx) {
-  const [status, issueData, quality] = await Promise.all([
+  const [status, issueData, missingData, quality] = await Promise.all([
     api.scanStatus(),
     api.issues(),
+    api.missing(),
     // An instance without ffmpeg can only serve the original, and the picker has
     // to say so rather than offer a choice that quietly does nothing.
     api.quality().catch(() => null),
@@ -2074,8 +2114,23 @@ export async function settings(_params, ctx) {
 
       <div class="panel">
         <h2>Mitteilungen
-          ${issueData.issues.length ? `<span class="issue-count">${fmt.number(issueData.issues.length)}</span>` : ''}
+          ${
+            issueData.issues.length + missingData.missing.length
+              ? `<span class="issue-count">${fmt.number(
+                  issueData.issues.length + missingData.missing.length
+                )}</span>`
+              : ''
+          }
         </h2>
+
+        <div class="rack-label mt-sm">Datei weg, Bewertung geblieben</div>
+        <p class="panel-hint">Ihre Datei hat der letzte Scan nicht mehr gefunden. Die Zeile steht
+          noch, weil deine Bewertung oder ein Playlist-Eintrag daran hängt - nach einer Umbenennung
+          ist das genau richtig, denn der nächste Scan findet sie wieder. Was wirklich weg ist,
+          räumst du hier weg.</p>
+        <div id="missing-block">${missingRows(missingData.missing)}</div>
+
+        <div class="rack-label mt-lg">Aus einem CSV-Import</div>
         <p class="panel-hint">Songs aus einem CSV-Import, zu denen keine Datei in der Bibliothek passt.</p>
         <div id="issues-block">${issueRows(issueData.issues)}</div>
         ${
@@ -2354,6 +2409,28 @@ function wireSettings(root, ctx) {
         if (!scanTimer) scanTimer = setInterval(refreshScan, 600);
       } catch (err) {
         scanBtn.disabled = false;
+        toast(err.message, 'err');
+      }
+      return;
+    }
+
+    const drop = e.target.closest('[data-drop-missing]');
+    if (drop) {
+      // The dialog has to say which of the two it is, because only one of them
+      // is free: a song that was never played leaves nothing behind, one that
+      // was keeps its row so that the minutes stay in the statistics.
+      const ok = await confirmDialog({
+        title: 'Eintrag entfernen',
+        message: `Die Bewertung von "${drop.dataset.title}" und seine Plätze in deinen Playlists werden gelöscht. Damit verschwindet der Song überall aus Sonorus. Was du von ihm gehört hast, bleibt in der Statistik. Rückgängig machen lässt sich das nicht.`,
+        confirmLabel: 'Entfernen',
+      });
+      if (!ok) return;
+      try {
+        const res = await api.dropMissing(drop.dataset.dropMissing);
+        const block = root.querySelector('#missing-block');
+        if (block) block.innerHTML = missingRows(res.missing);
+        ctx.refreshShell();
+      } catch (err) {
         toast(err.message, 'err');
       }
       return;

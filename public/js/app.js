@@ -465,8 +465,11 @@ function renderTopLinks() {
   const path = window.location.pathname;
   topStats.innerHTML = `${icon('chart', 18)}<span class="top-link-label">Statistik</span>`;
   topStats.classList.toggle('active', path === '/stats');
+  // Both kinds of notice in one number: the cog is the only place either of them
+  // can be found from, and two badges on one icon would say nothing extra.
+  const notices = (shell.issues || 0) + (shell.missing || 0);
   topSettings.innerHTML = `${icon('settings', 18)}${
-    shell.issues ? `<span class="nav-badge">${fmt.number(shell.issues)}</span>` : ''
+    notices ? `<span class="nav-badge">${fmt.number(notices)}</span>` : ''
   }`;
   topSettings.classList.toggle('active', path === '/settings');
 }
@@ -478,6 +481,7 @@ async function refreshShell() {
     shell.playlists = data.playlists;
     shell.starCounts = data.stars;
     shell.issues = data.issues;
+    shell.missing = data.missing;
     renderSidebar();
   } catch {
     // offline or logged out - the next navigation will surface it
@@ -3783,6 +3787,7 @@ async function boot() {
   shell.playlists = data.playlists;
   shell.starCounts = data.stars;
   shell.issues = data.issues;
+  shell.missing = data.missing;
   shell.prefs = data.prefs || {};
 
   let savedTheme = null;

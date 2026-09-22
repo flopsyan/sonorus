@@ -109,6 +109,7 @@ import {
   clearIssues,
   resolveIssuesForUser,
 } from '../models/issues.js';
+import { listMissing, countMissing, dropMissing } from '../models/missing.js';
 import { importEntries, importIntoPlaylist } from '../models/import.js';
 import {
   listUsers,
@@ -178,6 +179,10 @@ router.get('/bootstrap', (req, res) => {
     playlists: playlistTree(req.user.id),
     stars: starCounts(req.user.id),
     issues: countIssues(req.user.id),
+    // Counted apart from the import notices and added up only where the badge
+    // is drawn: the two are different kinds of thing and the settings page says
+    // so, but a number on the cog is what makes either one findable at all.
+    missing: countMissing(req.user.id),
     prefs: userPrefs(req.user),
     scan: scanState(),
     lastScan: getMeta('last_scan'),
@@ -749,6 +754,20 @@ router.delete('/import/issues/:id', (req, res) => {
 router.delete('/import/issues', (req, res) => {
   const result = clearIssues(req.user.id);
   res.json({ ok: true, removed: result.removed });
+});
+
+// --- Songs whose file is gone but which are still wanted ---------------------
+
+router.get('/library/missing', (req, res) => {
+  res.json({ ok: true, missing: listMissing(req.user.id) });
+});
+
+// Lets go of one of them. The answer says whether the row itself went with it,
+// because it does not when the song was ever played - see models/missing.js.
+router.delete('/library/missing/:id', (req, res) => {
+  const result = dropMissing(req.user.id, id(req.params.id));
+  if (result.error) return fail(res, result.error, 404);
+  res.json({ ok: true, deleted: result.deleted, missing: listMissing(req.user.id) });
 });
 
 // --- Library scan -----------------------------------------------------------

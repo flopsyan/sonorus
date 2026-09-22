@@ -1593,6 +1593,27 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 .issue-title { font-size: 0.89rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .issue-sub { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .issue-playlist { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+/* A missing song carries one column more than an import notice: its stars,
+   between what it is and the button that lets go of it. */
+.issue.missing { grid-template-columns: 1fr auto auto; }
+.issue.missing .stars { flex: none; }
+/* Where the file used to be. Quiet and monospaced, because it is there to be
+   recognised rather than read - and it is the one line that says why this entry
+   is not simply a song. */
+.issue-path {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* The record it was on, where that record still exists. Underlined, because
+   nothing else in this row is clickable and a bare colour would not say so. */
+.issue-sub a { text-decoration: underline; text-underline-offset: 2px; }
+@media (hover: hover) {
+  .issue-sub a:hover { color: var(--accent); }
+}
+@media (max-width: 640px) {
+  .issue.missing { grid-template-columns: 1fr auto; }
+  .issue.missing .stars { grid-column: 1; }
+}
 .issue-count {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--danger-soft); color: var(--danger);

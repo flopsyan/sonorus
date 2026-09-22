@@ -138,6 +138,8 @@ export const api = {
   recheckIssues: () => request('POST', '/api/import/issues/recheck'),
   dismissIssue: (id) => request('DELETE', `/api/import/issues/${id}`),
   clearIssues: () => request('DELETE', '/api/import/issues'),
+  missing: () => request('GET', '/api/library/missing'),
+  dropMissing: (id) => request('DELETE', `/api/library/missing/${id}`),
 
   quality: () => request('GET', '/api/quality'),
   scanStatus: () => request('GET', '/api/scan'),
