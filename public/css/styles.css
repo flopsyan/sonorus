@@ -734,6 +734,10 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   box-shadow: var(--shadow-sm);
 }
 .card.round .card-art { border-radius: 50%; }
+/* A book, not a record: its cover is a page and it is taller than it is wide, so
+   a square tile cuts the title off the top of it. 2:3 is the proportion nearly
+   every cover is drawn to, and it is the one the phone already uses. */
+.card.portrait .card-art { aspect-ratio: 2 / 3; }
 .card-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-title { display: block; font-size: 0.9rem; font-weight: 600; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-sub { display: block; font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1010,6 +1014,9 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   background: var(--surface-2); box-shadow: var(--shadow-md);
 }
 .detail-art.round { border-radius: 50%; }
+/* The same 2:3 as the shelf's tiles, so a book is the same shape wherever it is
+   drawn. Only the height changes - the row it sits in keeps its width. */
+.detail-art.portrait { height: 285px; }
 /* The artwork opens at full size, so the tile is a button. It is a flex item
    and therefore already a block, but a button says nothing about that itself. */
 button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
@@ -1660,6 +1667,7 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
      high and cut its own labels off. */
   .track-head { top: -20px; }
   .detail-art { width: 140px; height: 140px; }
+  .detail-art.portrait { height: 210px; }
   .detail-text h1 { font-size: 1.6rem; }
   .queue { width: 300px; padding-top: var(--safe-top); }
   /* A dialog on a phone comes up from the bottom edge like every other sheet in

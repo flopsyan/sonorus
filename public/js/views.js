@@ -26,12 +26,16 @@ function pageHead(label, title, meta, actions = '') {
 
 // `zoom` is the URL of the picture behind the artwork: with one, the tile turns
 // into a button that opens the cover at full size.
-function detailHead({ label, title, meta, artHtml, round = false, actions, zoom = '' }) {
+function detailHead({
+  label, title, meta, artHtml, round = false, portrait = false, actions, zoom = '',
+}) {
+  // `portrait` for a book, whose cover is taller than it is wide - see `card`.
+  const shape = `${round ? ' round' : ''}${portrait ? ' portrait' : ''}`;
   const tile = zoom
-    ? `<button type="button" class="detail-art zoomable${round ? ' round' : ''}"
+    ? `<button type="button" class="detail-art zoomable${shape}"
          data-zoom="${esc(zoom)}" data-zoom-label="${esc(title)}"
          aria-label="Bild vergrößern">${artHtml}</button>`
-    : `<div class="detail-art${round ? ' round' : ''}">${artHtml}</div>`;
+    : `<div class="detail-art${shape}">${artHtml}</div>`;
 
   return `<div class="detail-head">
       ${tile}
@@ -838,6 +842,7 @@ const ebookItem = (b) => ({
   title: b.title,
   sub: ebookSub(b),
   meta: b.year ? String(b.year) : '',
+  portrait: true,
 });
 
 export async function ebooks(_params, ctx) {
@@ -925,6 +930,7 @@ export async function ebook(params) {
     html: `${detailHead({
       label: 'E-Book',
       title: book.title,
+      portrait: true,
       artHtml: art(book.cover, book.title),
       zoom: book.cover,
       meta: facts([

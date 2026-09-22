@@ -276,8 +276,12 @@ export function episodeList(episodes, { offset = 0, showName = false } = {}) {
 // caller knows what is being rated - a record has stars, an interpret and a
 // genre have none. It has to be the read-only widget: the tile is one link, and
 // a control inside it would eat the click that opens the record.
-export function card({ href, cover, covers, title, sub, round = false, playAction, rating = '' }) {
-  return `<a class="card${round ? ' round' : ''}" href="${esc(href)}" data-link>
+// `portrait` is the shelf case: a book cover is taller than it is wide, and a
+// square tile crops the top off it - which is where a cover puts its title.
+export function card({
+  href, cover, covers, title, sub, round = false, portrait = false, playAction, rating = '',
+}) {
+  return `<a class="card${round ? ' round' : ''}${portrait ? ' portrait' : ''}" href="${esc(href)}" data-link>
       <span class="card-art">
         ${covers?.length ? coverMosaic(covers, title) : art(cover, title)}
         ${playAction ? `<button type="button" class="card-play" ${playAction} aria-label="${esc(title)} abspielen">${icon('play', 17)}</button>` : ''}
