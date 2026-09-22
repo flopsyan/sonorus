@@ -39,33 +39,51 @@ export function pickAudio(audio, { index, langs = [] } = {}) {
   return audio.find((a) => a.default) || audio[0];
 }
 
-function videoPlayable(v, caps) {
+// `caps` beyond hevc/av1/vp9 comes from the phone, which reports its own
+// decoders: `video` and `audio` list further codecs, `hevcMkv` says HEVC plays
+// out of Matroska, `tracks` that it can pick one of several audio tracks itself.
+// A browser sends none of them and keeps the browser rules.
+export function videoPlayable(v, caps) {
   if (!v) return true;
   const eightBit = !v.pixFmt || /^yuvj?420p$/.test(v.pixFmt);
   if (v.codec === 'h264') return eightBit;
   if (v.codec === 'hevc') return !!caps.hevc;
   if (v.codec === 'av1') return !!caps.av1;
   if (v.codec === 'vp9') return !!caps.vp9;
-  return false;
+  return (caps.video || []).includes(v.codec);
+}
+
+export function audioPlayable(a, caps) {
+  return !a || BROWSER_AUDIO.has(a.codec) || (caps.audio || []).includes(a.codec);
+}
+
+/** True when the client can play the file exactly as it lies, with this audio track. */
+export function playsAsIs(video, absPath, audio, caps) {
+  const streams = JSON.parse(video.streams || '{}');
+  const ext = path.extname(absPath).toLowerCase();
+  // Firefox plays H.264 out of Matroska, but HEVC only out of MP4.
+  const containerOk =
+    ext in DIRECT_MIME && !(streams.video && streams.video.codec === 'hevc' && ext === '.mkv' && !caps.hevcMkv);
+  return (
+    videoPlayable(streams.video, caps) &&
+    audioPlayable(audio, caps) &&
+    containerOk &&
+    ((streams.audio || []).length <= 1 || !!caps.tracks)
+  );
 }
 
 /**
- * How one video is served to one browser, starting at `start` seconds.
- * `caps` says which of HEVC, AV1 and VP9 the browser decodes. `force` skips
- * the cheaper ways after the browser has refused one of them.
+ * How one video is served to one client, starting at `start` seconds.
+ * `force` skips the cheaper ways after the client has refused one of them.
  */
 export async function planPlayback(video, absPath, { audioIndex, langs, start = 0, caps = {}, force = null }) {
   const streams = JSON.parse(video.streams || '{}');
   const audio = pickAudio(streams.audio || [], { index: audioIndex, langs });
-  const ext = path.extname(absPath).toLowerCase();
   const videoOk = videoPlayable(streams.video, caps);
-  const audioOk = !audio || BROWSER_AUDIO.has(audio.codec);
-  // Firefox plays H.264 out of Matroska, but HEVC only out of MP4.
-  const containerOk =
-    ext in DIRECT_MIME && !(streams.video && streams.video.codec === 'hevc' && ext === '.mkv');
+  const audioOk = audioPlayable(audio, caps);
   const base = { audio: audio ? audio.index : null };
 
-  if (!force && videoOk && audioOk && containerOk && (streams.audio || []).length <= 1) {
+  if (!force && playsAsIs(video, absPath, audio, caps)) {
     return { ...base, mode: 'direct', offset: 0, start, url: `/api/videos/${video.id}/file` };
   }
 

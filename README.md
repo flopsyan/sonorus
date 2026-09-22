@@ -405,8 +405,13 @@ Nur das Neukodieren des Bilds kostet echte Rechenzeit auf dem Server. Umgewandel
 wird live und nichts davon landet auf der Platte; ein Sprung im Film startet den
 Datenstrom an der neuen Stelle neu.
 
-Downloads für Filme und Serien gibt es noch nicht, sie kommen mit der
-Android-App.
+**Downloads aufs Handy** gibt es in zwei Qualitäten, "Original" und "Kleiner"
+(720p). Die Datei geht so, wie sie liegt, wenn das Handy sie abspielen kann -
+bei "Kleiner" nur, wenn sie ohnehin schon klein ist. Alles andere rechnet der
+Server vorher in eine MP4 um, eine nach der anderen und mit niedriger
+Priorität; die App wartet so lange. Diese Kopien liegen unter
+`TRANSCODE_DIR/videos` und werden gelöscht, sobald das Handy sie hat, spätestens
+nach 24 Stunden.
 
 ### Wiedergabe
 

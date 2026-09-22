@@ -2,6 +2,7 @@
 
 import express from 'express';
 import fs from 'node:fs';
+import path from 'node:path';
 
 import { userPrefs } from '../models/users.js';
 import { isScanning } from '../lib/scanner.js';
@@ -15,6 +16,7 @@ import {
   externalCues,
   embeddedCues,
 } from '../lib/videostream.js';
+import { downloadVariant, prepare, preparedPath, release, touch } from '../lib/videodownload.js';
 import {
   absolutePath,
   listMovies,
@@ -40,6 +42,21 @@ const id = (value) => Number.parseInt(value, 10);
 
 function notFound(res) {
   return res.status(404).json({ ok: false, error: 'not_found', message: 'Nicht gefunden.' });
+}
+
+// What the client decodes. A browser sends hevc/av1/vp9; the phone adds its
+// device's codecs (see `videoPlayable` in videostream.js).
+function readCaps(caps = {}) {
+  const names = (list) => (Array.isArray(list) ? list.filter((x) => typeof x === 'string').slice(0, 20) : []);
+  return {
+    hevc: !!caps.hevc,
+    av1: !!caps.av1,
+    vp9: !!caps.vp9,
+    hevcMkv: !!caps.hevcMkv,
+    tracks: !!caps.tracks,
+    video: names(caps.video),
+    audio: names(caps.audio),
+  };
 }
 
 // The Übersicht tab: both lists, and what is running in either, newest first.
@@ -170,12 +187,11 @@ router.post('/videos/:id/plan', async (req, res) => {
   const file = absolutePath(video, video.kind);
   if (!fs.existsSync(file)) return notFound(res);
   const prefs = userPrefs(req.user);
-  const caps = req.body.caps || {};
   const plan = await planPlayback(video, file, {
     audioIndex: req.body.audio === undefined || req.body.audio === null ? undefined : id(req.body.audio),
     langs: [prefs.videoAudioLang].filter(Boolean),
     start: Math.max(0, Math.min(Number(req.body.start) || 0, video.duration || Infinity)),
-    caps: { hevc: !!caps.hevc, av1: !!caps.av1, vp9: !!caps.vp9 },
+    caps: readCaps(req.body.caps),
     force: ['remux', 'encode'].includes(req.body.force) ? req.body.force : null,
   });
   res.json({ ok: true, plan });
@@ -203,6 +219,58 @@ router.get('/videos/:id/stream', (req, res) => {
     ac: req.query.ac === 'copy' ? 'copy' : 'aac',
     userId: req.user.id,
   });
+});
+
+// --- Downloads (the phone) -----------------------------------------------------------
+
+// What the phone gets for "original" or "small", and whether it is ready. The
+// phone asks again until it is; asking is also what starts the preparation.
+router.post('/videos/:id/download', (req, res) => {
+  const video = videoRow(id(req.params.id));
+  if (!video) return notFound(res);
+  const file = absolutePath(video, video.kind);
+  const stat = fs.statSync(file, { throwIfNoEntry: false });
+  if (!stat) return notFound(res);
+  const prefs = userPrefs(req.user);
+  const variant = downloadVariant(video, file, {
+    quality: req.body.quality === 'small' ? 'small' : 'original',
+    caps: readCaps(req.body.caps),
+    langs: [prefs.videoAudioLang].filter(Boolean),
+  });
+  const audio = variant.audio ? variant.audio.index : null;
+  if (variant.kind === 'file') {
+    return res.json({
+      ok: true, ready: true, kind: 'file', key: null, audio, size: stat.size,
+      ext: path.extname(file).slice(1).toLowerCase(), url: `/api/videos/${video.id}/file`,
+    });
+  }
+  const state = prepare(video, file, variant);
+  res.json({
+    ok: true, kind: variant.kind, audio, ext: 'mp4', ...state,
+    url: state.ready ? `/api/videos/${video.id}/download/${state.key}` : null,
+  });
+});
+
+const preparedKey = (req) => {
+  const key = String(req.params.key);
+  return /^[\w-]+$/.test(key) && key.startsWith(`${id(req.params.id)}-`) ? key : null;
+};
+
+router.get('/videos/:id/download/:key', (req, res) => {
+  const key = preparedKey(req);
+  if (!key) return notFound(res);
+  touch(key);
+  res.sendFile(preparedPath(key), { headers: { 'Content-Type': 'video/mp4' }, acceptRanges: true }, (err) => {
+    if (err && !res.headersSent) res.status(404).end();
+  });
+});
+
+// The phone has it, or cancelled: the copy is not kept for anyone.
+router.delete('/videos/:id/download/:key', (req, res) => {
+  const key = preparedKey(req);
+  if (!key) return notFound(res);
+  release(key);
+  res.json({ ok: true });
 });
 
 // Cues as JSON; 202 while an embedded track is still being read out of the file.
