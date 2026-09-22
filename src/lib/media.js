@@ -141,11 +141,16 @@ export async function resizeImage(source, target, width) {
     await fsp.copyFile(source, temp);
   } else {
     const png = target.endsWith('.png');
+    // A logo is a PNG because it is transparent, and scaling a palette PNG
+    // drops the alpha unless the frame is made RGBA first - which left the
+    // transparent parts standing in whatever colour the palette had behind
+    // them (a green box around Stranger Things, 2026-09-22).
+    const filter = `${png ? 'format=rgba,' : ''}scale=w='min(${width},iw)':h=-2`;
     await run(
       ffmpegBin,
       [
         '-nostdin', '-v', 'error', '-y', '-i', source, '-frames:v', '1',
-        '-vf', `scale=w='min(${width},iw)':h=-2`,
+        '-vf', filter,
         ...(png ? [] : ['-q:v', '3']),
         temp,
       ],

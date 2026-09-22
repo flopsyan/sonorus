@@ -201,8 +201,18 @@ export async function localArt(source, width) {
   if (!source) return '';
   try {
     const st = await fsp.stat(source);
-    const ext = source.toLowerCase().endsWith('.svg') ? '.svg' : source.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
-    const key = crypto.createHash('sha1').update(`${source}:${st.size}:${st.mtimeMs}:${width}`).digest('hex').slice(0, 20);
+    const lower = source.toLowerCase();
+    // PNG and WebP are the ones that carry transparency - a logo - and they keep
+    // it; everything else is a photograph and becomes a JPEG.
+    const alpha = lower.endsWith('.png') || lower.endsWith('.webp');
+    const ext = lower.endsWith('.svg') ? '.svg' : alpha ? '.png' : '.jpg';
+    // `a2` renames every transparent copy once, so the flattened ones made
+    // before the fix are replaced rather than kept under the same name.
+    const key = crypto
+      .createHash('sha1')
+      .update(`${source}:${st.size}:${st.mtimeMs}:${width}${alpha ? ':a2' : ''}`)
+      .digest('hex')
+      .slice(0, 20);
     const name = `l-${key}${ext}`;
     await resizeImage(source, path.join(videoArtDir, name), width);
     return name;
