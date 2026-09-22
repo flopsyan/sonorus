@@ -577,7 +577,7 @@ router.get('/search', (req, res) => {
     episodes: searchEpisodes({ userId: req.user.id, q, limit: 40 }),
     books: searchBooks({ userId: req.user.id, q, limit: 20, kind: BOOK }),
     dramas: searchBooks({ userId: req.user.id, q, limit: 20, kind: DRAMA }),
-    ...searchVideos(q, req.user.id),
+    ...searchVideos(q),
   });
 });
 

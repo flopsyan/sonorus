@@ -31,7 +31,6 @@ import {
   setVideoProgress,
   setWatched,
   videoIdsOf,
-  setTitleRating,
   recordVideoPlay,
   updateVideoPlaySeconds,
 } from '../models/videos.js';
@@ -102,18 +101,12 @@ router.get('/collections/:id', (req, res) => {
 });
 
 router.get('/people/:id', (req, res) => {
-  const person = getPerson(id(req.params.id), req.user.id);
+  const person = getPerson(id(req.params.id));
   if (!person) return notFound(res);
   res.json({ ok: true, person });
 });
 
-// --- Marks and stars --------------------------------------------------------------
-
-router.put('/video-titles/:id/rating', (req, res) => {
-  const result = setTitleRating(req.user.id, id(req.params.id), req.body.stars);
-  if (result.error) return res.status(result.error === 'not_found' ? 404 : 400).json({ ok: false, error: result.error, message: 'Bewertung muss zwischen 0 und 5 liegen.' });
-  res.json({ ok: true, stars: result.stars });
-});
+// --- Watched marks ----------------------------------------------------------------
 
 // A whole film or series, or one season of it (`season` in the body).
 router.put('/video-titles/:id/watched', (req, res) => {

@@ -109,17 +109,6 @@
   font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.5;
 }
 .v-vote { display: inline-flex; align-items: center; gap: 3px; color: var(--lamp); font-variant-numeric: tabular-nums; }
-.v-rating { margin-top: 10px; }
-.v-rating .stars .star {
-  background: none; border: none; padding: 2px; cursor: pointer; color: rgba(242, 238, 244, 0.45);
-}
-.v-hero.no-backdrop .v-rating .stars .star { color: var(--text-faint); }
-.v-rating .stars .star.on { color: var(--lamp); }
-@media (hover: hover) {
-  .v-rating .stars:hover .star { color: rgba(242, 238, 244, 0.45); }
-  .v-rating .stars .star:hover,
-  .v-rating .stars .star:hover ~ .star { color: #ffbe57; }
-}
 
 .v-hint {
   display: flex; align-items: center; gap: 8px; margin: -12px 0 24px;
@@ -165,8 +154,18 @@
   background: rgba(16, 14, 20, 0.62); color: #fff; opacity: 0;
   transition: opacity 0.18s ease; backdrop-filter: blur(4px);
 }
+.v-wide-art .v-progress { right: 46px; }
+.v-wide-done {
+  position: absolute; right: 6px; bottom: 6px;
+  width: 30px; height: 30px; border-radius: 50%; padding: 0;
+  display: grid; place-items: center;
+  background: rgba(16, 14, 20, 0.62); color: #fff; border: none; cursor: pointer;
+  backdrop-filter: blur(4px); transition: background 0.15s ease, color 0.15s ease;
+}
+.v-wide-done:disabled { opacity: 0.5; cursor: default; }
 @media (hover: hover) {
   .v-wide:hover .v-wide-play, .v-episode-art:hover .v-wide-play { opacity: 1; }
+  .v-wide-done:not(:disabled):hover { background: var(--lamp); color: var(--lamp-ink); }
 }
 @media (hover: none) {
   .v-wide-play { opacity: 0.9; }

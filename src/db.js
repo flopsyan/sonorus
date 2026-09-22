@@ -641,7 +641,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_video_progress_user ON video_progress(user_id, updated_at DESC);
 
-  -- Stars for a film or a whole series, not for a single episode.
+  -- Stars for a film or a series. Nothing reads them since they left the UI on
+  -- 2026-09-22; kept so the stars already given are not thrown away.
   CREATE TABLE IF NOT EXISTS video_ratings (
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title_id   INTEGER NOT NULL REFERENCES video_titles(id) ON DELETE CASCADE,

@@ -1823,7 +1823,7 @@ function periodSection(listening) {
     ${topList('Meistgehörte Alben', listening.top.albums, (r) => `/albums/${r.id}`)}
     ${topList('Meistgehörtes Gesprochenes', listening.top.spoken, spokenHref, spokenSub)}
     ${topList(
-      'Meistgesehen',
+      'Meistgesehene Videos',
       listening.top.videos || [],
       (r) => `/${r.kind === 'movie' ? 'movies' : 'shows'}/${r.id}`,
       (r) => (r.kind === 'movie' ? 'Film' : 'Serie')

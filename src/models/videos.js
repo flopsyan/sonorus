@@ -1,5 +1,5 @@
 // Reading the video library for the pages and the player, and what one account
-// does with it: positions, watched marks, stars and time watched.
+// does with it: positions, watched marks and time watched.
 
 import path from 'node:path';
 
@@ -64,13 +64,12 @@ function titleShape(t) {
     addedAt: t.added_at,
     tmdbId: t.tmdb_id,
     matched: !!t.tmdb_id,
-    stars: t.stars || 0,
   };
 }
 
 // --- Lists ----------------------------------------------------------------------
 
-const TITLE_FIELDS = `t.*, r.stars AS stars,
+const TITLE_FIELDS = `t.*,
   (SELECT GROUP_CONCAT(genre_id) FROM video_title_genres WHERE title_id = t.id) AS genre_ids`;
 
 /** Every film, with its one video's length and the account's position in it. */
@@ -80,7 +79,6 @@ export function listMovies(userId) {
       `SELECT ${TITLE_FIELDS}, v.id AS video_id, v.duration, p.position, p.completed, p.updated_at AS watched_at
          FROM video_titles t
          JOIN videos v ON v.title_id = t.id
-         LEFT JOIN video_ratings r ON r.title_id = t.id AND r.user_id = @userId
          LEFT JOIN video_progress p ON p.video_id = v.id AND p.user_id = @userId
         WHERE t.kind = 'movie'
         GROUP BY t.id
@@ -109,7 +107,6 @@ export function listShows(userId) {
               MAX(p.updated_at) AS watched_at
          FROM video_titles t
          JOIN videos v ON v.title_id = t.id
-         LEFT JOIN video_ratings r ON r.title_id = t.id AND r.user_id = @userId
          LEFT JOIN video_progress p ON p.video_id = v.id AND p.user_id = @userId
         WHERE t.kind = 'show'
         GROUP BY t.id
@@ -246,13 +243,8 @@ function creditsOf(titleId) {
   };
 }
 
-function ratingOf(userId, titleId) {
-  const r = db.prepare('SELECT stars FROM video_ratings WHERE user_id = ? AND title_id = ?').get(userId, titleId);
-  return r ? r.stars : 0;
-}
-
 // Titles that share the most genres with this one.
-function similar(title, userId, limit = 12) {
+function similar(title, limit = 12) {
   return db
     .prepare(
       `SELECT t.*, COUNT(*) AS shared
@@ -263,7 +255,7 @@ function similar(title, userId, limit = 12) {
         GROUP BY t.id ORDER BY shared DESC, COALESCE(t.vote, 0) DESC LIMIT ?`
     )
     .all(title.kind, title.id, limit)
-    .map((t) => titleShape({ ...t, stars: ratingOf(userId, t.id) }));
+    .map((t) => titleShape(t));
 }
 
 function technical(v) {
@@ -289,12 +281,12 @@ export function getMovie(id, userId) {
   const p = v && db.prepare('SELECT * FROM video_progress WHERE user_id = ? AND video_id = ?').get(userId, v.id);
   const collection = t.collection_id ? getCollection(t.collection_id, userId) : null;
   return {
-    ...titleShape({ ...t, stars: ratingOf(userId, t.id) }),
+    ...titleShape(t),
     genres: genresOf(t.id),
     ...creditsOf(t.id),
     video: v ? { id: v.id, duration: v.duration, progress: progressShape(p, v.duration), tech: technical(v) } : null,
     collection: collection && collection.movies.length > 1 ? collection : null,
-    similar: similar(t, userId),
+    similar: similar(t),
   };
 }
 
@@ -325,14 +317,14 @@ export function getShow(id, userId) {
   const next = nextUp(episodes) || episodes.find((e) => e.season !== 0) || episodes[0];
   const regular = episodes.filter((e) => e.season !== 0);
   return {
-    ...titleShape({ ...t, stars: ratingOf(userId, t.id) }),
+    ...titleShape(t),
     genres: genresOf(t.id),
     ...creditsOf(t.id),
     seasons,
     episodes: regular.length,
     watched: regular.filter((e) => e.completed).length,
     next: next ? episodeShape(next) : null,
-    similar: similar(t, userId),
+    similar: similar(t),
   };
 }
 
@@ -369,7 +361,7 @@ export function getCollection(id, userId) {
 
 const ROLE_WORDS = { director: 'Regie', writer: 'Drehbuch', creator: 'Idee', composer: 'Musik' };
 
-export function getPerson(id, userId) {
+export function getPerson(id) {
   const person = db.prepare('SELECT * FROM video_people WHERE id = ?').get(id);
   if (!person) return null;
   const rows = db
@@ -380,7 +372,7 @@ export function getPerson(id, userId) {
     .all(id);
   const byTitle = new Map();
   for (const r of rows) {
-    const entry = byTitle.get(r.id) || { ...titleShape({ ...r, stars: ratingOf(userId, r.id) }), roles: [] };
+    const entry = byTitle.get(r.id) || { ...titleShape(r), roles: [] };
     entry.roles.push(r.role === 'cast' ? r.character || 'Darsteller' : ROLE_WORDS[r.role] || r.role);
     byTitle.set(r.id, entry);
   }
@@ -422,7 +414,7 @@ export function playerInfo(id, userId) {
   return {
     id: v.id,
     kind: t.kind,
-    title: titleShape({ ...t, stars: 0 }),
+    title: titleShape(t),
     season: v.season,
     episode: v.episode,
     episodeEnd: v.episode_end,
@@ -481,20 +473,6 @@ export function videoIdsOf(titleId, season = null) {
   return rows.map((r) => r.id);
 }
 
-export function setTitleRating(userId, titleId, stars) {
-  const n = Math.round(Number(stars));
-  if (!(n >= 0 && n <= 5)) return { error: 'invalid_stars' };
-  if (!db.prepare('SELECT 1 FROM video_titles WHERE id = ?').get(titleId)) return { error: 'not_found' };
-  if (n === 0) db.prepare('DELETE FROM video_ratings WHERE user_id = ? AND title_id = ?').run(userId, titleId);
-  else {
-    db.prepare(
-      `INSERT INTO video_ratings (user_id, title_id, stars) VALUES (?, ?, ?)
-       ON CONFLICT(user_id, title_id) DO UPDATE SET stars = excluded.stars, updated_at = datetime('now')`
-    ).run(userId, titleId, n);
-  }
-  return { ok: true, stars: n };
-}
-
 export function recordVideoPlay(userId, videoId) {
   if (!videoRow(videoId)) return { error: 'not_found' };
   const info = db.prepare('INSERT INTO video_plays (user_id, video_id) VALUES (?, ?)').run(userId, videoId);
@@ -512,7 +490,7 @@ export function updateVideoPlaySeconds(userId, playId, seconds) {
 
 // --- Search and counts ---------------------------------------------------------------
 
-export function searchVideos(q, userId, limit = 24) {
+export function searchVideos(q, limit = 24) {
   const words = String(q || '').trim().split(/\s+/).filter(Boolean);
   if (!words.length) return { movies: [], shows: [] };
   const where = words.map((_, i) => `(t.title LIKE @w${i} OR t.original_title LIKE @w${i})`).join(' AND ');
@@ -520,7 +498,7 @@ export function searchVideos(q, userId, limit = 24) {
   const rows = db
     .prepare(`SELECT t.* FROM video_titles t WHERE ${where} ORDER BY t.title COLLATE NOCASE LIMIT @limit`)
     .all({ ...params, limit })
-    .map((t) => titleShape({ ...t, stars: ratingOf(userId, t.id) }));
+    .map((t) => titleShape(t));
   return { movies: rows.filter((t) => t.kind === 'movie'), shows: rows.filter((t) => t.kind === 'show') };
 }
 

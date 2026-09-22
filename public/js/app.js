@@ -119,6 +119,8 @@ const ctx = {
   setPref,
   navigate,
   refreshShell,
+  // Draws the page again from fresh data without leaving the scroll position.
+  refresh: () => render({ keep: true }),
 };
 
 // The browser never says whether going back or forward would lead anywhere, so

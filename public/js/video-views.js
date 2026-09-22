@@ -17,21 +17,6 @@ function img(src, label, cls = '') {
   return `<span class="art-fallback" aria-hidden="true">${esc(initial)}</span>`;
 }
 
-function starRow(value, titleId, readonly = true) {
-  const parts = [];
-  for (let n = 5; n >= 1; n -= 1) {
-    const on = n <= value;
-    const glyph = icon(on ? 'star' : 'star-outline', readonly ? 13 : 18);
-    parts.push(
-      readonly
-        ? `<span class="star${on ? ' on' : ''}" aria-hidden="true">${glyph}</span>`
-        : `<button type="button" class="star${on ? ' on' : ''}" data-rate-title="${titleId}" data-title-stars="${n}"
-             aria-label="${n} ${n === 1 ? 'Stern' : 'Sterne'}" title="${n} ${n === 1 ? 'Stern' : 'Sterne'}">${glyph}</button>`
-    );
-  }
-  return `<div class="stars${readonly ? ' readonly' : ''}" role="group" aria-label="Bewertung">${parts.join('')}</div>`;
-}
-
 function progressBar(fraction) {
   const pct = Math.max(2, Math.min(100, Math.round((fraction || 0) * 100)));
   return `<span class="v-progress"><span data-progress="${pct}"></span></span>`;
@@ -51,7 +36,7 @@ function showSub(s) {
 }
 
 /** A poster tile: film, series or film series. */
-function posterCard({ href, poster, title, sub, stars = 0, done = false, fraction = 0, playId = null }) {
+function posterCard({ href, poster, title, sub, done = false, fraction = 0, playId = null }) {
   return `<a class="card portrait v-card" href="${esc(href)}" data-link>
       <span class="card-art">
         ${img(poster, title)}
@@ -61,7 +46,6 @@ function posterCard({ href, poster, title, sub, stars = 0, done = false, fractio
       </span>
       <span class="card-title">${esc(title)}</span>
       ${sub ? `<span class="card-sub">${esc(sub)}</span>` : ''}
-      ${stars ? `<span class="card-stars">${starRow(stars)}</span>` : ''}
     </a>`;
 }
 
@@ -71,7 +55,6 @@ const movieCard = (m) =>
     poster: m.poster,
     title: m.title,
     sub: movieSub(m),
-    stars: m.stars,
     done: m.progress && m.progress.completed,
     fraction: m.progress && m.progress.started ? m.progress.fraction : 0,
     playId: m.videoId,
@@ -83,7 +66,6 @@ const showCard = (s) =>
     poster: s.poster,
     title: s.title,
     sub: showSub(s),
-    stars: s.stars,
     done: s.episodes > 0 && s.watched >= s.episodes,
   });
 
@@ -97,11 +79,13 @@ function wideCard(item) {
     item.kind === 'show'
       ? `${episodeCode(v.season, v.episode, v.episodeEnd)}${v.name ? ` · ${v.name}` : ''}`
       : `noch ${fmt.durationLong(left)}`;
-  return `<a class="v-wide" href="/watch/${v.id}" data-link>
+  return `<a class="v-wide" href="/watch/${v.id}" data-link data-continue-title="${t.id}">
       <span class="v-wide-art">
         ${img(picture, t.title)}
         <span class="v-wide-play">${icon('play', 22)}</span>
         ${v.progress && v.progress.started ? progressBar(v.progress.fraction) : ''}
+        <button type="button" class="v-wide-done" data-continue-done="${v.id}"
+          aria-label="Als gesehen markieren" title="Als gesehen markieren">${icon('check', 16)}</button>
       </span>
       <span class="card-title">${esc(t.title)}</span>
       <span class="card-sub">${esc(sub)}</span>
@@ -118,7 +102,7 @@ function shelf(title, cards, more = '') {
 
 function wideShelf(title, items) {
   if (!items.length) return '';
-  return `<section class="section">
+  return `<section class="section" data-continue>
       <div class="section-head"><h2>${esc(title)}</h2></div>
       <div class="v-wide-row">${items.map(wideCard).join('')}</div>
     </section>`;
@@ -163,7 +147,6 @@ const SORTS = {
   title: { label: 'Titel', cmp: (a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base', numeric: true }) },
   year: { label: 'Jahr', cmp: (a, b) => (b.year || 0) - (a.year || 0) },
   added: { label: 'Neu hinzugefügt', cmp: (a, b) => String(b.newest || b.addedAt).localeCompare(String(a.newest || a.addedAt)) },
-  stars: { label: 'Meine Sterne', cmp: (a, b) => (b.stars || 0) - (a.stars || 0) },
   vote: { label: 'TMDB-Wertung', cmp: (a, b) => (b.vote || 0) - (a.vote || 0) },
   watched: { label: 'Zuletzt gesehen', cmp: (a, b) => String(b.watchedAt || '').localeCompare(String(a.watchedAt || '')) },
 };
@@ -297,7 +280,54 @@ export async function videos() {
         ),
         data.collections.length ? '<a class="rack-label" href="/collections" data-link>Alle Reihen</a>' : ''
       )}`,
-    after: applyProgress,
+    after: (root) => {
+      applyProgress(root);
+      return wireContinueDone(root);
+    },
+  };
+}
+
+// The check on a Weiterschauen tile. A series swaps in its next episode, a film
+// (or a series at its last episode) leaves the row. Only the touched tiles are
+// redrawn, so the tip at the top cannot change under the click.
+function wireContinueDone(root) {
+  let live = true;
+  const onClick = async (e) => {
+    const button = e.target.closest('[data-continue-done]');
+    if (!button) return;
+    // The tile is a link, and app.js would follow it.
+    e.preventDefault();
+    e.stopPropagation();
+    const tile = button.closest('[data-continue-title]');
+    const titleId = Number(tile.dataset.continueTitle);
+    button.disabled = true;
+    try {
+      await api.videoWatched(Number(button.dataset.continueDone), true);
+      const data = await api.videoHome();
+      if (!live) return;
+      const item = data.continue.find((c) => c.title.id === titleId);
+      if (item) tile.outerHTML = wideCard(item);
+      else tile.remove();
+      const section = root.querySelector('[data-continue]');
+      if (section && !section.querySelector('[data-continue-title]')) section.remove();
+      const movie = data.movies.find((m) => m.id === titleId);
+      const series = data.shows.find((x) => x.id === titleId);
+      const poster = movie ? [`/movies/${titleId}`, movieCard(movie)] : series ? [`/shows/${titleId}`, showCard(series)] : null;
+      if (poster) {
+        root.querySelectorAll(`.v-card[href="${poster[0]}"]`).forEach((card) => {
+          card.outerHTML = poster[1];
+        });
+      }
+      applyProgress(root);
+    } catch (err) {
+      button.disabled = false;
+      toast(err.message, 'error');
+    }
+  };
+  root.addEventListener('click', onClick);
+  return () => {
+    live = false;
+    root.removeEventListener('click', onClick);
   };
 }
 
@@ -379,32 +409,21 @@ function wireGenreLinks(root, ctx, key) {
   );
 }
 
+// Re-renders in place: no loading placeholder, the scroll position stays.
 function reload(ctx) {
-  ctx.navigate(window.location.pathname + window.location.search, { replace: true });
+  ctx.refresh();
 }
 
-// Stars, watched toggles and the "..." menu of a detail page.
-function wireTitleActions(root, ctx) {
+// Watched toggles and the "..." menu of a detail page. `changed` redraws what
+// a watched mark touched; by default the whole page, in place.
+function wireTitleActions(root, ctx, changed = () => reload(ctx)) {
   const onClick = async (e) => {
-    const star = e.target.closest('[data-rate-title]');
-    if (star) {
-      const id = Number(star.dataset.rateTitle);
-      const current = root.querySelectorAll(`[data-rate-title="${id}"].on`).length;
-      const value = Number(star.dataset.titleStars) === current ? 0 : Number(star.dataset.titleStars);
-      try {
-        await api.rateTitle(id, value);
-        star.closest('.stars').outerHTML = starRow(value, id, false);
-      } catch (err) {
-        toast(err.message, 'error');
-      }
-      return;
-    }
     const watched = e.target.closest('[data-title-watched]');
     if (watched) {
       const season = watched.dataset.season === undefined ? null : Number(watched.dataset.season);
       try {
         await api.titleWatched(Number(watched.dataset.titleWatched), watched.dataset.done !== '1', season);
-        reload(ctx);
+        changed();
       } catch (err) {
         toast(err.message, 'error');
       }
@@ -415,7 +434,7 @@ function wireTitleActions(root, ctx) {
       e.preventDefault();
       try {
         await api.videoWatched(Number(episodeDone.dataset.videoWatched), episodeDone.dataset.done !== '1');
-        reload(ctx);
+        changed();
       } catch (err) {
         toast(err.message, 'error');
       }
@@ -511,8 +530,7 @@ export async function movie(params, ctx) {
         m.certification ? `<span class="v-cert">${esc(certLabel(m.certification))}</span>` : '',
         m.vote ? `<span class="v-vote" title="TMDB-Wertung">${icon('star', 12)} ${m.vote.toFixed(1)}</span>` : '',
         v && v.tech ? esc(resolutionLabel(v.tech.height, v.tech.width)) : '',
-      ])}
-      <div class="v-rating">${starRow(m.stars, m.id, false)}</div>`,
+      ])}`,
       overview: '',
       actions,
     })}
@@ -534,7 +552,7 @@ export async function movie(params, ctx) {
             )
           : ''
       }
-      ${shelf('Ähnliche Filme', m.similar.map((x) => posterCard({ href: `/movies/${x.id}`, poster: x.poster, title: x.title, sub: String(x.year || ''), stars: x.stars })))}
+      ${shelf('Ähnliche Filme', m.similar.map((x) => posterCard({ href: `/movies/${x.id}`, poster: x.poster, title: x.title, sub: String(x.year || '') })))}
       ${techSection(v && v.tech)}`,
     after: (root) => {
       applyProgress(root);
@@ -546,10 +564,15 @@ export async function movie(params, ctx) {
 
 // --- One series ------------------------------------------------------------------------
 
-function episodeRow(e, titleId) {
-  const code = e.season === 0 ? (e.episode != null ? `Special ${e.episode}` : 'Special') : `Folge ${e.episode ?? '?'}${e.episodeEnd ? `-${e.episodeEnd}` : ''}`;
+function episodeCheck(e) {
   const done = e.progress.completed;
-  return `<div class="v-episode${done ? ' is-done' : ''}" data-episode="${e.id}">
+  return `<button type="button" class="icon-btn v-episode-check${done ? ' is-on' : ''}" data-video-watched="${e.id}" data-done="${done ? '1' : '0'}"
+      aria-label="${done ? 'Als ungesehen markieren' : 'Als gesehen markieren'}" title="${done ? 'Gesehen' : 'Als gesehen markieren'}">${icon('check-circle', 20)}</button>`;
+}
+
+function episodeRow(e) {
+  const code = e.season === 0 ? (e.episode != null ? `Special ${e.episode}` : 'Special') : `Folge ${e.episode ?? '?'}${e.episodeEnd ? `-${e.episodeEnd}` : ''}`;
+  return `<div class="v-episode${e.progress.completed ? ' is-done' : ''}" data-episode="${e.id}">
       <a class="v-episode-art" href="/watch/${e.id}" data-link aria-label="${esc(e.name || code)} abspielen">
         ${img(e.still, e.name || code)}
         <span class="v-wide-play">${icon('play', 20)}</span>
@@ -564,29 +587,30 @@ function episodeRow(e, titleId) {
         ${e.overview ? `<p class="v-episode-overview">${esc(e.overview)}</p>` : ''}
         ${e.airDate ? `<span class="v-episode-date">${esc(fmt.releaseDate(e.airDate))}</span>` : ''}
       </div>
-      <button type="button" class="icon-btn v-episode-check${done ? ' is-on' : ''}" data-video-watched="${e.id}" data-done="${done ? '1' : '0'}"
-        aria-label="${done ? 'Als ungesehen markieren' : 'Als gesehen markieren'}" title="${done ? 'Gesehen' : 'Als gesehen markieren'}">${icon('check-circle', 20)}</button>
+      ${episodeCheck(e)}
     </div>`;
 }
 
-export async function show(params, ctx) {
-  const { show: s } = await api.show(params.id);
-  const next = s.next;
-  const nextStarted = next && next.progress.started;
-  const nextLabel = next ? episodeCode(next.season, next.episode, next.episodeEnd) : '';
-  const startSeason = Number(params.get('season'));
-  const shownSeason = s.seasons.some((x) => x.season === startSeason)
-    ? startSeason
-    : next
-      ? next.season
-      : (s.seasons[0] || {}).season;
+function showFacts(s) {
   const years = s.endDate && s.year && s.endDate.slice(0, 4) !== String(s.year) ? `${s.year}-${s.endDate.slice(0, 4)}` : s.year;
-  const allDone = s.episodes > 0 && s.watched >= s.episodes;
+  return facts([
+    years,
+    fmt.plural(s.seasons.filter((x) => x.season !== 0).length, 'Staffel', 'Staffeln'),
+    fmt.plural(s.episodes, 'Folge', 'Folgen'),
+    s.certification ? `<span class="v-cert">${esc(certLabel(s.certification))}</span>` : '',
+    s.vote ? `<span class="v-vote" title="TMDB-Wertung">${icon('star', 12)} ${s.vote.toFixed(1)}</span>` : '',
+    s.watched ? `${s.watched}/${s.episodes} gesehen` : '',
+  ]);
+}
 
-  const actions = `${
+function showActions(s) {
+  const next = s.next;
+  const label = next ? episodeCode(next.season, next.episode, next.episodeEnd) : '';
+  const allDone = s.episodes > 0 && s.watched >= s.episodes;
+  return `${
     next
       ? `<a class="btn btn-primary" href="/watch/${next.id}" data-link>${icon('play', 16)} ${
-          nextStarted ? `${nextLabel} fortsetzen` : s.watched ? `${nextLabel} abspielen` : 'Abspielen'
+          next.progress.started ? `${label} fortsetzen` : s.watched ? `${label} abspielen` : 'Abspielen'
         }</a>`
       : ''
   }
@@ -594,6 +618,51 @@ export async function show(params, ctx) {
       ${icon(allDone ? 'eye-off' : 'check-circle', 16)} ${allDone ? 'Als ungesehen markieren' : 'Alles als gesehen markieren'}
     </button>
     ${metaMenuButton(s)}`;
+}
+
+function seasonFacts(x) {
+  return facts([fmt.plural(x.episodes.length, 'Folge', 'Folgen'), x.airDate ? x.airDate.slice(0, 4) : '', x.watched ? `${x.watched} gesehen` : '']);
+}
+
+function seasonButton(s, x) {
+  const done = x.watched >= x.episodes.length;
+  return `<button type="button" class="btn btn-ghost btn-sm" data-title-watched="${s.id}" data-season="${x.season}" data-done="${done ? '1' : '0'}">
+      ${icon(done ? 'eye-off' : 'check-circle', 15)} ${done ? 'Staffel als ungesehen markieren' : 'Staffel als gesehen markieren'}
+    </button>`;
+}
+
+// A watched mark changes counts, buttons and the next episode, never a picture.
+// Patching those instead of rendering the page again keeps the scroll position,
+// the open season, and every click of a quick run down the list.
+function patchShow(root, s) {
+  root.querySelector('.v-hero-facts').innerHTML = showFacts(s);
+  root.querySelector('.v-hero-actions').innerHTML = showActions(s);
+  for (const x of s.seasons) {
+    const block = root.querySelector(`.v-season[data-season="${x.season}"]`);
+    if (!block) continue;
+    block.querySelector('.v-season-facts').innerHTML = seasonFacts(x);
+    block.querySelector('.v-season-head [data-title-watched]').outerHTML = seasonButton(s, x);
+    for (const e of x.episodes) {
+      const row = block.querySelector(`[data-episode="${e.id}"]`);
+      if (!row) continue;
+      row.classList.toggle('is-done', e.progress.completed);
+      const art = row.querySelector('.v-episode-art');
+      art.querySelector('.v-progress')?.remove();
+      if (e.progress.started) art.insertAdjacentHTML('beforeend', progressBar(e.progress.fraction));
+      row.querySelector('[data-video-watched]').outerHTML = episodeCheck(e);
+    }
+  }
+  applyProgress(root);
+}
+
+export async function show(params, ctx) {
+  const { show: s } = await api.show(params.id);
+  const startSeason = Number(params.get('season'));
+  const shownSeason = s.seasons.some((x) => x.season === startSeason)
+    ? startSeason
+    : s.next
+      ? s.next.season
+      : (s.seasons[0] || {}).season;
 
   const seasonTabs = s.seasons.length > 1
     ? `<div class="v-season-tabs" role="tablist">${s.seasons
@@ -602,27 +671,20 @@ export async function show(params, ctx) {
     : '';
 
   const seasonBlocks = s.seasons
-    .map((x) => {
-      const done = x.watched >= x.episodes.length;
-      return `<div class="v-season" data-season="${x.season}"${x.season === shownSeason ? '' : ' hidden'}>
+    .map(
+      (x) => `<div class="v-season" data-season="${x.season}"${x.season === shownSeason ? '' : ' hidden'}>
         <div class="v-season-head">
           ${x.poster ? `<span class="v-season-poster">${img(x.poster, x.name)}</span>` : ''}
           <div class="v-season-text">
             <h2>${esc(x.name)}</h2>
-            <div class="v-season-facts">${facts([
-              fmt.plural(x.episodes.length, 'Folge', 'Folgen'),
-              x.airDate ? x.airDate.slice(0, 4) : '',
-              x.watched ? `${x.watched} gesehen` : '',
-            ])}</div>
+            <div class="v-season-facts">${seasonFacts(x)}</div>
             ${x.overview ? `<p class="v-season-overview">${esc(x.overview)}</p>` : ''}
-            <button type="button" class="btn btn-ghost btn-sm" data-title-watched="${s.id}" data-season="${x.season}" data-done="${done ? '1' : '0'}">
-              ${icon(done ? 'eye-off' : 'check-circle', 15)} ${done ? 'Staffel als ungesehen markieren' : 'Staffel als gesehen markieren'}
-            </button>
+            ${seasonButton(s, x)}
           </div>
         </div>
-        <div class="v-episodes">${x.episodes.map((e) => episodeRow(e, s.id)).join('')}</div>
-      </div>`;
-    })
+        <div class="v-episodes">${x.episodes.map(episodeRow).join('')}</div>
+      </div>`
+    )
     .join('');
 
   return {
@@ -634,17 +696,9 @@ export async function show(params, ctx) {
       label: 'Serie',
       poster: s.poster || null,
       zoom: s.poster,
-      meta: `${facts([
-        years,
-        fmt.plural(s.seasons.filter((x) => x.season !== 0).length, 'Staffel', 'Staffeln'),
-        fmt.plural(s.episodes, 'Folge', 'Folgen'),
-        s.certification ? `<span class="v-cert">${esc(certLabel(s.certification))}</span>` : '',
-        s.vote ? `<span class="v-vote" title="TMDB-Wertung">${icon('star', 12)} ${s.vote.toFixed(1)}</span>` : '',
-        s.watched ? `${s.watched}/${s.episodes} gesehen` : '',
-      ])}
-      <div class="v-rating">${starRow(s.stars, s.id, false)}</div>`,
+      meta: showFacts(s),
       overview: '',
-      actions,
+      actions: showActions(s),
     })}
       <div class="v-detail-body">
         ${s.tagline ? `<p class="v-tagline">${esc(s.tagline)}</p>` : ''}
@@ -657,7 +711,7 @@ export async function show(params, ctx) {
         ${seasonBlocks}
       </section>
       ${peopleRow('Besetzung', s.cast.slice(0, 20))}
-      ${shelf('Ähnliche Serien', s.similar.map((x) => posterCard({ href: `/shows/${x.id}`, poster: x.poster, title: x.title, sub: String(x.year || ''), stars: x.stars })))}`,
+      ${shelf('Ähnliche Serien', s.similar.map((x) => posterCard({ href: `/shows/${x.id}`, poster: x.poster, title: x.title, sub: String(x.year || '') })))}`,
     after: (root) => {
       applyProgress(root);
       wireGenreLinks(root, ctx, 'shows');
@@ -665,13 +719,31 @@ export async function show(params, ctx) {
         tab.addEventListener('click', () => {
           const season = tab.dataset.seasonTab;
           root.querySelectorAll('[data-season-tab]').forEach((t) => t.classList.toggle('active', t === tab));
-          root.querySelectorAll('[data-season]').forEach((b) => {
+          root.querySelectorAll('.v-season[data-season]').forEach((b) => {
             b.hidden = b.dataset.season !== season;
           });
           window.history.replaceState(window.history.state, '', `/shows/${s.id}?season=${season}`);
         })
       );
-      return wireTitleActions(root, ctx);
+      // Only the newest answer is drawn: two quick marks can come back out of
+      // order. `root` is the app's content box and outlives the page, so an
+      // answer that lands after leaving it must not be drawn at all.
+      let seq = 0;
+      let live = true;
+      const changed = async () => {
+        const mine = (seq += 1);
+        try {
+          const { show: fresh } = await api.show(s.id);
+          if (mine === seq && live) patchShow(root, fresh);
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+      const unwire = wireTitleActions(root, ctx, changed);
+      return () => {
+        live = false;
+        unwire();
+      };
     },
   };
 }
@@ -741,7 +813,6 @@ export async function person(params) {
       poster: t.poster,
       title: t.title,
       sub: [t.year, t.roles.join(', ')].filter(Boolean).join(' · '),
-      stars: t.stars,
     });
   return {
     title: p.name,

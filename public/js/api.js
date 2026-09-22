@@ -73,7 +73,6 @@ export const api = {
   videoWatched: (id, watched) => request('PUT', `/api/videos/${id}/watched`, { watched }),
   titleWatched: (id, watched, season = null) =>
     request('PUT', `/api/video-titles/${id}/watched`, { watched, season }),
-  rateTitle: (id, stars) => request('PUT', `/api/video-titles/${id}/rating`, { stars }),
   refreshTitle: (id, tmdbId) =>
     request('POST', `/api/video-titles/${id}/refresh`, tmdbId ? { tmdbId } : {}),
   videoMeta: () => request('GET', '/api/video-meta'),

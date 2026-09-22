@@ -378,8 +378,8 @@ videos/
   "Nur ungesehene".
 - **Weiterschauen**: Die Stelle wird je Konto gespeichert. Ab 90 % gilt ein
   Titel als gesehen; Filme, Folgen, Staffeln und ganze Serien lassen sich auch von
-  Hand als gesehen markieren. Bei Serien steht unter "Weiterschauen" die nächste
-  ungesehene Folge.
+  Hand als gesehen markieren, auch direkt auf der Kachel unter "Weiterschauen".
+  Bei Serien steht dort die nächste ungesehene Folge.
 - **Nächste Folge**: 30 Sekunden vor dem Ende wird sie vorgeschlagen und startet
   danach von selbst - abschaltbar im Player.
 - **Der Player** hat Ton- und Untertitelwahl (die gewählte Sprache wird für das
@@ -387,9 +387,9 @@ videos/
   Medientasten. Untertitel als SRT, WebVTT oder ASS neben der Datei oder als
   Textspur in ihr; Bild-Untertitel (PGS, DVD) werden angezeigt, aber nicht
   unterstützt.
-- **Sterne** für Filme und ganze Serien, **Filmreihen** als eigene Seite in der
-  richtigen Reihenfolge, **Personen** mit allem, was von ihnen in der Bibliothek
-  liegt, und die Schauzeit zählt in die **Statistik**.
+- **Filmreihen** als eigene Seite in der richtigen Reihenfolge, **Personen** mit
+  allem, was von ihnen in der Bibliothek liegt, und die Schauzeit zählt in die
+  **Statistik**.
 
 **Was der Browser nicht selbst abspielen kann, rechnet der Server um**, und zwar
 so billig wie möglich:
@@ -602,8 +602,8 @@ und gehört dem Konto, Handy und Desktop zählen also in dieselben Zahlen.
 - **Meistgehörtes Gesprochenes**, eine Liste für alle drei gesprochenen
   Bibliotheken. Gereiht wird die Sendung, das Buch oder das Hörspiel - nie die
   Datei, denn ein Buch ist eine Sache, deren Teile nie gezeigt werden.
-- **Meistgesehen**, dasselbe für Filme und Serien. Eine Serie steht als Ganzes
-  in der Liste, nicht Folge für Folge.
+- **Meistgesehene Videos**, dasselbe für Filme und Serien. Eine Serie steht als
+  Ganzes in der Liste, nicht Folge für Folge.
 
 Eine Wiedergabe zählt, sobald ein Titel 30 Sekunden gelaufen ist - bei Titeln,
 die kürzer sind und die Marke nie erreichen können, ein Drittel ihrer Länge.
