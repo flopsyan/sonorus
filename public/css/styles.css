@@ -1515,6 +1515,36 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); padding: 6px;
 }
 
+/* --- Searching inside the list on screen (Ctrl+F) -------------------------- */
+
+/* Over the page rather than in it: the field appears and goes without the list
+   under it moving a pixel, which is the whole point of a thing you open for one
+   word and close again. Below the overlays and above the page. */
+.find-bar {
+  position: fixed; top: 14px; right: 26px; z-index: 48;
+  display: none; align-items: center; gap: 8px;
+  padding: 7px 8px 7px 12px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+}
+.find-bar.is-on { display: flex; }
+.find-icon { display: grid; place-items: center; color: var(--text-faint); }
+.find-input {
+  width: 230px; border: none; background: none; color: var(--text);
+  font-size: 0.9rem; font-family: inherit; outline: none;
+}
+.find-count {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-faint);
+  white-space: nowrap;
+}
+/* A row is a grid, and a class beats the attribute - so the plain `hidden` the
+   filter sets would do nothing at all without this. */
+.track-row[hidden] { display: none; }
+@media (max-width: 720px) {
+  .find-bar { left: 12px; right: 12px; top: 10px; }
+  .find-input { width: auto; flex: 1; min-width: 0; }
+}
+
 .toasts { position: fixed; bottom: calc(var(--player-h) + 18px); left: 50%; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 .toast {
   background: var(--surface-3); color: var(--text);

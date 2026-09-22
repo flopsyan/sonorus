@@ -15,6 +15,7 @@ import * as views from './views.js';
 import * as player from './player.js';
 import * as qualityPref from './quality.js';
 import * as pendingRatings from './pending.js';
+import * as find from './find.js';
 
 const content = document.getElementById('content');
 const sidebarNav = document.getElementById('sidebar-nav');
@@ -222,6 +223,8 @@ async function render({ keep = false } = {}) {
     view.cleanup = null;
   }
   closeContextMenu();
+  // The rows the field was narrowing are about to be thrown away with the page.
+  find.reset();
   renderNavArrows();
 
   const path = window.location.pathname;
@@ -3700,6 +3703,7 @@ const SHORTCUTS = [
   ['L', 'Songtext ein- / ausblenden'],
   ['V', 'Vollbild'],
   ['/', 'Suche'],
+  ['Strg + F', 'In der Liste auf dem Bildschirm suchen'],
 ];
 
 function showShortcuts() {
@@ -3718,6 +3722,18 @@ function showShortcuts() {
 document.addEventListener('keydown', (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
   const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+  // Searching inside the list on screen. Taken from the browser only when there
+  // is a list to search - on a settings page Ctrl+F still opens the browser's
+  // own find, which is the right thing there.
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+    if (find.open()) e.preventDefault();
+    return;
+  }
+  if (e.key === 'Escape' && find.isOpen()) {
+    find.close();
+    return;
+  }
 
   if (e.key === '/' && !typing) {
     e.preventDefault();
