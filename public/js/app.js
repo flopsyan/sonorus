@@ -12,6 +12,7 @@ import {
   contextMenu, closeContextMenu, lightbox, setOverlayHooks,
 } from './ui.js';
 import * as views from './views.js';
+import * as videoViews from './video-views.js';
 import * as player from './player.js';
 import * as qualityPref from './quality.js';
 import * as pendingRatings from './pending.js';
@@ -78,6 +79,14 @@ const ROUTES = [
   [/^\/ebooks\/authors\/(\d+)$/, views.ebookAuthor, ['id']],
   [/^\/ebooks\/books\/(\d+)$/, views.ebook, ['id']],
   [/^\/ebooks\/books\/(\d+)\/read$/, views.reader, ['id']],
+  [/^\/movies$/, videoViews.movies],
+  [/^\/movies\/(\d+)$/, videoViews.movie, ['id']],
+  [/^\/shows$/, videoViews.shows],
+  [/^\/shows\/(\d+)$/, videoViews.show, ['id']],
+  [/^\/collections$/, videoViews.collections],
+  [/^\/collections\/(\d+)$/, videoViews.collection, ['id']],
+  [/^\/people\/(\d+)$/, videoViews.person, ['id']],
+  [/^\/watch\/(\d+)$/, videoViews.watch, ['id']],
   [/^\/playlists\/(\d+)$/, views.playlist, ['id']],
   [/^\/stars\/([0-5](?:,[0-5])*)$/, views.starred, ['stars']],
   [/^\/search$/, views.search],
@@ -295,6 +304,13 @@ window.addEventListener('popstate', (e) => {
 // the overlays, so following the interpret out of the fullscreen player takes
 // the fullscreen player with it.
 document.addEventListener('click', (e) => {
+  // The play button on a film poster sits inside the poster's link.
+  const watch = e.target.closest('[data-watch]');
+  if (watch) {
+    e.preventDefault();
+    navigate(`/watch/${watch.dataset.watch}`);
+    return;
+  }
   const link = e.target.closest('a[data-link]');
   if (!link || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
   e.preventDefault();
@@ -365,6 +381,15 @@ function renderSidebar() {
     active: path.startsWith('/ebooks'),
   });
 
+  const watching = [
+    { href: '/movies', label: 'Filme', iconName: 'film', also: ['/collections'] },
+    { href: '/shows', label: 'Serien', iconName: 'tv', also: [] },
+  ]
+    .map(({ also, ...item }) =>
+      navItem({ ...item, active: [item.href, ...also].some((p) => path.startsWith(p)) })
+    )
+    .join('');
+
   const starItems = [5, 4, 3, 2, 1]
     .map((n) =>
       `<a class="nav-item${starred.includes(n) ? ' active' : ''}" href="/stars/${n}" data-link>
@@ -434,6 +459,10 @@ function renderSidebar() {
 
     <nav class="nav-group">
       ${reading}
+    </nav>
+
+    <nav class="nav-group">
+      ${watching}
     </nav>
 
     <nav class="nav-group">
@@ -3778,15 +3807,32 @@ const SHORTCUTS = [
   ['Strg + F', 'In der Liste auf dem Bildschirm suchen'],
 ];
 
+const VIDEO_SHORTCUTS = [
+  ['Leertaste / K', 'Wiedergabe / Pause'],
+  ['← / →', '10 Sekunden zurück / vor'],
+  ['↑ / ↓', 'Lauter / leiser'],
+  ['0 - 9', 'Zu 0 % bis 90 % springen'],
+  ['F', 'Vollbild'],
+  ['C', 'Untertitel wechseln'],
+  ['N', 'Nächste Folge'],
+  ['Esc', 'Player verlassen'],
+];
+
 function showShortcuts() {
-  modal({
-    title: 'Tastaturkürzel',
-    body: `<div class="picker-list">${SHORTCUTS.map(
-      ([key, what]) => `<div class="setting-row">
+  const rows = (list) =>
+    list
+      .map(
+        ([key, what]) => `<div class="setting-row">
           <span class="setting-label">${esc(what)}</span>
           <kbd class="rack-label">${esc(key)}</kbd>
         </div>`
-    ).join('')}</div>`,
+      )
+      .join('');
+  modal({
+    title: 'Tastaturkürzel',
+    body: `<div class="picker-list">${rows(SHORTCUTS)}
+      <span class="rack-label shortcuts-gap">Video</span>
+      ${rows(VIDEO_SHORTCUTS)}</div>`,
     footer: '<button type="button" class="btn btn-primary" data-close>Schließen</button>',
   });
 }
@@ -3814,6 +3860,8 @@ document.addEventListener('keydown', (e) => {
   }
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (document.querySelector('.modal-backdrop')) return;
+  // The video player takes the keyboard for itself while it is open.
+  if (document.body.classList.contains('watching')) return;
 
   switch (e.key) {
     case ' ':

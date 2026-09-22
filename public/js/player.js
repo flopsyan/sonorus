@@ -1045,6 +1045,19 @@ function wireMediaSession(spoken) {
   }
 }
 
+/** Takes the media keys and the notification back after the video player had them. */
+export function reclaimMediaSession() {
+  if (!session) return;
+  wiredSpoken = null;
+  const track = currentTrack();
+  if (track) {
+    updateMediaSession(track);
+    setPlaybackState(audio.paused ? 'paused' : 'playing');
+  } else {
+    clearMediaSession();
+  }
+}
+
 // --- Audio element events ---------------------------------------------------
 
 audio.addEventListener('play', () => {

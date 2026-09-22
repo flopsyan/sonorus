@@ -52,8 +52,34 @@ const query = (params) => {
   return s ? `?${s}` : '';
 };
 
+const keep = (keepalive) => (keepalive ? { keepalive: true } : undefined);
+
 export const api = {
   bootstrap: () => request('GET', '/api/bootstrap'),
+
+  movies: () => request('GET', '/api/movies'),
+  movie: (id) => request('GET', `/api/movies/${id}`),
+  shows: () => request('GET', '/api/shows'),
+  show: (id) => request('GET', `/api/shows/${id}`),
+  collections: () => request('GET', '/api/collections'),
+  collection: (id) => request('GET', `/api/collections/${id}`),
+  person: (id) => request('GET', `/api/people/${id}`),
+  video: (id) => request('GET', `/api/videos/${id}`),
+  videoPlan: (id, body) => request('POST', `/api/videos/${id}/plan`, body),
+  videoSubtitles: (id, key) => request('GET', `/api/videos/${id}/subtitles/${key}`),
+  videoProgress: (id, body, keepalive = false) =>
+    request('PUT', `/api/videos/${id}/progress`, body, keep(keepalive)),
+  videoWatched: (id, watched) => request('PUT', `/api/videos/${id}/watched`, { watched }),
+  titleWatched: (id, watched, season = null) =>
+    request('PUT', `/api/video-titles/${id}/watched`, { watched, season }),
+  rateTitle: (id, stars) => request('PUT', `/api/video-titles/${id}/rating`, { stars }),
+  refreshTitle: (id, tmdbId) =>
+    request('POST', `/api/video-titles/${id}/refresh`, tmdbId ? { tmdbId } : {}),
+  videoMeta: () => request('GET', '/api/video-meta'),
+  videoPlay: (videoId) => request('POST', '/api/video-plays', { videoId }),
+  videoPlayTime: (playId, seconds, keepalive = false) =>
+    request('PUT', `/api/video-plays/${playId}`, { seconds }, keep(keepalive)),
+
 
   tracks: (params) => request('GET', `/api/tracks${query(params)}`),
   tracksByIds: (ids) => request('POST', '/api/tracks/by-ids', { ids }),

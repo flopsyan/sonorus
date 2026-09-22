@@ -60,6 +60,14 @@ const STROKE = {
   trending: '<path d="m3 17 5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/>',
   edit: '<path d="M12 20h9"/><path d="M16.6 3.4a2.1 2.1 0 0 1 3 3L7.5 18.5 3 20l1.5-4.5z"/>',
   pin: '<path d="M9 3.5h6v5l2.8 3.8H6.2L9 8.5z"/><path d="M12 12.3V21"/>',
+  // Films: a strip of film. Series: a screen on a stand.
+  film: '<rect x="3" y="3.5" width="18" height="17" rx="2"/><path d="M7.5 3.5v17M16.5 3.5v17M3 8h4.5M3 12h4.5M3 16h4.5M16.5 8H21M16.5 12H21M16.5 16H21"/>',
+  tv: '<rect x="2.5" y="4.5" width="19" height="13" rx="2"/><path d="M8 21h8M12 17.5V21"/>',
+  captions: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M10.5 10.2a2.4 2.4 0 1 0 0 3.6M17.5 10.2a2.4 2.4 0 1 0 0 3.6"/>',
+  'arrow-left': '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+  gauge: '<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13.5 3.5-4.5"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.6h.01"/>',
   image: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m4 17 5-4.5 4.5 4 3-2.5L20 18"/>',
   sparkles: '<path d="m12 3 1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="m18.5 15.5.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/>',
 };
@@ -67,6 +75,16 @@ const STROKE = {
 const FILL = {
   play: '<path d="M7.5 4.8v14.4L19.5 12z"/>',
   pause: '<rect x="6.5" y="4.5" width="4" height="15" rx="1.2"/><rect x="13.5" y="4.5" width="4" height="15" rx="1.2"/>',
+  // Ten seconds back and forward: the ring of the 15-second pair, with a 10.
+  'skip-back-10':
+    '<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M12 0.4v6.2L7.8 3.5z"/>' +
+    '<text x="12" y="15.2" text-anchor="middle" font-size="9" font-weight="700">10</text>',
+  'skip-forward-10':
+    '<g transform="translate(24,0) scale(-1,1)">' +
+    '<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M12 0.4v6.2L7.8 3.5z"/></g>' +
+    '<text x="12" y="15.2" text-anchor="middle" font-size="9" font-weight="700">10</text>',
   'skip-back': '<path d="M18.5 5.4v13.2L9 12z"/><rect x="5" y="5" width="2.6" height="14" rx="1.2"/>',
   'skip-forward': '<path d="M5.5 5.4v13.2L15 12z"/><rect x="16.4" y="5" width="2.6" height="14" rx="1.2"/>',
   // The two skips spoken word gets instead. The circular arrow carries the
