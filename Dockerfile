@@ -19,15 +19,16 @@ ENV NODE_ENV=production \
     DATA_DIR=/app/data \
     TRANSCODE_DIR=/app/transcodes \
     MUSIC_DIR=/music \
+    MOVIE_DIR=/movies \
+    SHOW_DIR=/shows \
     SITE_NAME=Sonorus
 
 WORKDIR /app
 
-# ffmpeg, for the smaller streaming quality. `--no-install-recommends` is what
-# keeps this to the audio side of it: the full recommendation set pulls in the
-# X11 and video stack, several hundred megabytes of it, none of which decodes a
-# FLAC or encodes an Opus. Without ffmpeg the app still runs - it then serves the
-# original files and says so under Einstellungen.
+# ffmpeg, for the smaller streaming quality and for films a browser cannot play
+# as they are. `--no-install-recommends` still brings the codecs (libx264 is a
+# hard dependency of libavcodec) and leaves out the X11 stack. Without ffmpeg the
+# app still runs - it then serves the original files and says so.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg \
   && rm -rf /var/lib/apt/lists/*

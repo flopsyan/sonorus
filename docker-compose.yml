@@ -23,6 +23,10 @@ services:
       AUDIOBOOK_DIR: /audiobooks
       AUDIODRAMA_DIR: /audiodramas
       EBOOK_DIR: /ebooks
+      MOVIE_DIR: /movies
+      SHOW_DIR: /shows
+      # Optional: descriptions, cast and missing artwork for films and series.
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
       # auto (scan when the library is empty) | always | never
       SCAN_ON_START: ${SCAN_ON_START:-auto}
       # Optional: bootstrap the first admin account non-interactively. If left
@@ -54,7 +58,11 @@ services:
       # eBooks, one folder per author and one per book inside it, holding the
       # EPUB. Read-only, and may point at nothing.
       - "${EBOOK_DIR:-./ebooks}:/ebooks:ro"
-      # Persistent data: SQLite database + extracted cover art
+      # Films, one folder per film; series, one folder per series with a folder
+      # per season. Read-only, and either may point at nothing.
+      - "${MOVIE_DIR:-./movies}:/movies:ro"
+      - "${SHOW_DIR:-./shows}:/shows:ro"
+      # Persistent data: SQLite database, cover art, film artwork and subtitles
       - sonorus-data:/app/data
       # The smaller copies, in a volume of their own: they are large, they are
       # worthless in a backup, and every one of them can be made again from the

@@ -1,6 +1,7 @@
 # Sonorus
 
-Selbst gehosteter Player für deine eigenen Audiodateien. Sonorus scannt einen
+Selbst gehosteter Player für deine eigenen Medien: Musik, Gesprochenes, E-Books,
+Filme und Serien. Sonorus scannt einen
 Musikordner, den du in den Container einhängst, und macht aus deiner
 Ordnerstruktur eine begehbare Bibliothek: Interpreten, Alben, Singles, Genres,
 alle Songs und deine eigenen Playlists.
@@ -13,6 +14,10 @@ Position, damit eine 70-Minuten-Folge dort weitergeht, wo du aufgehört hast.
 
 E-Books sind die fünfte Bibliothek und die einzige, die gelesen statt gehört
 wird - mit einer Leseansicht im Browser und in der Android-App.
+
+Filme und Serien kommen als eigene Bibliotheken dazu, mit Postern, Besetzung,
+Filmreihen und einem Player, der sich die Stelle merkt und die nächste Folge von
+selbst startet. Die Ordner dafür sind so aufgebaut wie bei Jellyfin.
 
 Die Oberfläche ist eine einzige Seite - zwischen Interpreten, Alben und Playlists
 zu wechseln unterbricht die Wiedergabe nie. Gestalterisch ist sie lose an die
@@ -329,6 +334,73 @@ Seite selbst ist beide Male dieselbe.
 - Die Android-App kann ein Buch **herunterladen** und dann ohne Server lesen -
   siehe das README dort.
 
+### Filme und Serien
+
+Filme kommen aus `MOVIE_DIR`, Serien aus `SHOW_DIR`. Der Aufbau ist der von
+Jellyfin und Kodi, eine bestehende Mediathek lässt sich also so übernehmen, wie
+sie liegt:
+
+```
+movies/
+  Fight Club (1999)/
+    Fight Club (1999).mkv
+    Fight Club (1999).de.srt        Untertitel (optional)
+    folder.jpg  backdrop.jpg  logo.png
+
+shows/
+  Breaking Bad (2008)/
+    folder.jpg  backdrop.jpg  logo.png  season01-poster.jpg
+    Season 01/
+      01 - Pilot.mkv                auch "S01E01 Pilot.mkv" oder "1x01"
+      01 - Pilot.en.srt
+      01 - Pilot-thumb.jpg
+    Specials/                       Staffel 0
+```
+
+- **Der Ordnername ist Titel und Jahr.** `[tmdbid-550]` im Namen legt den
+  TMDB-Treffer fest, wenn die Suche danebengreift.
+- **Bilder neben den Dateien gewinnen.** Poster (`folder.jpg`, `poster.jpg`),
+  Hintergrund (`backdrop.jpg`, `fanart.jpg`), Logo (`logo.png`), Querformat
+  (`landscape.jpg`), Staffelposter und Episodenbilder werden verkleinert
+  übernommen - genau das, was Jellyfin mit "Bilder in Medienordnern speichern"
+  hinterlegt.
+- **Mit `TMDB_API_KEY` kommt der Rest von TMDB**: Beschreibung, Genres, Studio,
+  FSK, Wertung, Besetzung und Stab mit Fotos, Staffel- und Episodentexte,
+  Filmreihen und jedes Bild, das im Ordner fehlt. Deutsch, mit Englisch als
+  Rückfall. Ohne Schlüssel bleibt Sonorus offline und zeigt nur, was die Ordner
+  hergeben. Über das Menü eines Titels lässt sich ein anderer TMDB-Treffer wählen.
+- **Weiterschauen**: Die Stelle wird je Konto gespeichert. Ab 90 % gilt ein
+  Titel als gesehen; Filme, Folgen, Staffeln und ganze Serien lassen sich auch von
+  Hand als gesehen markieren. Bei Serien steht unter "Weiterschauen" die nächste
+  ungesehene Folge.
+- **Nächste Folge**: 30 Sekunden vor dem Ende wird sie vorgeschlagen und startet
+  danach von selbst - abschaltbar im Player.
+- **Der Player** hat Ton- und Untertitelwahl (die gewählte Sprache wird für das
+  nächste Mal gemerkt), Geschwindigkeit, Vollbild, eine Folgenliste und die
+  Medientasten. Untertitel als SRT, WebVTT oder ASS neben der Datei oder als
+  Textspur in ihr; Bild-Untertitel (PGS, DVD) werden angezeigt, aber nicht
+  unterstützt.
+- **Sterne** für Filme und ganze Serien, **Filmreihen** als eigene Seite in der
+  richtigen Reihenfolge, **Personen** mit allem, was von ihnen in der Bibliothek
+  liegt, und die Schauzeit zählt in die **Statistik**.
+
+**Was der Browser nicht selbst abspielen kann, rechnet der Server um**, und zwar
+so billig wie möglich:
+
+| Datei | Firefox | Chromium / Desktop-Client |
+| --- | --- | --- |
+| H.264 mit AAC/MP3/Opus, eine Tonspur | direkt | direkt |
+| H.264 mit Dolby Digital, DTS oder mehreren Tonspuren | Ton wird umgewandelt, Bild kopiert | ebenso |
+| HEVC | Bild kopiert, in MP4 umverpackt | Bild wird neu kodiert |
+| MPEG-2 (DVD) und anderes | Bild wird neu kodiert | ebenso |
+
+Nur das Neukodieren des Bilds kostet echte Rechenzeit auf dem Server. Umgewandelt
+wird live und nichts davon landet auf der Platte; ein Sprung im Film startet den
+Datenstrom an der neuen Stelle neu.
+
+Downloads für Filme und Serien gibt es noch nicht, sie kommen mit der
+Android-App.
+
 ### Wiedergabe
 
 - Play/Pause, vorheriger/nächster Titel, verstrichene und gesamte Zeit. "Zurück"
@@ -431,6 +503,20 @@ wegzulassen.
 | `V` | Große Ansicht zeigen / verstecken |
 | `/` | Ins Suchfeld springen |
 
+Im Video-Player:
+
+| Taste | Wirkung |
+| --- | --- |
+| `Leertaste` / `K` | Play / Pause |
+| `←` / `→` | 10 Sekunden zurück / vor |
+| `↑` / `↓` | Lauter / leiser |
+| `0` - `9` | Zu 0 % bis 90 % springen |
+| `F` | Vollbild |
+| `C` | Untertitel durchschalten |
+| `N` | Nächste Folge |
+| `M` | Stumm |
+| `Esc` | Player verlassen |
+
 ### Playlists
 
 - Playlists anlegen, umbenennen und löschen; Titel aus jeder Ansicht hinzufügen.
@@ -500,7 +586,7 @@ und gehört dem Konto, Handy und Desktop zählen also in dieselben Zahlen.
   auf jedem Gerät und in jedem Land gleich aussieht. Deshalb muss `TZ` gesetzt
   sein - ein Container ohne läuft auf UTC.
 - **Spielzeit**, der gewählte Zeitraum nach Bibliothek aufgeteilt: Musik,
-  Podcasts, Hörbücher, Hörspiele und die Summe, jeweils mit Anteil, Zahl der
+  Podcasts, Hörbücher, Hörspiele, Filme, Serien und die Summe, jeweils mit Anteil, Zahl der
   Wiedergaben und Zeit. Eine Bibliothek, die still war, behält ihre Zeile - das
   ist es, was sagt, dass sie hier überhaupt gezählt wird.
 - Die meistgehörten Titel, Interpreten und Alben, mit Zahl und Zeit. Diese drei
@@ -509,6 +595,8 @@ und gehört dem Konto, Handy und Desktop zählen also in dieselben Zahlen.
 - **Meistgehörtes Gesprochenes**, eine Liste für alle drei gesprochenen
   Bibliotheken. Gereiht wird die Sendung, das Buch oder das Hörspiel - nie die
   Datei, denn ein Buch ist eine Sache, deren Teile nie gezeigt werden.
+- **Meistgesehen**, dasselbe für Filme und Serien. Eine Serie steht als Ganzes
+  in der Liste, nicht Folge für Folge.
 
 Eine Wiedergabe zählt, sobald ein Titel 30 Sekunden gelaufen ist - bei Titeln,
 die kürzer sind und die Marke nie erreichen können, ein Drittel ihrer Länge.
@@ -584,6 +672,9 @@ Alle Einstellungen kommen aus der Umgebung (siehe `.env.example`):
 | `AUDIOBOOK_DIR` | `./audiobooks` | Host-Pfad deines Hörbuch-Ordners (ein Ordner je Autor, darin einer je Buch), nur lesend. Dieselben Regeln wie `PODCAST_DIR` |
 | `AUDIODRAMA_DIR` | `./audiodramas` | Host-Pfad deines Hörspiel-Ordners, aufgebaut wie `AUDIOBOOK_DIR`, nur lesend. Dieselben Regeln |
 | `EBOOK_DIR` | `./ebooks` | Host-Pfad deines E-Book-Ordners, aufgebaut wie `AUDIOBOOK_DIR`, nur lesend. Dieselben Regeln |
+| `MOVIE_DIR` | `./movies` | Host-Pfad deines Film-Ordners (ein Ordner je Film), nur lesend. Darf ins Leere zeigen |
+| `SHOW_DIR` | `./shows` | Host-Pfad deines Serien-Ordners (ein Ordner je Serie, darin je Staffel), nur lesend. Darf ins Leere zeigen |
+| `TMDB_API_KEY` | *(leer)* | Kostenloser Schlüssel von themoviedb.org für Beschreibungen, Besetzung und fehlende Bilder. Das Einzige, womit Sonorus ins Internet geht |
 | `TZ` | `Europe/Berlin` | Die Uhr, nach der die Statistik zählt. Ohne sie läuft der Container auf UTC, und jede Stunde, jeder Tag und jedes Jahr der Statistik verschiebt sich mit |
 | `PORT` | `3000` | Host-Port, unter dem die App erreichbar ist |
 | `SITE_NAME` | `Sonorus` | Name in Kopfzeile und Browser-Tab |
@@ -646,10 +737,11 @@ hält und welches von beidem gilt.
 
 ## Daten und Sicherung
 
-Dein Musikordner ist **nur lesend** eingehängt - Sonorus schreibt nie hinein. Nur
-die Datenbank (Bibliotheksindex, Konten, Playlists, Bewertungen, Import-Hinweise)
-und die extrahierten Cover liegen im Docker-Volume `sonorus-data` unter
-`/app/data`. Sichere dieses Volume, um Playlists und Bewertungen zu behalten; die
+Dein Musikordner ist **nur lesend** eingehängt - Sonorus schreibt nie hinein,
+genauso wenig in die Film- und Serienordner. Nur die Datenbank (Bibliotheksindex,
+Konten, Playlists, Bewertungen, Import-Hinweise, gesehene Stellen), die
+extrahierten Cover, die Film- und Serienbilder und ausgelesene Untertitel liegen
+im Docker-Volume `sonorus-data` unter `/app/data`. Sichere dieses Volume, um Playlists und Bewertungen zu behalten; die
 Bibliothek selbst lässt sich jederzeit mit einem erneuten Scan aufbauen.
 
 ## Ohne Docker betreiben

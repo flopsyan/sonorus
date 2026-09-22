@@ -1,7 +1,7 @@
 {
   "name": "sonorus",
   "version": "0.1.0",
-  "description": "Self-hosted music player - browse your own audio files by artist, album and genre, rate them and build playlists.",
+  "description": "Self-hosted media player for your own files: music, spoken word, ebooks, films and series.",
   "type": "module",
   "license": "Apache-2.0",
   "engines": {
