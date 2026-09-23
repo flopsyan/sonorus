@@ -145,7 +145,9 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
   args.push(
     '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1',
     '-avoid_negative_ts', 'make_zero',
-    '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+    // delay_moov puts the B-frame delay and the AAC priming into an edit list;
+    // without it the first sound packet was stretched and the sound ran ~60 ms early.
+    '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof+delay_moov',
     'pipe:1'
   );
 
