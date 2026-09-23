@@ -2159,10 +2159,7 @@ export async function settings(_params, ctx) {
         </h2>
 
         <div class="rack-label mt-sm">Datei weg, Bewertung geblieben</div>
-        <p class="panel-hint">Ihre Datei hat der letzte Scan nicht mehr gefunden. Die Zeile steht
-          noch, weil deine Bewertung oder ein Playlist-Eintrag daran hängt - nach einer Umbenennung
-          ist das genau richtig, denn der nächste Scan findet sie wieder. Was wirklich weg ist,
-          räumst du hier weg.</p>
+        <p class="panel-hint">Songs mit Bewertung oder Playlist-Eintrag, deren Datei der letzte Scan nicht gefunden hat.</p>
         <div id="missing-block">${missingRows(missingData.missing)}</div>
 
         <div class="rack-label mt-lg">Aus einem CSV-Import</div>

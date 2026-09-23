@@ -878,20 +878,31 @@ const isReferenced = db.prepare(`
   SELECT 1 FROM episode_progress WHERE track_id = @id
    LIMIT 1
 `);
+// What the summary counts as kept: the rows Mitteilungen lists. One held only by
+// its plays is invisible there, so counting it left a number nothing could clear.
+const isMarked = db.prepare(`
+  SELECT 1 FROM ratings        WHERE track_id = @id
+   UNION ALL
+  SELECT 1 FROM playlist_items WHERE track_id = @id
+   LIMIT 1
+`);
 const markMissing = db.prepare('UPDATE tracks SET missing_at = @now WHERE id = @id');
 const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
 
 const retireTracks = db.transaction((ids) => {
   const now = new Date().toISOString();
   let removed = 0;
+  let kept = 0;
   for (const id of ids) {
-    if (isReferenced.get({ id })) markMissing.run({ id, now });
-    else {
+    if (isReferenced.get({ id })) {
+      markMissing.run({ id, now });
+      if (isMarked.get({ id })) kept += 1;
+    } else {
       deleteTrack.run(id);
       removed += 1;
     }
   }
-  return removed;
+  return { removed, kept };
 });
 
 // --- Writing one ebook ------------------------------------------------------
@@ -1087,10 +1098,7 @@ export async function runScan() {
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();
     const gone = known.filter((t) => !seen.has(t.path)).map((t) => t.id);
-    if (gone.length) {
-      state.removed = retireTracks(gone);
-      state.kept = gone.length - state.removed;
-    }
+    if (gone.length) Object.assign(state, retireTracks(gone));
     // A book whose file is gone is gone: nothing refers to it but the place it
     // was read to, and that is worth less than a shelf full of dead rows.
     for (const row of db.prepare('SELECT id FROM ebooks').all()) {
