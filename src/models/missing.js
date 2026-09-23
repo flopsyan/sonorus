@@ -1,20 +1,5 @@
-// The songs whose files are gone and which somebody still wants.
-//
-// A scan does not delete a track whose file has disappeared if anything still
-// refers to it - see `retireTracks` in lib/scanner.js. That is what keeps a
-// rating alive across a renamed file, and it is right: the file comes back
-// under its new name at the next scan and nothing was lost. What it also
-// produces is the other case, where the file is really gone for good, and then
-// the row is a corpse that shows up in the star playlists and nowhere else.
-//
-// Until now the only trace of them was one number in the scan summary
-// ("2 fehlen, aber bewertet"), which says that something is wrong and not what.
-// Florian, 2026-09-22: "ich kann schlecht herausfinden, um welche Lieder es sich
-// handelt."
-//
-// **Rated and in a playlist, not merely played.** A row kept only by the play
-// history was never marked by hand, and listing those would bury the two or
-// three that were meant under hundreds nobody chose.
+// Songs whose file is gone but that someone rated or put in a playlist. A row
+// kept only by its plays was never chosen by hand and would bury the few that were.
 
 import db from '../db.js';
 
@@ -28,8 +13,7 @@ const LIST = `
          t.album_id                           AS albumId,
          COALESCE(al.title, '')               AS album,
          COALESCE(r.stars, 0)                 AS stars,
-         -- Whether the record it was on is still a page worth linking to. The
-         -- album row outlives its last file, so the test is what is left in it.
+         -- The album row outlives its last file, so it is linked only while files remain.
          (SELECT COUNT(*) FROM tracks t2
            WHERE t2.album_id = t.album_id AND t2.missing_at = '') AS albumTracks,
          (SELECT GROUP_CONCAT(p.name, ' · ')
@@ -60,15 +44,8 @@ export function countMissing(userId) {
   return listMissing(userId).length;
 }
 
-/**
- * Anything that would lose something if the row went. The same rule the scanner
- * prunes by, asked here for one track - see `isReferenced` in lib/scanner.js.
- *
- * `plays` is the interesting member: a play is minutes in the statistics, and
- * they are worth more than a tidy table. Florian, on being asked what the button
- * should cost: "vor allem die Minuten sind mir da wichtig dass die in der
- * Statistik bleiben".
- */
+// The scanner's `isReferenced` rule for one track. Plays count: they are minutes
+// in the statistics.
 const stillWanted = db.prepare(`
   SELECT 1 FROM ratings          WHERE track_id = @id
    UNION ALL
@@ -80,16 +57,8 @@ const stillWanted = db.prepare(`
    LIMIT 1
 `);
 
-/**
- * Lets go of one corpse: this account's rating and its places in this account's
- * playlists, and then the row itself if that was the last thing holding it.
- *
- * A song that was listened to keeps its row, because `plays` hangs off it and
- * would cascade away with it. It is invisible either way - every browse view
- * filters on `missing_at`, and the two that do not are exactly the star
- * playlists and the playlists this has just taken it out of - so what is left is
- * a row nothing draws, holding the minutes.
- */
+// Drops this account's rating and playlist places, then the row once nothing holds
+// it. A played song keeps its row, since deleting it would cascade the plays away.
 export const dropMissing = db.transaction((userId, trackId) => {
   const row = db
     .prepare("SELECT id FROM tracks WHERE id = @id AND missing_at != ''")

@@ -886,7 +886,10 @@ const isMarked = db.prepare(`
   SELECT 1 FROM playlist_items WHERE track_id = @id
    LIMIT 1
 `);
-const markMissing = db.prepare('UPDATE tracks SET missing_at = @now WHERE id = @id');
+// Only the first scan that misses the file stamps it, so "Fehlt seit" keeps that day.
+const markMissing = db.prepare(
+  "UPDATE tracks SET missing_at = @now WHERE id = @id AND missing_at = ''"
+);
 const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
 
 const retireTracks = db.transaction((ids) => {
