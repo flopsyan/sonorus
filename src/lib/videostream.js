@@ -18,6 +18,9 @@ import { subtitleDir } from '../db.js';
 import { ffmpegBin, keyframeBefore, run } from './media.js';
 
 const BROWSER_AUDIO = new Set(['aac', 'mp3', 'opus', 'flac', 'vorbis']);
+// ffmpeg seeks 3/23 s before -ss when the picture has B-frames, so -ss right on a
+// keyframe landed one keyframe early: seconds of picture before any sound.
+const PAST_KEYFRAME = 0.14;
 const DIRECT_MIME = {
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
@@ -88,7 +91,7 @@ export async function planPlayback(video, absPath, { audioIndex, langs, start = 
   }
 
   const copy = videoOk && force !== 'encode';
-  const offset = copy ? await keyframeBefore(absPath, start) : Math.max(0, start);
+  const offset = copy ? (await keyframeBefore(absPath, start)) + PAST_KEYFRAME : Math.max(0, start);
   const query = new URLSearchParams({
     start: String(Math.round(offset * 1000) / 1000),
     vc: copy ? 'copy' : 'h264',
@@ -118,6 +121,8 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
   const a = (streams.audio || []).find((x) => x.index === audio) || null;
 
   const args = ['-nostdin', '-hide_banner', '-loglevel', 'error'];
+  // Picture and sound both start at the keyframe; the edit list then trims them to `start`.
+  if (vc === 'copy') args.push('-noaccurate_seek');
   if (start > 0) args.push('-ss', String(start));
   args.push('-i', absPath);
   if (v) args.push('-map', `0:${v.index}`);
@@ -144,9 +149,8 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
   }
   args.push(
     '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1',
-    '-avoid_negative_ts', 'make_zero',
-    // delay_moov puts the B-frame delay and the AAC priming into an edit list;
-    // without it the first sound packet was stretched and the sound ran ~60 ms early.
+    // delay_moov puts the B-frame delay, the AAC priming and the trim to `start` into
+    // one edit list entry per track, the only form ExoPlayer reads as well.
     '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof+delay_moov',
     'pipe:1'
   );
