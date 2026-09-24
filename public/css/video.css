@@ -328,7 +328,7 @@ body.watching { overflow: hidden; }
 }
 .vp-rail:hover .vp-track, .vp.is-dragging .vp-track { height: 6px; }
 .vp-buffer, .vp-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; }
-.vp-buffer { background: rgba(255, 255, 255, 0.32); }
+.vp-buffer { background: rgba(255, 255, 255, 0.5); }
 .vp-fill { background: var(--lamp); }
 .vp-knob {
   position: absolute; top: 50%; left: 0; width: 15px; height: 15px; border-radius: 50%;

@@ -304,11 +304,14 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
       rail.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
       rail.setAttribute('aria-valuetext', fmt.duration(at));
     }
+    // After a jump the last range can lie far ahead of the playhead; only the one it sits in counts.
     const b = video.buffered;
-    if (b && b.length && duration) {
-      const end = s.offset + b.end(b.length - 1);
-      buffer.style.width = `${clamp(end / duration, 0, 1) * 100}%`;
+    const t = video.currentTime;
+    let end = 0;
+    for (let i = 0; i < b.length; i += 1) {
+      if (b.start(i) <= t + 1 && t <= b.end(i)) end = s.offset + b.end(i);
     }
+    buffer.style.width = `${duration ? clamp(end / duration, 0, 1) * 100 : 0}%`;
     renderCue(at);
     checkNext(at);
   }
