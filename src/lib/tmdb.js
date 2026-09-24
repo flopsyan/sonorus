@@ -21,6 +21,26 @@ export function tmdbEnabled() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// English for the log, `shown` in German for the settings page and the toast.
+function tmdbError(log, shown) {
+  const err = new Error(log);
+  err.shown = shown;
+  return err;
+}
+
+// fetch() rejects with a bare "fetch failed" and hides the reason in `cause`.
+async function reach(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (err) {
+    const reason = (err.cause && err.cause.code) || err.name || err.message;
+    throw tmdbError(
+      `TMDB unreachable (${reason})`,
+      err.name === 'TimeoutError' ? 'TMDB antwortet nicht.' : 'TMDB ist nicht erreichbar. Hat der Server Internet?'
+    );
+  }
+}
+
 /** GET one API path. Null for a 404; throws on anything else that is not ok. */
 export async function tmdb(pathname, params = {}) {
   const url = new URL(`${API}${pathname}`);
@@ -33,17 +53,21 @@ export async function tmdb(pathname, params = {}) {
   else url.searchParams.set('api_key', key());
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
+    const res = await reach(url, { headers, signal: AbortSignal.timeout(20_000) });
     if (res.status === 429) {
       await sleep((Number(res.headers.get('retry-after')) || 2) * 1000);
       continue;
     }
     if (res.status === 404) return null;
-    if (res.status === 401) throw new Error('TMDB rejected the key (401). Check TMDB_API_KEY.');
-    if (!res.ok) throw new Error(`TMDB answered ${res.status} for ${pathname}`);
+    if (res.status === 401) {
+      throw tmdbError('TMDB rejected the key (401)', 'TMDB lehnt den Schlüssel ab. Bitte TMDB_API_KEY prüfen.');
+    }
+    if (!res.ok) {
+      throw tmdbError(`TMDB answered ${res.status} for ${pathname}`, `TMDB hat mit einem Fehler geantwortet (HTTP ${res.status}).`);
+    }
     return res.json();
   }
-  throw new Error(`TMDB kept rate-limiting ${pathname}`);
+  throw tmdbError(`TMDB kept rate-limiting ${pathname}`, 'TMDB nimmt gerade zu viele Anfragen nicht an. Bitte später nochmal.');
 }
 
 /**
@@ -55,8 +79,10 @@ export async function tmdbImage(filePath, size) {
   const name = `t-${size}-${path.basename(filePath)}`;
   const target = path.join(videoArtDir, name);
   if (fs.existsSync(target)) return name;
-  const res = await fetch(`${IMAGES}/${size}${filePath}`, { signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`TMDB image ${res.status}: ${filePath}`);
+  const res = await reach(`${IMAGES}/${size}${filePath}`, { signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) {
+    throw tmdbError(`TMDB image ${res.status}: ${filePath}`, `Ein Bild von TMDB kam nicht an (HTTP ${res.status}).`);
+  }
   const temp = `${target}.${process.pid}.tmp`;
   await fsp.writeFile(temp, Buffer.from(await res.arrayBuffer()));
   await fsp.rename(temp, target);

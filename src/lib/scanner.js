@@ -66,6 +66,7 @@ import { resolveIssuesForUser } from '../models/issues.js';
 import { collectVideoWork, indexVideos, pruneVideos, sweepVideoArt } from './videoscan.js';
 import { refreshDueMetadata } from './videometa.js';
 import { tmdbEnabled } from './tmdb.js';
+import { explainSystemError } from './errors.js';
 
 // Extensions music-metadata can read tags from. Whether a browser can play a
 // given file is a separate question (see the README).
@@ -107,10 +108,19 @@ const state = {
   kept: 0, // files gone, rows kept because a rating or playlist needs them
   skipped: 0,
   failed: 0,
+  // What could not be read and why, for the settings page. The log has all of it.
+  problems: [],
   startedAt: null,
   finishedAt: null,
   error: '',
 };
+
+const MAX_PROBLEMS = 5;
+
+function noteProblem(target, err) {
+  if (state.problems.length >= MAX_PROBLEMS) return;
+  state.problems.push(explainSystemError(err) || `${target}: ${err && err.message ? err.message : err}`);
+}
 
 export function scanState() {
   return {
@@ -527,7 +537,11 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
     let entries;
     try {
       entries = await fsp.readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (err) {
+      // Said out loud: a mount with the wrong owner otherwise reads as an empty
+      // folder, and the scan reports success over a library it just emptied.
+      console.warn(`Sonorus: could not open ${dir}:`, err && err.message ? err.message : err);
+      noteProblem(dir, err);
       return;
     }
     for (const entry of entries) {
@@ -1037,6 +1051,7 @@ export async function runScan() {
     kept: 0,
     skipped: 0,
     failed: 0,
+    problems: [],
     startedAt: new Date().toISOString(),
     finishedAt: null,
     error: '',
@@ -1078,6 +1093,7 @@ export async function runScan() {
         } catch (err) {
           state.failed += 1;
           console.warn(`Sonorus: could not read ${file}:`, err && err.message ? err.message : err);
+          noteProblem(file, err);
         }
         state.done += 1;
       }
@@ -1133,7 +1149,7 @@ export async function runScan() {
     state.phase = 'done';
   } catch (err) {
     state.phase = 'error';
-    state.error = err && err.message ? err.message : String(err);
+    state.error = explainSystemError(err) || (err && err.message ? err.message : String(err));
     console.error('Sonorus: library scan failed:', err);
   } finally {
     state.running = false;

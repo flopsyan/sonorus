@@ -4,6 +4,7 @@
 
 import db, { setMeta } from '../db.js';
 import { tmdb, tmdbImage, tmdbEnabled, LANGUAGE, FALLBACK_LANGUAGE } from './tmdb.js';
+import { explainSystemError } from './errors.js';
 
 const CAST_LIMIT = 24;
 const CREW_JOBS = {
@@ -381,7 +382,7 @@ export async function refreshDueMetadata(state) {
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       console.warn(`Sonorus: TMDB failed for title ${id}:`, message);
-      setMeta('tmdb_error', message);
+      setMeta('tmdb_error', (err && err.shown) || explainSystemError(err) || message);
       if (/401/.test(message)) break;
     }
     state.done += 1;

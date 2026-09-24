@@ -1,6 +1,70 @@
 // Thin wrapper around the JSON API. Every call returns the parsed body; a
-// failed request throws an Error carrying the German message the server sent,
-// so callers can show it straight in a toast.
+// failed request throws an ApiError carrying a German sentence, so callers can
+// show it straight in a toast.
+
+export class ApiError extends Error {
+  constructor(message, code) {
+    super(message);
+    // The server's own word for what went wrong, for the callers that have to
+    // tell "this can never work" from "not right now". The rating queue is the
+    // one that needs it: a track someone deleted must not block everything
+    // queued behind it, and nothing else may be dropped.
+    this.code = code;
+  }
+}
+
+/**
+ * What a status means when the body does not say it. An answer that is not
+ * Sonorus's JSON came from the reverse proxy in front of it, and the status is
+ * the only clue there is.
+ */
+export function statusMessage(status) {
+  if (status === 413) return 'Die Anfrage war für den Server zu groß.';
+  if (status === 502 || status === 503) {
+    return `Sonorus ist nicht erreichbar, der Dienst startet vielleicht gerade neu (HTTP ${status}).`;
+  }
+  if (status === 504) return 'Der Server hat zu lange nicht geantwortet (HTTP 504).';
+  if (status === 429) return 'Zu viele Anfragen, bitte kurz warten (HTTP 429).';
+  if (status === 403) return 'Der Zugriff wurde vor Sonorus abgewiesen (HTTP 403).';
+  if (status >= 500) return `Der Server hat mit einem Fehler geantwortet (HTTP ${status}).`;
+  return `Unerwartete Antwort vom Server (HTTP ${status}).`;
+}
+
+/** Why no answer came at all: fetch() only ever says "NetworkError" or "Failed to fetch". */
+export function networkMessage() {
+  return navigator.onLine === false ? 'Keine Internetverbindung.' : 'Keine Verbindung zum Server.';
+}
+
+/**
+ * Why an <audio> element gave up on a URL. The element says "not supported"
+ * whether the file is gone, the server is down or the format is foreign, so the
+ * URL is asked again for one byte. Null when the server delivers - then it was
+ * the browser. `stop` is set when every other track would fail the same way.
+ */
+export async function mediaFailure(url) {
+  let res;
+  try {
+    res = await fetch(url, { headers: { Range: 'bytes=0-0' } });
+  } catch {
+    return { message: networkMessage(), stop: true };
+  }
+  if (res.status === 401) window.location.href = '/login';
+  if (res.ok) return null;
+  let message = statusMessage(res.status);
+  try {
+    message = (await res.json()).message || message;
+  } catch {
+    // The proxy's HTML page; the status says it.
+  }
+  return { message, stop: res.status !== 404 };
+}
+
+/** The sentence for a toast. Anything that is not an ApiError is a bug in the page. */
+export function errorText(err) {
+  if (err instanceof ApiError) return err.message;
+  console.error(err);
+  return `Fehler in der App: ${err && err.message ? err.message : err}`;
+}
 
 async function request(method, path, body, extra) {
   const options = { method, headers: {}, ...extra };
@@ -9,36 +73,28 @@ async function request(method, path, body, extra) {
     options.body = JSON.stringify(body);
   }
 
-  const res = await fetch(path, options);
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw err;
+    throw new ApiError(networkMessage(), 'network');
+  }
 
   // The session expired: reload so the server can send us to the login page.
   if (res.status === 401) {
     window.location.href = '/login';
-    throw new Error('Nicht angemeldet.');
+    throw new ApiError('Nicht angemeldet.', 'auth_required');
   }
 
   let data = null;
   try {
     data = await res.json();
   } catch {
-    // Not JSON means the answer did not come from the app itself: a reverse
-    // proxy refusing the request size, a gateway error, a route that does not
-    // exist. The status is the only clue there is, so it goes into the message -
-    // a bare "Unerwartete Antwort" names no cause at all.
-    throw new Error(
-      res.status === 413
-        ? 'Die Anfrage war für den Server zu groß.'
-        : `Unerwartete Antwort vom Server (HTTP ${res.status}).`
-    );
+    throw new ApiError(statusMessage(res.status), `http_${res.status}`);
   }
   if (!res.ok || data.ok === false) {
-    const error = new Error(data.message || 'Da ist etwas schiefgelaufen.');
-    // The server's own word for what went wrong, for the callers that have to
-    // tell "this can never work" from "not right now". The rating queue is the
-    // one that needs it: a track someone deleted must not block everything
-    // queued behind it, and nothing else may be dropped.
-    error.code = data.error || `http_${res.status}`;
-    throw error;
+    throw new ApiError(data.message || statusMessage(res.status), data.error || `http_${res.status}`);
   }
   return data;
 }

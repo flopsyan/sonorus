@@ -7,7 +7,8 @@
 // `order` once instead of picking a random track each time, which is what makes
 // the queue panel able to show the real upcoming order.
 
-import { api } from './api.js';
+import { api, mediaFailure } from './api.js';
+import { toast } from './ui.js';
 import { spreadByArtist } from './shuffle.js';
 import { streamUrl } from './quality.js';
 
@@ -383,6 +384,9 @@ function load(track, autoplay, startAt = 0) {
 }
 
 async function start() {
+  // An element that failed does not load again by itself; setting the source
+  // again clears the error.
+  if (audio.error && currentTrack()) return load(currentTrack(), true, state.currentTime);
   await ensureGraph();
   if (audioCtx && audioCtx.state === 'suspended') {
     try {
@@ -1161,9 +1165,40 @@ audio.addEventListener('ended', () => {
   next(false);
 });
 
-audio.addEventListener('error', () => {
-  // A file the browser cannot decode should not stall the queue.
-  if (audio.getAttribute('src')) next(true);
+// Tracks in a row that would not play. Once it is the whole queue, skipping on
+// would only go round in circles.
+let failedInRow = 0;
+audio.addEventListener('playing', () => {
+  failedInRow = 0;
+});
+
+audio.addEventListener('error', async () => {
+  const src = audio.getAttribute('src');
+  const track = currentTrack();
+  if (!src || !track) return;
+  const code = audio.error ? audio.error.code : 0;
+  // Asked without the quality: the plain stream is what says whether the file is there.
+  const failure = await mediaFailure(`/api/stream/${track.id}`);
+  if (audio.getAttribute('src') !== src) return;
+
+  if (failure && failure.stop) {
+    // Server or network gone: the next track would fail the same way. Play
+    // picks up here again - see `start`.
+    audio.pause();
+    state.playing = false;
+    emit();
+    toast(failure.message, 'err');
+    return;
+  }
+  const why = failure
+    ? failure.message
+    : code === 3
+      ? 'Die Datei ließ sich nicht dekodieren.'
+      : 'Dieses Format spielt der Browser nicht ab.';
+  toast(`„${track.title}“: ${why}`, 'err');
+  failedInRow += 1;
+  if (failedInRow < state.order.length) next(true);
+  else stop();
 });
 
 // Music until a track says otherwise; `updateMediaSession` does the swap.

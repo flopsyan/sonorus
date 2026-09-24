@@ -170,7 +170,7 @@ export function requireAuth(req, res, next) {
 // Middleware: guard an API route (JSON instead of a redirect).
 export function requireAuthApi(req, res, next) {
   if (currentUser(req)) return next();
-  return res.status(401).json({ ok: false, error: 'auth_required' });
+  return res.status(401).json({ ok: false, error: 'auth_required', message: 'Bitte neu anmelden.' });
 }
 
 // Middleware: guard an admin-only page route (user management). Logged-in

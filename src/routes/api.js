@@ -112,6 +112,7 @@ import {
 import { listMissing, countMissing, dropMissing } from '../models/missing.js';
 import { searchVideos } from '../models/videos.js';
 import videoRouter from './video.js';
+import { fail } from '../lib/errors.js';
 import { importEntries, importIntoPlaylist } from '../models/import.js';
 import {
   listUsers,
@@ -132,32 +133,8 @@ router.use(requireAuthApi);
 
 router.use(videoRouter);
 
-// German messages for the error codes the models return.
-const ERRORS = {
-  invalid_username: 'Ungültiger Benutzername (2-32 Zeichen: Buchstaben, Zahlen, . _ -).',
-  weak_password: 'Passwort zu kurz (mindestens 4 Zeichen).',
-  taken: 'Benutzername ist bereits vergeben.',
-  last_user: 'Der letzte Account kann nicht gelöscht werden.',
-  last_admin: 'Der letzte Admin kann nicht gelöscht werden.',
-  invalid_name: 'Bitte einen Namen angeben.',
-  invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
-  invalid_date: 'Bitte ein Datum wie 17.05.2013, 05.2013 oder 2013 angeben.',
-  not_a_single:
-    'Nur Singles lassen sich einzeln bearbeiten. Songs eines Albums bekommen Datum, Genres und Cover vom Album.',
-  nothing_to_edit: 'Es gibt nichts zu ändern.',
-  bad_image: 'Das Bild konnte nicht gelesen werden. Erlaubt sind JPG, PNG und WebP.',
-  image_too_big: 'Das Bild ist zu groß (maximal 6 MB).',
-  not_found: 'Nicht gefunden.',
-  empty: 'Die Datei enthält keine Zeilen.',
-  no_title_column: 'Der CSV-Datei fehlt eine Spalte mit dem Songtitel.',
-};
-
-function fail(res, code, status = 400) {
-  return res.status(status).json({ ok: false, error: code, message: ERRORS[code] || 'Fehler.' });
-}
-
 function adminOnly(req, res, next) {
-  if (!req.user.is_admin) return fail(res, 'admin_only', 403);
+  if (!req.user.is_admin) return fail(res, 'admin_only');
   return next();
 }
 
@@ -223,7 +200,7 @@ router.post('/tracks/by-ids', (req, res) => {
 
 router.get('/tracks/:id', (req, res) => {
   const track = getTrack(id(req.params.id), req.user.id);
-  if (!track) return fail(res, 'not_found', 404);
+  if (!track) return fail(res, 'not_found', 'track');
   res.json({ ok: true, track });
 });
 
@@ -233,7 +210,7 @@ router.get('/tracks/:id', (req, res) => {
 // which is what tells a lyric that can follow the song from one that cannot.
 router.get('/tracks/:id/lyrics', (req, res) => {
   const lyrics = getLyrics(id(req.params.id));
-  if (!lyrics) return fail(res, 'not_found', 404);
+  if (!lyrics) return fail(res, 'not_found', 'lyrics');
   res.json({ ok: true, lyrics });
 });
 
@@ -244,7 +221,7 @@ router.get('/tracks/:id/lyrics', (req, res) => {
 // value that was really stored.
 router.put('/tracks/:id/lyrics-offset', (req, res) => {
   const offset = setLyricsOffset(id(req.params.id), req.body.offset);
-  if (offset === null) return fail(res, 'not_found', 404);
+  if (offset === null) return fail(res, 'not_found', 'track');
   res.json({ ok: true, offset });
 });
 
@@ -259,7 +236,7 @@ router.patch('/tracks/:id', async (req, res) => {
   if (!Object.keys(patch).length) return fail(res, 'nothing_to_edit');
 
   const result = await updateSingle(id(req.params.id), patch);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'track');
   res.json({ ok: true, track: getTrack(id(req.params.id), req.user.id) });
 });
 
@@ -269,7 +246,7 @@ router.get('/artists', (req, res) => {
 
 router.get('/artists/:id', (req, res) => {
   const artist = getArtist(id(req.params.id), req.user.id);
-  if (!artist) return fail(res, 'not_found', 404);
+  if (!artist) return fail(res, 'not_found', 'artist');
   res.json({ ok: true, artist });
 });
 
@@ -279,7 +256,7 @@ router.patch('/artists/:id', async (req, res) => {
   if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
 
   const result = await updateArtistCover(id(req.params.id), req.body.cover);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'artist');
   res.json({ ok: true, artist: getArtist(id(req.params.id), req.user.id) });
 });
 
@@ -297,7 +274,7 @@ router.get('/albums', (req, res) => {
 
 router.get('/albums/:id', (req, res) => {
   const album = getAlbum(id(req.params.id), req.user.id);
-  if (!album) return fail(res, 'not_found', 404);
+  if (!album) return fail(res, 'not_found', 'album');
   res.json({ ok: true, album });
 });
 
@@ -312,7 +289,7 @@ router.patch('/albums/:id', async (req, res) => {
   if ('cover' in req.body) patch.cover = req.body.cover;
 
   const result = await updateAlbum(id(req.params.id), patch);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'album');
   res.json({ ok: true, album: getAlbum(id(req.params.id), req.user.id) });
 });
 
@@ -324,7 +301,7 @@ router.get('/genres', (req, res) => {
 // list - the same as the star playlists do with several ratings.
 router.get('/genres/:ids', (req, res) => {
   const genre = getGenres(String(req.params.ids).split(',').map((value) => id(value)), req.user.id);
-  if (!genre) return fail(res, 'not_found', 404);
+  if (!genre) return fail(res, 'not_found', 'genre');
   res.json({ ok: true, genre });
 });
 
@@ -345,7 +322,7 @@ router.get('/podcasts', (req, res) => {
 
 router.get('/podcasts/:id', (req, res) => {
   const podcast = getPodcast(id(req.params.id), req.user.id, { sort: req.query.sort });
-  if (!podcast) return fail(res, 'not_found', 404);
+  if (!podcast) return fail(res, 'not_found', 'podcast');
   res.json({ ok: true, podcast });
 });
 
@@ -357,7 +334,7 @@ router.put('/progress/:id', (req, res) => {
     position: req.body.position,
     completed: req.body.completed,
   });
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'spoken');
   res.json(result);
 });
 
@@ -384,7 +361,7 @@ function spokenRoutes(base, kind) {
 
   router.get(`/${base}/authors/:id`, (req, res) => {
     const author = getAuthor(id(req.params.id), req.user.id, kind);
-    if (!author) return fail(res, 'not_found', 404);
+    if (!author) return fail(res, 'not_found', 'author');
     res.json({ ok: true, author });
   });
 
@@ -394,7 +371,7 @@ function spokenRoutes(base, kind) {
     if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
 
     const result = await updateAuthorCover(id(req.params.id), req.body.cover);
-    if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+    if (result.error) return fail(res, result.error, 'author');
     res.json({ ok: true, author: getAuthor(id(req.params.id), req.user.id, kind) });
   });
 
@@ -402,7 +379,7 @@ function spokenRoutes(base, kind) {
   // line, and a second word for it would only have to be translated back.
   router.get(`/${base}/books/:id`, (req, res) => {
     const book = getBook(id(req.params.id), req.user.id);
-    if (!book || book.kind !== kind) return fail(res, 'not_found', 404);
+    if (!book || book.kind !== kind) return fail(res, 'not_found', kind === DRAMA ? 'drama' : 'book');
     res.json({ ok: true, book });
   });
 
@@ -414,12 +391,12 @@ function spokenRoutes(base, kind) {
     if (!('narrator' in req.body) && !('date' in req.body)) return fail(res, 'nothing_to_edit');
 
     const current = getBook(id(req.params.id), req.user.id);
-    if (!current || current.kind !== kind) return fail(res, 'not_found', 404);
+    if (!current || current.kind !== kind) return fail(res, 'not_found', kind === DRAMA ? 'drama' : 'book');
 
     const patch = kind === DRAMA ? { ...req.body, narrator: undefined } : req.body;
     if (kind === DRAMA) delete patch.narrator;
     const result = updateBook(id(req.params.id), patch);
-    if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+    if (result.error) return fail(res, result.error, kind === DRAMA ? 'drama' : 'book');
     res.json({ ok: true, book: getBook(id(req.params.id), req.user.id) });
   });
 
@@ -427,7 +404,7 @@ function spokenRoutes(base, kind) {
   // the listener is shown.
   router.put(`/${base}/books/:id/heard`, (req, res) => {
     const result = setBookHeard(req.user.id, id(req.params.id), !!req.body.heard);
-    if (result.error) return fail(res, result.error, 404);
+    if (result.error) return fail(res, result.error, kind === DRAMA ? 'drama' : 'book');
     res.json({ ...result, book: getBook(id(req.params.id), req.user.id) });
   });
 }
@@ -453,13 +430,13 @@ router.get('/ebooks', (req, res) => {
 
 router.get('/ebooks/authors/:id', (req, res) => {
   const author = getEbookAuthor(id(req.params.id), req.user.id);
-  if (!author) return fail(res, 'not_found', 404);
+  if (!author) return fail(res, 'not_found', 'author');
   res.json({ ok: true, author });
 });
 
 router.get('/ebooks/books/:id', (req, res) => {
   const book = getEbook(id(req.params.id), req.user.id);
-  if (!book) return fail(res, 'not_found', 404);
+  if (!book) return fail(res, 'not_found', 'ebook');
   res.json({ ok: true, book });
 });
 
@@ -470,7 +447,7 @@ router.get('/ebooks/books/:id', (req, res) => {
 router.patch('/ebooks/authors/:id', async (req, res) => {
   if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
   const result = await updateAuthorCover(id(req.params.id), req.body.cover);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'author');
   res.json({ ok: true, author: getEbookAuthor(id(req.params.id), req.user.id) });
 });
 
@@ -479,13 +456,13 @@ router.patch('/ebooks/authors/:id', async (req, res) => {
 router.patch('/ebooks/books/:id', (req, res) => {
   if (!('date' in req.body)) return fail(res, 'nothing_to_edit');
   const result = updateEbook(id(req.params.id), req.body);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'ebook');
   res.json({ ok: true, book: getEbook(id(req.params.id), req.user.id) });
 });
 
 router.put('/ebooks/books/:id/progress', (req, res) => {
   const result = setEbookProgress(req.user.id, id(req.params.id), req.body || {});
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'ebook');
   res.json({ ok: true, progress: getEbook(id(req.params.id), req.user.id).progress });
 });
 
@@ -496,10 +473,10 @@ router.put('/ebooks/books/:id/progress', (req, res) => {
 // started again - the same deal every downloaded song gets.
 router.get('/ebooks/books/:id/file', (req, res) => {
   const book = ebookFile(id(req.params.id));
-  if (!book) return fail(res, 'not_found', 404);
+  if (!book) return fail(res, 'not_found', 'ebookFile');
   res.type('application/epub+zip');
   res.sendFile(book.path, (err) => {
-    if (err && !res.headersSent) fail(res, 'not_found', 404);
+    if (err && !res.headersSent) fail(res, 'not_found', 'ebookFile');
   });
 });
 
@@ -515,9 +492,9 @@ router.get('/ebooks/books/:id/read/*name', (req, res) => {
   try {
     piece = readResource(id(req.params.id), name);
   } catch {
-    return fail(res, 'not_found', 404);
+    return fail(res, 'not_found', 'ebookPage');
   }
-  if (!piece) return fail(res, 'not_found', 404);
+  if (!piece) return fail(res, 'not_found', 'ebookPage');
 
   // The book's own CSP: it may style itself, which an EPUB does inline, and it
   // may load nothing from anywhere else.
@@ -585,7 +562,7 @@ router.get('/search', (req, res) => {
 
 router.put('/tracks/:id/rating', (req, res) => {
   const result = setRating(req.user.id, id(req.params.id), req.body.stars);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'track');
   res.json({ ok: true, stars: result.stars, counts: starCounts(req.user.id) });
 });
 
@@ -594,7 +571,7 @@ router.put('/tracks/:id/rating', (req, res) => {
 // carries no timestamp and is stamped on arrival, as it always was.
 router.post('/plays', (req, res) => {
   const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds, req.body.playedAt);
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'track');
   res.json({ ok: true, playId: result.id });
 });
 
@@ -640,7 +617,7 @@ router.get('/playlists', (req, res) => {
 
 router.post('/playlists', (req, res) => {
   const result = createPlaylist(req.user.id, req.body.name, id(req.body.folderId) || null);
-  if (result.error) return fail(res, result.error);
+  if (result.error) return fail(res, result.error, 'folder');
   res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
 });
 
@@ -649,13 +626,13 @@ router.post('/playlists', (req, res) => {
 router.put('/playlists/order', (req, res) => {
   const folderId = id(req.body.folderId) || null;
   const result = reorderPlaylists(req.user.id, folderId, req.body.ids || []);
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlist');
   res.json({ ok: true, tree: playlistTree(req.user.id) });
 });
 
 router.get('/playlists/:id', (req, res) => {
   const playlist = getPlaylist(req.user.id, id(req.params.id));
-  if (!playlist) return fail(res, 'not_found', 404);
+  if (!playlist) return fail(res, 'not_found', 'playlist');
   res.json({ ok: true, playlist, tracks: playlistTracks(req.user.id, playlist.id) });
 });
 
@@ -665,32 +642,32 @@ router.patch('/playlists/:id', (req, res) => {
   if ('folderId' in req.body) patch.folderId = id(req.body.folderId) || null;
   if ('pinned' in req.body) patch.pinned = !!req.body.pinned;
   const result = updatePlaylist(req.user.id, id(req.params.id), patch);
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlist');
   res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
 });
 
 router.delete('/playlists/:id', (req, res) => {
   const result = deletePlaylist(req.user.id, id(req.params.id));
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlist');
   res.json({ ok: true, tree: playlistTree(req.user.id) });
 });
 
 router.post('/playlists/:id/tracks', (req, res) => {
   const ids = Array.isArray(req.body.trackIds) ? req.body.trackIds : [req.body.trackId];
   const result = addTracks(req.user.id, id(req.params.id), ids);
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlist');
   res.json({ ok: true, added: result.added, tree: playlistTree(req.user.id) });
 });
 
 router.delete('/playlists/:id/items/:itemId', (req, res) => {
   const result = removeItem(req.user.id, id(req.params.id), id(req.params.itemId));
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlistItem');
   res.json({ ok: true, tree: playlistTree(req.user.id) });
 });
 
 router.put('/playlists/:id/order', (req, res) => {
   const result = reorderItems(req.user.id, id(req.params.id), req.body.itemIds || []);
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlist');
   res.json({ ok: true });
 });
 
@@ -704,13 +681,13 @@ router.post('/folders', (req, res) => {
 
 router.patch('/folders/:id', (req, res) => {
   const result = renameFolder(req.user.id, id(req.params.id), req.body.name);
-  if (result.error) return fail(res, result.error, result.error === 'not_found' ? 404 : 400);
+  if (result.error) return fail(res, result.error, 'folder');
   res.json({ ok: true, tree: playlistTree(req.user.id) });
 });
 
 router.delete('/folders/:id', (req, res) => {
   const result = deleteFolder(req.user.id, id(req.params.id));
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'folder');
   res.json({ ok: true, tree: playlistTree(req.user.id) });
 });
 
@@ -735,7 +712,7 @@ router.post('/import/csv', (req, res) => {
         source,
       });
 
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'playlist');
   res.json({ ...result, tree: playlistTree(req.user.id), issues: countIssues(req.user.id) });
 });
 
@@ -752,7 +729,7 @@ router.post('/import/issues/recheck', (req, res) => {
 
 router.delete('/import/issues/:id', (req, res) => {
   const result = dismissIssue(req.user.id, id(req.params.id));
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'notice');
   res.json({ ok: true, issues: countIssues(req.user.id) });
 });
 
@@ -771,7 +748,7 @@ router.get('/library/missing', (req, res) => {
 // because it does not when the song was ever played - see models/missing.js.
 router.delete('/library/missing/:id', (req, res) => {
   const result = dropMissing(req.user.id, id(req.params.id));
-  if (result.error) return fail(res, result.error, 404);
+  if (result.error) return fail(res, result.error, 'notice');
   res.json({ ok: true, deleted: result.deleted, missing: listMissing(req.user.id) });
 });
 
@@ -819,13 +796,13 @@ router.post('/users', adminOnly, (req, res) => {
     display_name: req.body.displayName,
     is_admin: req.body.isAdmin ? 1 : 0,
   });
-  if (result.error) return fail(res, result.error);
+  if (result.error) return fail(res, result.error, 'user');
   res.json({ ok: true, users: listUsers() });
 });
 
 router.delete('/users/:id', adminOnly, (req, res) => {
   const result = deleteUser(id(req.params.id));
-  if (result.error) return fail(res, result.error);
+  if (result.error) return fail(res, result.error, 'user');
   res.json({ ok: true, users: listUsers(), self: id(req.params.id) === req.user.id });
 });
 
@@ -838,7 +815,7 @@ router.put('/profile', (req, res) => {
       return fail(res, 'wrong_password');
     }
     const result = changePassword(req.user.id, newPassword);
-    if (result.error) return fail(res, result.error);
+    if (result.error) return fail(res, result.error, 'user');
     // A new password invalidates the old cookie signature - refresh it, so the
     // user is not logged out of the tab they are sitting in.
     setSessionCookie(res, req, getUserById(req.user.id));
@@ -890,7 +867,8 @@ const AUDIO_MIME = {
 // under the transport is the format coming out of the speaker.
 router.get('/stream/:id', async (req, res) => {
   const track = streamTrack(id(req.params.id));
-  if (!track || !track.path || !fs.existsSync(track.path)) return fail(res, 'not_found', 404);
+  if (!track || !track.path) return fail(res, 'not_found', 'track');
+  if (!fs.existsSync(track.path)) return fail(res, 'not_found', 'file');
 
   const profile = profileOf(req.query.q);
   let file = track.path;
@@ -952,5 +930,9 @@ router.get('/quality', (req, res) => {
   });
 });
 
+
+// A path nothing above answers. JSON like every other answer here, so the client
+// can say what it means: usually an app that is newer than its server.
+router.use((req, res) => fail(res, 'no_route'));
 
 export default router;

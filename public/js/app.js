@@ -4,7 +4,7 @@
 // playlists must never interrupt playback, so the router swaps the contents of
 // <main> and leaves the <audio> element alone.
 
-import { api } from './api.js';
+import { api, errorText } from './api.js';
 import { icon, paintIcons } from './icons.js';
 import * as fmt from './format.js';
 import {
@@ -276,7 +276,7 @@ async function render({ keep = false } = {}) {
     markPlayingRow();
   } catch (err) {
     if (seq !== renderSeq) return;
-    content.innerHTML = `<div class="empty"><h3>Konnte nicht geladen werden</h3><p>${esc(err.message)}</p></div>`;
+    content.innerHTML = `<div class="empty"><h3>Konnte nicht geladen werden</h3><p>${esc(errorText(err))}</p></div>`;
   }
   renderSidebar();
 }
@@ -619,7 +619,7 @@ async function setPinned(id, pinned) {
     await refreshShell();
     if (window.location.pathname === `/playlists/${id}`) render();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(errorText(err), 'err');
   }
 }
 
@@ -800,7 +800,7 @@ sidebarNav.addEventListener('drop', async (e) => {
     await api.reorderPlaylists(folderId, ids);
     await refreshShell();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(errorText(err), 'err');
   }
 });
 
@@ -995,7 +995,7 @@ async function editAlbumDialog(albumId) {
   try {
     album = (await api.album(albumId)).album;
   } catch (err) {
-    return toast(err.message, 'err');
+    return toast(errorText(err), 'err');
   }
 
   // The album's own list once it has one, the union of its songs' before that -
@@ -1043,7 +1043,7 @@ async function editAlbumDialog(albumId) {
           await refreshShell();
           render();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1066,7 +1066,7 @@ async function editAuthorDialog(authorId, base = 'audiobooks') {
       ? (await api.ebookAuthor(authorId)).author
       : (await api.spokenAuthor(base, authorId)).author;
   } catch (err) {
-    return toast(err.message, 'err');
+    return toast(errorText(err), 'err');
   }
 
   let cover;
@@ -1101,7 +1101,7 @@ async function editAuthorDialog(authorId, base = 'audiobooks') {
           toast('Profilbild gespeichert.');
           render();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1121,7 +1121,7 @@ async function editEbookDialog(bookId) {
   try {
     book = (await api.ebook(bookId)).book;
   } catch (err) {
-    return toast(err.message, 'err');
+    return toast(errorText(err), 'err');
   }
 
   modal({
@@ -1148,7 +1148,7 @@ async function editEbookDialog(bookId) {
           toast('E-Book gespeichert.');
           render();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1166,7 +1166,7 @@ async function editBookDialog(bookId, base = 'audiobooks') {
   try {
     book = (await api.spokenBook(base, bookId)).book;
   } catch (err) {
-    return toast(err.message, 'err');
+    return toast(errorText(err), 'err');
   }
 
   // A radio play has a cast, not a narrator, and Florian asked for the line to
@@ -1211,7 +1211,7 @@ async function editBookDialog(bookId, base = 'audiobooks') {
           toast(isDrama ? 'Hörspiel gespeichert.' : 'Hörbuch gespeichert.');
           render();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1225,7 +1225,7 @@ async function editArtistDialog(artistId) {
   try {
     artist = (await api.artist(artistId)).artist;
   } catch (err) {
-    return toast(err.message, 'err');
+    return toast(errorText(err), 'err');
   }
 
   let cover;
@@ -1259,7 +1259,7 @@ async function editArtistDialog(artistId) {
           toast('Profilbild gespeichert.');
           render();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1309,7 +1309,7 @@ function editSingleDialog(track) {
           toast('Single gespeichert.');
           render();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1365,7 +1365,7 @@ function promptText({ title, label, value = '', confirmLabel = 'Anlegen', onSubm
         try {
           await onSubmit(text);
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1443,7 +1443,7 @@ function addToPlaylistDialog(trackIds, { create = true } = {}) {
             await refreshShell();
             if (window.location.pathname === `/playlists/${id}`) render();
           } catch (err) {
-            toast(err.message, 'err');
+            toast(errorText(err), 'err');
           }
         })
       );
@@ -1552,7 +1552,7 @@ content.addEventListener('click', async (e) => {
         tile ? tile.getAttribute('href') || '' : currentSourceKey()
       );
     } catch (err) {
-      toast(err.message, 'err');
+      toast(errorText(err), 'err');
     }
     return;
   }
@@ -1582,7 +1582,7 @@ content.addEventListener('click', async (e) => {
       // but the reader has not gone anywhere.
       render({ keep: true });
     } catch (err) {
-      toast(err.message, 'err');
+      toast(errorText(err), 'err');
     }
     return;
   }
@@ -1607,7 +1607,7 @@ content.addEventListener('click', async (e) => {
       if (!player.state.shuffle) player.setShuffle(true);
       player.playTracks(tracks, 0, unrated ? 'Unbewertete' : 'Zufallsmix');
     } catch (err) {
-      toast(err.message, 'err');
+      toast(errorText(err), 'err');
     }
     return;
   }
@@ -1713,7 +1713,7 @@ content.addEventListener('click', async (e) => {
       });
       render({ keep: true });
     } catch (err) {
-      toast(err.message, 'err');
+      toast(errorText(err), 'err');
     }
     return;
   }
@@ -1917,7 +1917,7 @@ async function markEpisode(track, completed) {
     // star playlists have, and the same answer: redraw without moving.
     render({ keep: true });
   } catch (err) {
-    toast(err.message, 'err');
+    toast(errorText(err), 'err');
   }
 }
 
@@ -2144,7 +2144,7 @@ content.addEventListener('drop', async (e) => {
     await api.reorderPlaylist(view.playlistId, list.map((t) => t.itemId));
     render();
   } catch (err) {
-    toast(err.message, 'err');
+    toast(errorText(err), 'err');
   }
 });
 
@@ -3071,7 +3071,7 @@ const LYRICS_LEAD = 1;
 // no single lead can be right for all of them. It moves the text *against*
 // LYRICS_LEAD, so an offset of zero is the lead and nothing more - which is why
 // the control shows 0,0 rather than 1,0.
-const lyricState = { trackId: null, text: '', lines: [], loading: false, at: -1, offset: 0 };
+const lyricState = { trackId: null, text: '', lines: [], loading: false, error: '', at: -1, offset: 0 };
 
 // Counts the fetches, so a slow answer for the previous track cannot land on
 // top of the current one - the same guard the router uses.
@@ -3103,7 +3103,7 @@ function loadLyrics(track) {
   const id = track ? track.id : null;
   if (lyricState.trackId === id) return;
 
-  Object.assign(lyricState, { trackId: id, text: '', lines: [], loading: false, at: -1, offset: 0 });
+  Object.assign(lyricState, { trackId: id, text: '', lines: [], loading: false, error: '', at: -1, offset: 0 });
   renderLyrics();
   if (!track || !track.hasLyrics) return;
 
@@ -3123,9 +3123,11 @@ function loadLyrics(track) {
       renderLyrics();
       paintLyricPosition(player.state.currentTime, true);
     })
-    .catch(() => {
+    .catch((err) => {
       if (seq !== lyricSeq) return;
       lyricState.loading = false;
+      // Not "the file has no text": it has one, it just did not arrive.
+      lyricState.error = errorText(err);
       renderLyrics();
     });
 }
@@ -3157,6 +3159,8 @@ function renderLyrics() {
     setLyricsHtml(note('Spiele einen Song ab, um seinen Text zu sehen.'));
   } else if (lyricState.loading) {
     setLyricsHtml('<div class="loading">Wird geladen …</div>');
+  } else if (lyricState.error) {
+    setLyricsHtml(note(`Songtext nicht geladen: ${lyricState.error}`));
   } else if (lyricState.lines.length) {
     // Timed: every line is its own element, because one of them is highlighted
     // and scrolled to on every step of the playhead - and because a timed line
@@ -3362,7 +3366,7 @@ let offsetSaveTimer = null;
 function saveOffset(trackId, seconds) {
   clearTimeout(offsetSaveTimer);
   offsetSaveTimer = setTimeout(() => {
-    api.saveLyricsOffset(trackId, seconds).catch(() => toast('Versatz nicht gespeichert.', 'err'));
+    api.saveLyricsOffset(trackId, seconds).catch((err) => toast(`Versatz nicht gespeichert: ${errorText(err)}`, 'err'));
   }, 500);
 }
 
@@ -3913,7 +3917,7 @@ async function boot() {
   try {
     data = await api.bootstrap();
   } catch (err) {
-    content.innerHTML = `<div class="empty"><h3>Verbindung fehlgeschlagen</h3><p>${esc(err.message)}</p></div>`;
+    content.innerHTML = `<div class="empty"><h3>Verbindung fehlgeschlagen</h3><p>${esc(errorText(err))}</p></div>`;
     return;
   }
 

@@ -277,6 +277,7 @@ textarea { resize: vertical; min-height: 70px; }
 .flash { padding: 11px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 0.89rem; }
 .flash.err { background: var(--danger-soft); color: var(--danger); }
 .flash.ok { background: var(--ok-soft); color: var(--ok); }
+.scan-problems { margin: 6px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
 
 /* ============================================================================
    App shell

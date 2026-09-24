@@ -2,7 +2,7 @@
 // series, a person, and the player page. Same contract as views.js: each
 // returns { title, html } and may return an `after(root, ctx)` hook.
 
-import { api } from './api.js';
+import { api, errorText } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
 import { esc, empty, toast, modal, closeModal, contextMenu } from './ui.js';
@@ -326,7 +326,7 @@ function wireContinueDone(root) {
       applyProgress(root);
     } catch (err) {
       button.disabled = false;
-      toast(err.message, 'error');
+      toast(errorText(err), 'err');
     }
   };
   root.addEventListener('click', onClick);
@@ -430,7 +430,7 @@ function wireTitleActions(root, ctx, changed = () => reload(ctx)) {
         await api.titleWatched(Number(watched.dataset.titleWatched), watched.dataset.done !== '1', season);
         changed();
       } catch (err) {
-        toast(err.message, 'error');
+        toast(errorText(err), 'err');
       }
       return;
     }
@@ -441,7 +441,7 @@ function wireTitleActions(root, ctx, changed = () => reload(ctx)) {
         await api.videoWatched(Number(episodeDone.dataset.videoWatched), episodeDone.dataset.done !== '1');
         changed();
       } catch (err) {
-        toast(err.message, 'error');
+        toast(errorText(err), 'err');
       }
       return;
     }
@@ -466,7 +466,7 @@ async function refresh(ctx, id, tmdbId) {
     toast(result.matched ? 'Metadaten aktualisiert.' : 'Bei TMDB nichts gefunden.');
     reload(ctx);
   } catch (err) {
-    toast(err.message, 'error');
+    toast(errorText(err), 'err');
   }
 }
 
@@ -741,7 +741,7 @@ export async function show(params, ctx) {
           const { show: fresh } = await api.show(s.id);
           if (mine === seq && live) patchShow(root, fresh);
         } catch (err) {
-          toast(err.message, 'error');
+          toast(errorText(err), 'err');
         }
       };
       const unwire = wireTitleActions(root, ctx, changed);

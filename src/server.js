@@ -9,6 +9,7 @@ import { attachAuth, bootstrapAdmin, setupRequired } from './lib/auth.js';
 import { securityHeaders, rejectCrossSite } from './lib/security.js';
 import { scanOnStart } from './lib/scanner.js';
 import { probeFfmpeg } from './lib/transcode.js';
+import { unexpected } from './lib/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -98,23 +99,32 @@ app.use((req, res) => {
   });
 });
 
-// Error handling. Details (stack trace) only in development - a bare
-// "npm start" without NODE_ENV must not leak internals.
+// Error handling. The stack goes to the log under a short reference, and the
+// answer carries that reference - see `unexpected` in lib/errors.js.
 app.use((err, req, res, next) => {
-  console.error(err);
-  if (res.headersSent) return next(err);
-  // A body over the JSON limit never reaches its route: body-parser hands it
-  // straight to this handler, and "Serverfehler" would say nothing about why.
+  // A body over the JSON limit or one that is not JSON never reaches its route:
+  // body-parser hands it straight to this handler.
   const tooLarge = err && (err.type === 'entity.too.large' || err.status === 413);
+  const badJson = err && err.type === 'entity.parse.failed';
+  if (tooLarge || badJson) console.warn(`Sonorus: ${req.method} ${req.originalUrl}: ${err.message}`);
+  const failure = tooLarge || badJson ? null : unexpected(err, req);
+  if (res.headersSent) return next(err);
   if (req.path.startsWith('/api/')) {
     if (tooLarge) {
       return res.status(413).json({ ok: false, error: 'too_large', message: 'Die Daten sind zu groß für den Server.' });
     }
-    return res.status(500).json({ ok: false, error: 'server_error', message: 'Serverfehler.' });
+    if (badJson) {
+      return res.status(400).json({ ok: false, error: 'bad_json', message: 'Die Anfrage war kein gültiges JSON.' });
+    }
+    return res.status(500).json({ ok: false, error: 'server_error', ref: failure.ref, message: failure.message });
   }
-  res.status(500).render('error', {
+  res.status(tooLarge ? 413 : badJson ? 400 : 500).render('error', {
     title: 'Fehler',
-    message: process.env.NODE_ENV === 'development' ? String(err && err.stack ? err.stack : err) : '',
+    message: failure
+      ? process.env.NODE_ENV === 'development'
+        ? String(err && err.stack ? err.stack : err)
+        : failure.message
+      : 'Die Anfrage konnte nicht gelesen werden.',
   });
 });
 

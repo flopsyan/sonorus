@@ -3,7 +3,7 @@
 // so the player keeps its own clock (`offset` + the element's time) and asks the
 // server for a new stream whenever it jumps outside of a direct file.
 
-import { api } from './api.js';
+import { api, errorText } from './api.js';
 import { icon, paintIcons } from './icons.js';
 import * as fmt from './format.js';
 import { esc, toast } from './ui.js';
@@ -187,7 +187,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
         force,
       }));
     } catch (err) {
-      toast(err.message, 'error');
+      toast(errorText(err), 'err');
       el.classList.remove('is-loading');
       return;
     }
@@ -382,7 +382,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
       try {
         res = await api.videoSubtitles(info.id, key);
       } catch (err) {
-        toast(err.message, 'error');
+        toast(errorText(err), 'err');
         return;
       }
       if (seq !== s.subSeq || s.destroyed) return;
@@ -504,7 +504,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
       const active = panel.querySelector('.vp-episode.active');
       if (active) active.scrollIntoView({ block: 'center' });
     } catch (err) {
-      panel.innerHTML = `<p class="vp-empty">${esc(err.message)}</p>`;
+      panel.innerHTML = `<p class="vp-empty">${esc(errorText(err))}</p>`;
     }
   }
 
@@ -793,9 +793,24 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
       load(now(), { force });
     } else {
       el.classList.remove('is-loading');
-      toast('Dieses Video lässt sich hier nicht abspielen.', 'error');
+      explainFailure(video.error.code).then((text) => {
+        if (!s.destroyed) toast(text, 'err');
+      });
     }
   };
+
+  // The element names no cause, so the server is asked whether it still has the
+  // video at all before the browser gets the blame.
+  async function explainFailure(code) {
+    try {
+      await api.video(info.id);
+    } catch (err) {
+      return errorText(err);
+    }
+    if (code === 2) return 'Die Verbindung ist beim Laden des Videos abgebrochen.';
+    if (s.mode === 'encode') return 'Auch die umgewandelte Fassung ließ sich nicht abspielen.';
+    return 'Dieses Video lässt sich hier nicht abspielen.';
+  }
 
   video.addEventListener('play', () => {
     renderPlayState();

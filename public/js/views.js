@@ -2,7 +2,7 @@
 // `after(root)` hook for wiring up controls that need more than event
 // delegation (drag and drop, file pickers, polling).
 
-import { api } from './api.js';
+import { api, errorText } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
 import { esc, art, coverMosaic, mosaic, trackList, episodeList, card, listRow, empty, stars, toast, modal, closeModal, confirmDialog } from './ui.js';
@@ -1436,7 +1436,7 @@ export async function profile(_params, ctx) {
           ctx2.setUser(res.user);
           toast('Profil gespeichert.');
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
 
@@ -1456,7 +1456,7 @@ export async function profile(_params, ctx) {
           root.querySelector('#password-form').reset();
           toast('Passwort geändert.');
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         }
       });
     },
@@ -1945,7 +1945,7 @@ export async function stats(params, ctx) {
           view.innerHTML = periodSection(data.listening);
           applyBars(view);
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
         } finally {
           busy = false;
           view.classList.remove('busy');
@@ -2055,6 +2055,13 @@ function scanBlock(scan, lastScan) {
           : ''
       }
       ${scan.error ? `<div class="flash err mt-md">${esc(scan.error)}</div>` : ''}
+      ${
+        scan.problems && scan.problems.length
+          ? `<div class="flash err mt-md">Nicht gelesen:<ul class="scan-problems">${scan.problems
+              .map((p) => `<li>${esc(p)}</li>`)
+              .join('')}</ul></div>`
+          : ''
+      }
     </div>`;
 }
 
@@ -2337,7 +2344,7 @@ function wireAccounts(root, ctx) {
       root.querySelector('#users-block').innerHTML = userRows(res.users, ctx.user, true);
       toast('Konto gelöscht.');
     } catch (err) {
-      toast(err.message, 'err');
+      toast(errorText(err), 'err');
     }
   }, { signal: wiring.signal });
 
@@ -2356,7 +2363,7 @@ function wireAccounts(root, ctx) {
         root.querySelector('#users-block').innerHTML = userRows(res.users, ctx.user, true);
         toast('Konto angelegt.');
       } catch (err) {
-        toast(err.message, 'err');
+        toast(errorText(err), 'err');
       }
     });
   }
@@ -2451,7 +2458,7 @@ function wireSettings(root, ctx) {
         if (!scanTimer) scanTimer = setInterval(refreshScan, 600);
       } catch (err) {
         scanBtn.disabled = false;
-        toast(err.message, 'err');
+        toast(errorText(err), 'err');
       }
       return;
     }
@@ -2474,7 +2481,7 @@ function wireSettings(root, ctx) {
         drawNoticeCount();
         ctx.refreshShell();
       } catch (err) {
-        toast(err.message, 'err');
+        toast(errorText(err), 'err');
       }
       return;
     }
@@ -2487,7 +2494,7 @@ function wireSettings(root, ctx) {
         drawNoticeCount();
         ctx.refreshShell();
       } catch (err) {
-        toast(err.message, 'err');
+        toast(errorText(err), 'err');
       }
       return;
     }
@@ -2502,7 +2509,7 @@ function wireSettings(root, ctx) {
         );
         ctx.navigate('/settings', { replace: true });
       } catch (err) {
-        toast(err.message, 'err');
+        toast(errorText(err), 'err');
       }
       return;
     }
@@ -2595,7 +2602,7 @@ function openImportDialog(text, fileName, ctx) {
           showImportResult(result, ctx);
           ctx.refreshShell();
         } catch (err) {
-          toast(err.message, 'err');
+          toast(errorText(err), 'err');
           button.disabled = false;
           button.textContent = 'Importieren';
         }
