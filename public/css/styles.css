@@ -1275,8 +1275,9 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .queue-item.playing .queue-title { color: var(--accent); }
 .queue-pos { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-faint); text-align: right; }
 .queue-text { min-width: 0; }
-.queue-title { font-size: 0.87rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queue-artist { font-size: 0.78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Block, because they are spans: an inline box ignores the ellipsis and runs over the buttons. */
+.queue-title { display: block; font-size: 0.87rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-artist { display: block; font-size: 0.78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-actions { display: flex; align-items: center; }
 /* The handle is the only part of the row a drag may start on. On a touch screen
    a drag anywhere else is the list being scrolled - the same gesture - and
