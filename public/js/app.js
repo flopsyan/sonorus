@@ -128,6 +128,17 @@ const ctx = {
   refreshShell,
   // Draws the page again from fresh data without leaving the scroll position.
   refresh: () => render({ keep: true }),
+  // A view that swaps its own list (a dynamic playlist after a filter change)
+  // hands the new songs over, so the play buttons mean what is on screen.
+  setTracks(tracks) {
+    view.tracks = tracks;
+    paintIcons(content);
+    markPlayingRow();
+  },
+  setPlaylists(tree) {
+    shell.playlists = tree;
+    renderSidebar();
+  },
 };
 
 // The browser never says whether going back or forward would lead anywhere, so
@@ -423,10 +434,15 @@ function renderSidebar() {
   // Draggable, so the order in the sidebar is the user's: within its list, into
   // another folder, or out to the top level. A pinned list wears the pin
   // instead of the list icon - it is already where the pin puts it, on top.
+  // A temporary dynamic list wears the ring of its remaining day instead.
+  const playlistIcon = (p) => {
+    if (p.expiresAt) return `<span class="mini-ring" data-expires="${esc(p.expiresAt)}" aria-hidden="true"></span>`;
+    return icon(p.pinned ? 'pin' : p.dynamic ? 'filter' : 'list', 17);
+  };
   const playlistItem = (p) =>
     `<a class="nav-item playlist-item${path === `/playlists/${p.id}` ? ' active' : ''}"
         href="/playlists/${p.id}" data-link draggable="true" data-playlist="${p.id}">
-      ${icon(p.pinned ? 'pin' : 'list', 17)}
+      ${playlistIcon(p)}
       <span class="nav-label">${esc(p.name)}</span>
       <span class="nav-count">${fmt.number(p.trackCount)}</span>
     </a>`;
@@ -490,7 +506,27 @@ function renderSidebar() {
     </nav>`;
 
   renderTopLinks();
+  paintRings();
 }
+
+// The day a temporary dynamic list has left, as a ring in the sidebar. Set
+// through CSSOM because the CSP refuses a style attribute in the markup.
+const expiredAsked = new Set();
+function paintRings() {
+  let expired = false;
+  sidebarNav.querySelectorAll('[data-expires]').forEach((ring) => {
+    const left = Math.max(0, Date.parse(ring.dataset.expires) - Date.now());
+    ring.style.setProperty('--p', String(left / 86_400_000));
+    if (!left && !expiredAsked.has(ring.dataset.expires)) {
+      expiredAsked.add(ring.dataset.expires);
+      expired = true;
+    }
+  });
+  // The server drops an expired list on the next read, so asking once is
+  // enough - and once only, or a clock ahead of the server's would loop.
+  if (expired) refreshShell();
+}
+setInterval(paintRings, 30_000);
 
 // Statistik and Einstellungen live in the topbar next to the avatar - they are
 // about the app, not about the library the rest of the sidebar lists. Drawn
@@ -540,7 +576,7 @@ sidebarNav.addEventListener('click', async (e) => {
   }
 
   if (e.target.closest('[data-new-playlist]')) {
-    promptPlaylist();
+    choosePlaylistKind();
     return;
   }
 
@@ -1379,6 +1415,36 @@ function promptText({ title, label, value = '', confirmLabel = 'Anlegen', onSubm
   });
 }
 
+// The plus in the sidebar: an ordinary list asks for a name, a dynamic one is
+// created at once and named by its filters.
+function choosePlaylistKind() {
+  modal({
+    title: 'Neue Playlist',
+    body: `<button type="button" class="picker-item" data-kind="plain">
+        ${icon('list', 17)}<span>Normale Playlist<span class="picker-sub">Songs fügst du selbst hinzu.</span></span>
+      </button>
+      <button type="button" class="picker-item" data-kind="dynamic">
+        ${icon('filter', 17)}<span>Dynamische Playlist<span class="picker-sub">Füllt sich aus Filtern und hält einen Tag.</span></span>
+      </button>`,
+    onOpen(root) {
+      root.querySelector('[data-kind="plain"]').addEventListener('click', () => {
+        closeModal();
+        promptPlaylist();
+      });
+      root.querySelector('[data-kind="dynamic"]').addEventListener('click', async () => {
+        closeModal();
+        try {
+          const res = await api.createDynamicPlaylist();
+          shell.playlists = res.tree;
+          navigate(`/playlists/${res.playlist.id}`);
+        } catch (err) {
+          toast(errorText(err), 'err');
+        }
+      });
+    },
+  });
+}
+
 function promptPlaylist(trackIds) {
   promptText({
     title: 'Neue Playlist',
@@ -1403,10 +1469,11 @@ function promptPlaylist(trackIds) {
 // meant to be one decision - which list - and an entry that opens a second
 // dialog on top of it is one step more than that button promises.
 function addToPlaylistDialog(trackIds, { create = true } = {}) {
+  // A dynamic list is made of its filters, so a song cannot be put into one.
   const all = [
     ...shell.playlists.folders.flatMap((f) => f.playlists.map((p) => ({ ...p, folder: f.name }))),
     ...shell.playlists.loose.map((p) => ({ ...p, folder: '' })),
-  ];
+  ].filter((p) => !p.dynamic);
 
   modal({
     title: `${fmt.plural(trackIds.length, 'Song', 'Songs')} hinzufügen`,
@@ -1646,6 +1713,16 @@ content.addEventListener('click', async (e) => {
   // account, so the current one may come from there instead of from the URL -
   // reading it back from the URL alone would break the asc/desc toggle.
   const sortBtn = e.target.closest('[data-sort]');
+  // A list that sorts on its own (a dynamic playlist) says its current order
+  // and leaves the order "Alle Songs" remembers alone.
+  const localSort = sortBtn && sortBtn.closest('[data-sort-local]');
+  if (localSort) {
+    const key = sortBtn.dataset.sort;
+    const [currentKey, currentDir] = localSort.dataset.sortLocal.split(':');
+    const dir = currentKey === key && currentDir !== 'desc' ? 'desc' : 'asc';
+    navigate(`${window.location.pathname}?sort=${key}&dir=${dir}`, { replace: true });
+    return;
+  }
   if (sortBtn) {
     const key = sortBtn.dataset.sort;
     const params = new URLSearchParams(window.location.search);
@@ -1722,6 +1799,38 @@ content.addEventListener('click', async (e) => {
   const pin = e.target.closest('[data-pin-playlist]');
   if (pin) {
     setPinned(Number(pin.dataset.pinPlaylist), pin.getAttribute('aria-pressed') !== 'true');
+    return;
+  }
+
+  // Keeping a dynamic list for good: from here on it needs a name of its own,
+  // and the one the filters wrote is the suggestion.
+  const keep = e.target.closest('[data-keep-playlist]');
+  if (keep) {
+    const id = Number(keep.dataset.keepPlaylist);
+    promptText({
+      title: 'Playlist speichern',
+      label: 'Name der Playlist',
+      value: pageName(),
+      confirmLabel: 'Speichern',
+      onSubmit: async (value) => {
+        const res = await api.keepPlaylist(id, value);
+        shell.playlists = res.tree;
+        toast('Playlist gespeichert.');
+        render({ keep: true });
+      },
+    });
+    return;
+  }
+
+  const extend = e.target.closest('[data-extend-playlist]');
+  if (extend) {
+    try {
+      const res = await api.extendPlaylist(Number(extend.dataset.extendPlaylist));
+      shell.playlists = res.tree;
+      render({ keep: true });
+    } catch (err) {
+      toast(errorText(err), 'err');
+    }
     return;
   }
 

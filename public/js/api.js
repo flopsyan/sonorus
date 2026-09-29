@@ -201,8 +201,14 @@ export const api = {
     request('GET', `/api/stats${query(params)}`),
 
   playlists: () => request('GET', '/api/playlists'),
-  playlist: (id) => request('GET', `/api/playlists/${id}`),
+  // `order` ({ sort, dir }) only orders a dynamic playlist.
+  playlist: (id, order) => request('GET', `/api/playlists/${id}${query(order)}`),
   createPlaylist: (name, folderId) => request('POST', '/api/playlists', { name, folderId }),
+  createDynamicPlaylist: () => request('POST', '/api/playlists', { dynamic: true }),
+  dynamicOptions: () => request('GET', '/api/dynamic-options'),
+  setPlaylistRules: (id, rules, order) => request('PUT', `/api/playlists/${id}/rules${query(order)}`, { rules }),
+  keepPlaylist: (id, name) => request('POST', `/api/playlists/${id}/keep`, { name }),
+  extendPlaylist: (id) => request('POST', `/api/playlists/${id}/extend`),
   updatePlaylist: (id, patch) => request('PATCH', `/api/playlists/${id}`, patch),
   deletePlaylist: (id) => request('DELETE', `/api/playlists/${id}`),
   addToPlaylist: (id, trackIds) => request('POST', `/api/playlists/${id}/tracks`, { trackIds }),

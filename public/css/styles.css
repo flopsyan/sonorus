@@ -1002,6 +1002,126 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 }
 .chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 
+/* --- Dynamic playlists ----------------------------------------------------- */
+
+.dyn-timer { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
+/* --p is the share of the day that is left, set from JS: the CSP refuses a
+   style attribute written into the markup. */
+.dyn-ring {
+  --p: 1;
+  width: 92px; height: 92px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1turn), var(--surface-3) 0);
+}
+.dyn-ring-inner {
+  width: 82px; height: 82px; border-radius: 50%; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.dyn-ring-inner .num { font-size: 0.92rem; font-weight: 600; }
+.dyn-ring-inner small { font-size: 0.68rem; color: var(--text-dim); }
+
+.dyn-body { display: flex; gap: 28px; align-items: flex-start; }
+.dyn-list { flex: 1; min-width: 0; container-type: inline-size; }
+.dyn-panel {
+  /* Native checkboxes follow the theme, not the browser's light default. */
+  color-scheme: dark;
+  width: 300px; flex: none;
+  position: sticky; top: 0;
+  max-height: calc(100dvh - var(--player-h) - 90px); overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  padding: 4px 0 8px;
+}
+:root[data-theme="light"] .dyn-panel { color-scheme: light; }
+.dyn-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 6px 16px; }
+.dyn-sec { border-top: 1px solid var(--line-soft); }
+.dyn-sec-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 11px 16px 11px 12px; border: none; background: none; cursor: pointer;
+  text-align: left; color: var(--text);
+}
+.dyn-caret { display: inline-grid; color: var(--text-faint); transform: rotate(-90deg); transition: transform 0.15s ease; }
+.dyn-sec.open .dyn-caret { transform: none; }
+.dyn-sec-name { font-weight: 600; font-size: 0.9rem; }
+.dyn-sum {
+  margin-left: auto; max-width: 150px;
+  font-size: 0.8rem; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dyn-sum.set { color: var(--accent); }
+.dyn-sec-body { display: none; flex-direction: column; gap: 9px; padding: 0 14px 14px 16px; }
+.dyn-sec.open .dyn-sec-body { display: flex; }
+.dyn-bulk { display: flex; align-items: center; gap: 2px; margin-left: -6px; }
+.dyn-link {
+  border: none; background: none; cursor: pointer;
+  color: var(--accent); font-size: 0.82rem; font-weight: 600;
+  padding: 3px 6px; border-radius: var(--radius-xs);
+}
+.dyn-count { margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-faint); }
+.dyn-sec input[type="search"] { padding: 7px 10px; font-size: 0.86rem; }
+.dyn-opts { display: flex; flex-direction: column; max-height: 236px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -6px; }
+.dyn-opts.short { max-height: none; }
+.dyn-opt { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: var(--radius-xs); cursor: pointer; font-size: 0.87rem; }
+.dyn-opt input { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--accent); }
+.dyn-opt-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.dyn-opt-name, .dyn-opt-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dyn-opt-sub { font-size: 0.75rem; color: var(--text-faint); }
+@media (hover: hover) {
+  .dyn-link:hover { background: var(--accent-soft); }
+  .dyn-opt:hover { background: var(--surface-2); }
+}
+.dyn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dyn-chips:empty { display: none; }
+.dyn-minor { font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); margin-top: 4px; }
+.dyn-range {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 4px 3px 10px; border-radius: 999px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); font-size: 0.8rem;
+}
+.dyn-range button { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%; background: none; color: inherit; cursor: pointer; }
+.dyn-range-add { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-dim); }
+.dyn-range-add input[type="text"] { width: 64px; padding: 6px 8px; font-family: var(--font-mono); }
+
+/* Folded away, the panel leaves a rail with the number of filters that are on. */
+.dyn-rail { display: none; }
+.dyn-body.panel-folded .dyn-panel { display: none; }
+.dyn-body.panel-folded .dyn-rail {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none;
+  position: sticky; top: 0; width: 44px; padding: 10px 0;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  color: var(--text-dim); cursor: pointer;
+}
+@media (hover: hover) {
+  .dyn-body.panel-folded .dyn-rail:hover { color: var(--accent); }
+}
+.dyn-badge {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 0.72rem;
+}
+
+/* The list next to the panel has less room than the window says, so it
+   drops its columns by its own width. */
+@container (max-width: 860px) {
+  .dyn-list .track-row { grid-template-columns: 34px minmax(0, 2.4fr) minmax(0, 1.4fr) 92px 58px 32px; }
+  .dyn-list .track-row .col-genre { display: none; }
+}
+@container (max-width: 560px) {
+  .dyn-list .track-row { grid-template-columns: 30px minmax(0, 1fr) 92px 58px 32px; }
+  .dyn-list .track-row .col-album { display: none; }
+}
+@media (max-width: 900px) {
+  .dyn-body { flex-direction: column-reverse; align-items: stretch; }
+  .dyn-panel { width: auto; position: static; max-height: none; }
+  .dyn-body.panel-folded .dyn-rail { position: static; flex-direction: row; width: auto; padding: 8px 14px; align-self: flex-start; }
+}
+
+.mini-ring {
+  --p: 1;
+  width: 17px; height: 17px; flex: none; border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1turn), var(--surface-3) 0);
+  mask: radial-gradient(circle, transparent 4.5px, #000 5px);
+}
+.picker-sub { display: block; font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+
 /* Drag to reorder inside a playlist */
 .track-row.dragging { opacity: 0.4; }
 .track-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }

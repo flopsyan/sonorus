@@ -1180,8 +1180,10 @@ export async function artistStarred(params) {
 
 // --- Playlist ---------------------------------------------------------------
 
-export async function playlist(params) {
-  const data = await api.playlist(params.id);
+export async function playlist(params, ctx) {
+  const order = { sort: params.get('sort') || '', dir: params.get('dir') || '' };
+  const data = await api.playlist(params.id, order);
+  if (data.playlist.dynamic) return dynamicPlaylist(data, order, ctx);
   const list = data.tracks;
   const total = list.reduce((sum, t) => sum + t.duration, 0);
 
@@ -1210,6 +1212,431 @@ export async function playlist(params) {
               'Füge Songs über das Menü rechts in einer Titelliste hinzu, oder importiere eine CSV-Datei in den Einstellungen.'
             )
       }`,
+  };
+}
+
+// --- Dynamic playlists -------------------------------------------------------
+// The songs are whatever passes the filters on the right, asked for again on
+// every change. A new list lives for a day unless it is kept ("Speichern").
+
+const DYN_SECTIONS = [
+  ['genres', 'Genres', 'Genre suchen'],
+  ['decades', 'Jahr', ''],
+  ['artists', 'Interpreten', 'Interpret suchen'],
+  ['albums', 'Alben', 'Album suchen'],
+  ['stars', 'Bewertung', ''],
+];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// What is folded, per browser: it says how this screen is laid out, not what
+// the list holds, so it has no business on the server.
+function dynFolds() {
+  try {
+    return JSON.parse(localStorage.getItem('sonorus-dyn-folds') || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDynFolds(folds) {
+  try {
+    localStorage.setItem('sonorus-dyn-folds', JSON.stringify(folds));
+  } catch {
+    // a private window keeps it for this page only
+  }
+}
+
+const foldText = (text) => String(text).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+const rangeText = ([a, b]) => (a === b ? String(a) : `${a}-${b}`);
+
+function clockText(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
+}
+
+function dynState(rules, options) {
+  const state = { ranges: (rules.ranges || []).map((r) => [...r]) };
+  for (const [key] of DYN_SECTIONS) {
+    state[key] = new Set(rules[key] === 'all' ? options[key].map((o) => o.id) : rules[key]);
+  }
+  return state;
+}
+
+function dynPayload(state, options) {
+  const out = { ranges: state.ranges };
+  for (const [key] of DYN_SECTIONS) {
+    const all = options[key].every((o) => state[key].has(o.id));
+    out[key] = all ? 'all' : [...state[key]];
+  }
+  return out;
+}
+
+const isAll = (key, state, options) => options[key].every((o) => state[key].has(o.id));
+
+function starsSummary(on) {
+  const nums = [...on].filter((n) => n > 0).sort((a, b) => a - b);
+  const parts = [];
+  if (nums.length === 1) parts.push(nums[0] === 1 ? '1 Stern' : `${nums[0]} Sterne`);
+  else if (nums.length > 1) {
+    const run = nums[nums.length - 1] - nums[0] + 1 === nums.length;
+    parts.push(run ? `${nums[0]}-${nums[nums.length - 1]} Sterne` : `${nums.join(', ')} Sterne`);
+  }
+  if (on.has(0)) parts.push('unbewertet');
+  return parts.join(', ') || 'keine';
+}
+
+// The line next to each section title, so a folded one still says what it does.
+function dynSummary(key, state, options) {
+  const all = options[key];
+  const on = state[key];
+  if (isAll(key, state, options)) return { text: 'alle', set: false };
+  if (key === 'decades') {
+    const names = all.filter((o) => on.has(o.id)).map((o) => o.name);
+    const parts = [...(names.length <= 3 ? names : [`${names.length} Jahrzehnte`]), ...state.ranges.map(rangeText)];
+    return { text: parts.join(', ') || 'keine', set: true };
+  }
+  if (key === 'stars') return { text: starsSummary(on), set: true };
+  const onNames = all.filter((o) => on.has(o.id)).map((o) => o.name);
+  if (!onNames.length) return { text: 'keine', set: true };
+  if (onNames.length <= 2) return { text: onNames.join(', '), set: true };
+  const off = all.filter((o) => !on.has(o.id)).map((o) => o.name);
+  if (off.length <= 2) return { text: `ohne ${off.join(', ')}`, set: true };
+  return { text: `${onNames.length} von ${all.length}`, set: true };
+}
+
+const dynActive = (state, options) => DYN_SECTIONS.filter(([key]) => !isAll(key, state, options)).length;
+
+function dynOption(key, o, on) {
+  const sub = key === 'albums' ? [o.artist, o.year].filter(Boolean).join(' · ') : '';
+  return `<label class="dyn-opt" data-dyn-text="${esc(foldText(`${o.name} ${o.artist || ''}`))}">
+      <input type="checkbox" data-dyn-pick="${key}" value="${o.id}"${on ? ' checked' : ''} />
+      <span class="dyn-opt-text"><span class="dyn-opt-name">${esc(o.name)}</span>${
+        sub ? `<span class="dyn-opt-sub">${esc(sub)}</span>` : ''
+      }</span>
+    </label>`;
+}
+
+function dynRangeChips(ranges) {
+  return ranges
+    .map(
+      (r, i) => `<span class="dyn-range num">${rangeText(r)}<button type="button" data-dyn-range-remove="${i}"
+          aria-label="Bereich ${rangeText(r)} entfernen">${icon('x', 12)}</button></span>`
+    )
+    .join('');
+}
+
+function dynYearBody(state, options) {
+  return `<div class="dyn-chips">${options.decades
+      .map((d) => {
+        const on = state.decades.has(d.id);
+        return `<button type="button" class="chip${on ? ' active' : ''}" data-dyn-decade="${d.id}" aria-pressed="${on}">${esc(d.name)}</button>`;
+      })
+      .join('')}</div>
+    <span class="dyn-minor">Eigene Bereiche</span>
+    <div class="dyn-chips" data-dyn-ranges>${dynRangeChips(state.ranges)}</div>
+    <form class="dyn-range-add" data-dyn-range-form>
+      <input type="text" name="from" inputmode="numeric" maxlength="4" placeholder="2008" aria-label="Von Jahr" />
+      <span>bis</span>
+      <input type="text" name="to" inputmode="numeric" maxlength="4" placeholder="2012" aria-label="Bis Jahr" />
+      <button type="submit" class="icon-btn icon-btn-sm" aria-label="Bereich hinzufügen" title="Bereich hinzufügen">${icon('plus', 15)}</button>
+    </form>`;
+}
+
+// The side that makes the filter goes first: the few ticked ones of "only
+// these", the few unticked ones of "all but these". Decided once per render,
+// so a row never jumps away from under the pointer.
+function dynOrder(key, state, options) {
+  const all = options[key];
+  const on = all.filter((o) => state[key].has(o.id));
+  const off = all.filter((o) => !state[key].has(o.id));
+  if (!off.length || key === 'stars') return all;
+  return on.length <= off.length ? [...on, ...off] : [...off, ...on];
+}
+
+function dynSection([key, label, placeholder], state, options, folded) {
+  const { text, set } = dynSummary(key, state, options);
+  const list = key !== 'decades';
+  const body =
+    key === 'decades'
+      ? dynYearBody(state, options)
+      : `${placeholder ? `<input type="search" class="dyn-search" data-dyn-search="${key}" placeholder="${placeholder}" aria-label="${placeholder}" />` : ''}
+        <div class="dyn-opts${key === 'stars' ? ' short' : ''}">${dynOrder(key, state, options).map((o) => dynOption(key, o, state[key].has(o.id))).join('')}</div>`;
+  return `<section class="dyn-sec${folded ? '' : ' open'}" data-dyn-sec="${key}">
+      <div class="dyn-sec-head">
+        <button type="button" class="dyn-sec-toggle" data-dyn-toggle="${key}" aria-expanded="${!folded}">
+          <span class="dyn-caret">${icon('chevron-down', 15)}</span>
+          <span class="dyn-sec-name">${label}</span>
+          <span class="dyn-sum${set ? ' set' : ''}" data-dyn-sum="${key}">${esc(text)}</span>
+        </button>
+      </div>
+      <div class="dyn-sec-body">
+        <div class="dyn-bulk">
+          <button type="button" class="dyn-link" data-dyn-all="${key}">Alle</button>
+          <button type="button" class="dyn-link" data-dyn-none="${key}">Keine</button>
+          ${list && key !== 'stars' ? `<span class="dyn-count" data-dyn-count="${key}">${state[key].size} von ${options[key].length}</span>` : ''}
+        </div>
+        ${body}
+      </div>
+    </section>`;
+}
+
+function dynListHtml(list, order) {
+  return list.length
+    ? trackList(list, { sort: { key: order.sort, dir: order.dir || 'asc' } })
+    : empty('Keine Songs', 'Kein Song passt zu diesen Filtern.');
+}
+
+function dynFacts(list) {
+  const total = list.reduce((sum, t) => sum + t.duration, 0);
+  return facts([fmt.plural(list.length, 'Song', 'Songs'), list.length ? fmt.durationLong(total) : '']);
+}
+
+async function dynamicPlaylist(data, order, ctx) {
+  const options = await api.dynamicOptions();
+  const p = data.playlist;
+  const list = data.tracks;
+  const state = dynState(p.rules, options);
+  const folds = dynFolds();
+  const temporary = !!p.expiresAt;
+  const active = dynActive(state, options);
+
+  return {
+    title: p.name,
+    tracks: list,
+    html: `<div class="detail-head dyn-head">
+        <div class="detail-art" data-dyn-art>${mosaic(list, p.name)}</div>
+        <div class="detail-text">
+          <span class="rack-label">${temporary ? 'Dynamische Playlist' : 'Playlist · dynamisch'}</span>
+          <h1 data-dyn-title>${esc(p.name)}</h1>
+          <div class="detail-facts" data-dyn-facts>${dynFacts(list)}</div>
+          <div class="detail-actions">
+            ${playActions('view')}
+            <button type="button" class="btn btn-ghost" data-rename-playlist="${p.id}">${icon('edit', 16)} Bearbeiten</button>
+            ${
+              temporary
+                ? `<button type="button" class="btn btn-ghost" data-keep-playlist="${p.id}">${icon('save', 16)} Speichern</button>`
+                : `<button type="button" class="btn btn-ghost${p.pinned ? ' is-pinned' : ''}" data-pin-playlist="${p.id}"
+                    aria-pressed="${!!p.pinned}">${icon('pin', 16)} ${p.pinned ? 'Angepinnt' : 'Anpinnen'}</button>`
+            }
+            <button type="button" class="btn btn-quiet" data-delete-playlist="${p.id}">${icon('trash', 16)} Löschen</button>
+          </div>
+        </div>
+        ${
+          temporary
+            ? `<div class="dyn-timer">
+                <div class="dyn-ring" data-dyn-ring><div class="dyn-ring-inner">
+                  <span class="num" data-dyn-clock>${clockText(Math.max(0, Date.parse(p.expiresAt) - Date.now()))}</span><small>übrig</small>
+                </div></div>
+                <button type="button" class="btn btn-quiet btn-sm" data-extend-playlist="${p.id}">Verlängern</button>
+              </div>`
+            : ''
+        }
+      </div>
+      <div class="dyn-body${folds.panel ? ' panel-folded' : ''}" data-dyn-body>
+        <div class="dyn-list" data-dyn-list data-sort-local="${esc(order.sort)}:${esc(order.dir)}">${dynListHtml(list, order)}</div>
+        <aside class="dyn-panel" aria-label="Filter">
+          <div class="dyn-panel-head">
+            <span class="rack-label">Filter</span>
+            <button type="button" class="icon-btn icon-btn-sm" data-dyn-fold-panel aria-label="Filter einklappen" title="Filter einklappen">${icon('chevron-right', 16)}</button>
+          </div>
+          ${DYN_SECTIONS.map((sec) => dynSection(sec, state, options, !!folds[sec[0]])).join('')}
+        </aside>
+        <button type="button" class="dyn-rail" data-dyn-fold-panel aria-label="Filter ausklappen" title="Filter ausklappen">
+          ${icon('sliders', 18)}<span class="dyn-badge num" data-dyn-badge${active ? '' : ' hidden'}>${active}</span>
+        </button>
+      </div>`,
+    after: (root) => wireDynamic(root, { playlist: p, options, state, order, ctx, folds }),
+  };
+}
+
+function wireDynamic(root, { playlist, options, state, order, ctx, folds }) {
+  const $ = (sel) => root.querySelector(sel);
+  const ac = new AbortController();
+  const on = (type, fn) => root.addEventListener(type, fn, { signal: ac.signal });
+  let pending = null;
+  let seq = 0;
+  let ticking = null;
+
+  const paintSummaries = () => {
+    for (const [key] of DYN_SECTIONS) {
+      const { text, set } = dynSummary(key, state, options);
+      const sum = $(`[data-dyn-sum="${key}"]`);
+      sum.textContent = text;
+      sum.classList.toggle('set', set);
+      const count = $(`[data-dyn-count="${key}"]`);
+      if (count) count.textContent = `${state[key].size} von ${options[key].length}`;
+    }
+    const badge = $('[data-dyn-badge]');
+    const active = dynActive(state, options);
+    badge.textContent = active;
+    badge.hidden = !active;
+  };
+
+  const apply = ({ playlist: p, tracks, tree }) => {
+    $('[data-dyn-title]').textContent = p.name;
+    const site = document.title.lastIndexOf(' · ');
+    document.title = site < 0 ? p.name : `${p.name}${document.title.slice(site)}`;
+    $('[data-dyn-facts]').innerHTML = dynFacts(tracks);
+    $('[data-dyn-art]').innerHTML = mosaic(tracks, p.name);
+    $('[data-dyn-list]').innerHTML = dynListHtml(tracks, order);
+    ctx.setTracks(tracks);
+    ctx.setPlaylists(tree);
+  };
+
+  const send = () => api.setPlaylistRules(playlist.id, dynPayload(state, options), order);
+
+  // A burst of clicks is one request, and only the newest answer is drawn.
+  const changed = () => {
+    paintSummaries();
+    clearTimeout(pending);
+    pending = setTimeout(async () => {
+      pending = null;
+      const mine = (seq += 1);
+      try {
+        const res = await send();
+        if (mine === seq) apply(res);
+      } catch (err) {
+        toast(errorText(err), 'err');
+      }
+    }, 350);
+  };
+
+  const paintChecks = (key) => {
+    root.querySelectorAll(`[data-dyn-pick="${key}"]`).forEach((box) => {
+      box.checked = state[key].has(Number(box.value));
+    });
+  };
+
+  const paintYear = () => {
+    root.querySelectorAll('[data-dyn-decade]').forEach((chip) => {
+      const onNow = state.decades.has(Number(chip.dataset.dynDecade));
+      chip.classList.toggle('active', onNow);
+      chip.setAttribute('aria-pressed', String(onNow));
+    });
+    $('[data-dyn-ranges]').innerHTML = dynRangeChips(state.ranges);
+  };
+
+  // With a search typed, "Alle" and "Keine" mean what the search shows.
+  const visibleIds = (key) => {
+    const search = $(`[data-dyn-search="${key}"]`);
+    if (!search || !search.value.trim()) return options[key].map((o) => o.id);
+    return [...root.querySelectorAll(`[data-dyn-pick="${key}"]`)]
+      .filter((box) => !box.closest('.dyn-opt').hidden)
+      .map((box) => Number(box.value));
+  };
+
+  on('change', (e) => {
+    const box = e.target.closest('[data-dyn-pick]');
+    if (!box) return;
+    const key = box.dataset.dynPick;
+    if (box.checked) state[key].add(Number(box.value));
+    else state[key].delete(Number(box.value));
+    changed();
+  });
+
+  on('input', (e) => {
+    const field = e.target.closest('[data-dyn-search]');
+    if (!field) return;
+    const q = foldText(field.value.trim());
+    field.closest('.dyn-sec').querySelectorAll('.dyn-opt').forEach((row) => {
+      row.hidden = !!q && !row.dataset.dynText.includes(q);
+    });
+  });
+
+  on('submit', (e) => {
+    const form = e.target.closest('[data-dyn-range-form]');
+    if (!form) return;
+    e.preventDefault();
+    const a = Number.parseInt(form.elements.from.value, 10);
+    const b = Number.parseInt(form.elements.to.value || form.elements.from.value, 10);
+    if (!(a >= 1000 && a <= 2999 && b >= 1000 && b <= 2999)) {
+      toast('Bitte zwei Jahreszahlen wie 2008 und 2012 eingeben.', 'err');
+      return;
+    }
+    // A range on top of every decade would change nothing, so it replaces them.
+    if (isAll('decades', state, options)) state.decades.clear();
+    state.ranges.push([Math.min(a, b), Math.max(a, b)]);
+    form.reset();
+    paintYear();
+    changed();
+  });
+
+  on('click', (e) => {
+    const t = e.target;
+    const toggle = t.closest('[data-dyn-toggle]');
+    if (toggle) {
+      const key = toggle.dataset.dynToggle;
+      const open = toggle.closest('.dyn-sec').classList.toggle('open');
+      toggle.setAttribute('aria-expanded', String(open));
+      folds[key] = !open;
+      saveDynFolds(folds);
+      return;
+    }
+    if (t.closest('[data-dyn-fold-panel]')) {
+      folds.panel = $('[data-dyn-body]').classList.toggle('panel-folded');
+      saveDynFolds(folds);
+      return;
+    }
+    const decade = t.closest('[data-dyn-decade]');
+    if (decade) {
+      const id = Number(decade.dataset.dynDecade);
+      if (state.decades.has(id)) state.decades.delete(id);
+      else state.decades.add(id);
+      paintYear();
+      changed();
+      return;
+    }
+    const remove = t.closest('[data-dyn-range-remove]');
+    if (remove) {
+      state.ranges.splice(Number(remove.dataset.dynRangeRemove), 1);
+      paintYear();
+      changed();
+      return;
+    }
+    const all = t.closest('[data-dyn-all]');
+    const none = t.closest('[data-dyn-none]');
+    if (all || none) {
+      const key = (all || none).dataset[all ? 'dynAll' : 'dynNone'];
+      for (const id of visibleIds(key)) {
+        if (all) state[key].add(id);
+        else state[key].delete(id);
+      }
+      if (key === 'decades') {
+        state.ranges = [];
+        paintYear();
+      } else paintChecks(key);
+      changed();
+    }
+  });
+
+  if (playlist.expiresAt) {
+    const end = Date.parse(playlist.expiresAt);
+    const ring = $('[data-dyn-ring]');
+    const clock = $('[data-dyn-clock]');
+    const tick = () => {
+      const left = Math.max(0, end - Date.now());
+      ring.style.setProperty('--p', String(left / DAY_MS));
+      clock.textContent = clockText(left);
+      if (left) return;
+      clearInterval(ticking);
+      toast('Die dynamische Playlist ist abgelaufen.');
+      ctx.refreshShell();
+      ctx.navigate('/');
+    };
+    tick();
+    ticking = setInterval(tick, 1000);
+  }
+
+  return () => {
+    ac.abort();
+    clearInterval(ticking);
+    // A change made just before leaving still counts, it only is not drawn.
+    if (pending) {
+      clearTimeout(pending);
+      send()
+        .then((res) => ctx.setPlaylists(res.tree))
+        .catch(() => {});
+    }
   };
 }
 
