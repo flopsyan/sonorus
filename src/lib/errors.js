@@ -13,6 +13,7 @@ const ERRORS = {
   last_admin: 'Der letzte Admin kann nicht gelöscht werden.',
   admin_only: 'Das dürfen nur Admins.',
   invalid_name: 'Bitte einen Namen angeben.',
+  dynamic_playlist: 'Eine dynamische Playlist füllt sich nur über ihre Filter.',
   invalid_stars: 'Bewertung muss zwischen 0 und 5 liegen.',
   invalid_date: 'Bitte ein Datum wie 17.05.2013, 05.2013 oder 2013 angeben.',
   not_a_single:

@@ -4,6 +4,17 @@
 
 import db from '../db.js';
 import { TRACK_FIELDS, TRACK_FROM, shapeTrack } from './library.js';
+import {
+  autoName,
+  defaultRules,
+  dynamicTotals,
+  dynamicTracks,
+  expiry,
+  filterOptions,
+  parseRules,
+  rulesForClient,
+  rulesFromClient,
+} from './dynamic.js';
 
 const MAX_NAME = 120;
 
@@ -52,13 +63,42 @@ export function deleteFolder(userId, id) {
 // The sidebar order, and the only one there is: pinned lists first, then the
 // order the user dragged them into. Everything nobody has moved yet shares
 // position 0 and therefore still sorts by name.
-const PLAYLIST_ORDER = 'p.pinned DESC, p.position ASC, p.name COLLATE NOCASE ASC';
+// A temporary dynamic list heads it: it is the one that is about to go.
+const PLAYLIST_ORDER = "(p.expires_at <> '') DESC, p.pinned DESC, p.position ASC, p.name COLLATE NOCASE ASC";
+
+// A temporary list is gone once its time is up. Swept on every read of the
+// lists, so no timer has to run and an expired one can never be shown.
+function purgeExpired() {
+  db.prepare("DELETE FROM playlists WHERE expires_at <> '' AND expires_at <= ?").run(new Date().toISOString());
+}
+
+// The name, count and length of a dynamic list come from its filters.
+function withRules(userId, p, options) {
+  const rules = p.rules ? parseRules(p.rules) : null;
+  const { rules: _raw, expiresAt, ...rest } = p;
+  if (!rules) return { ...rest, dynamic: false, expiresAt: '' };
+  return {
+    ...rest,
+    ...dynamicTotals(userId, rules),
+    name: p.name || autoName(rules, options()),
+    dynamic: true,
+    expiresAt: expiresAt || '',
+  };
+}
+
+// Asked once per call and only when a dynamic list needs it.
+function lazyOptions() {
+  let cached = null;
+  return () => (cached ||= filterOptions());
+}
 
 export function listPlaylists(userId) {
+  purgeExpired();
+  const options = lazyOptions();
   return db
     .prepare(
       `SELECT p.id, p.name, p.folder_id AS folderId, p.updated_at AS updatedAt,
-              p.pinned, p.position,
+              p.pinned, p.position, p.rules, p.expires_at AS expiresAt,
               COUNT(i.id) AS trackCount,
               COALESCE(SUM(t.duration), 0) AS duration
          FROM playlists p
@@ -69,7 +109,7 @@ export function listPlaylists(userId) {
         ORDER BY ${PLAYLIST_ORDER}`
     )
     .all(userId)
-    .map((p) => ({ ...p, pinned: !!p.pinned }));
+    .map((p) => withRules(userId, { ...p, pinned: !!p.pinned }, options));
 }
 
 // Folders with their playlists, plus the playlists that sit at the top level.
@@ -86,14 +126,32 @@ export function playlistTree(userId) {
   };
 }
 
+const selectRow = db.prepare(
+  `SELECT id, name, folder_id AS folderId, pinned, position, created_at AS createdAt, rules, expires_at AS expiresAt
+     FROM playlists WHERE id = ? AND user_id = ?`
+);
+
+// For a dynamic list also its filters as the client ticks them, the name they
+// write, and whether the name on it was given by hand.
 export function getPlaylist(userId, id) {
-  const row = db
-    .prepare(
-      `SELECT id, name, folder_id AS folderId, pinned, position, created_at AS createdAt
-         FROM playlists WHERE id = ? AND user_id = ?`
-    )
-    .get(id, userId);
-  return row ? { ...row, pinned: !!row.pinned } : row;
+  purgeExpired();
+  const row = selectRow.get(id, userId);
+  if (!row) return row;
+  const { rules: text, expiresAt, ...base } = row;
+  const rules = text ? parseRules(text) : null;
+  if (!rules) return { ...base, pinned: !!row.pinned, dynamic: false, expiresAt: '' };
+  const options = filterOptions();
+  const auto = autoName(rules, options);
+  return {
+    ...base,
+    pinned: !!row.pinned,
+    name: row.name || auto,
+    autoName: auto,
+    named: !!row.name,
+    dynamic: true,
+    expiresAt: expiresAt || '',
+    rules: rulesForClient(rules, options),
+  };
 }
 
 // A new list goes to the end of the sidebar, not into the middle of an order
@@ -112,6 +170,51 @@ export function createPlaylist(userId, name, folderId = null) {
   return { playlist: getPlaylist(userId, Number(info.lastInsertRowid)) };
 }
 
+// No name is asked for: the filters write one, and it lives for a day unless kept.
+export function createDynamicPlaylist(userId, folderId = null) {
+  const folder = folderId ? db.prepare('SELECT id FROM playlist_folders WHERE id = ? AND user_id = ?').get(folderId, userId) : null;
+  const info = db
+    .prepare("INSERT INTO playlists (user_id, folder_id, name, position, rules, expires_at) VALUES (?, ?, '', ?, ?, ?)")
+    .run(userId, folder ? folder.id : null, nextPlaylistPosition.get(userId).pos, JSON.stringify(defaultRules()), expiry());
+  return { playlist: getPlaylist(userId, Number(info.lastInsertRowid)) };
+}
+
+function dynamicRow(userId, id) {
+  const row = selectRow.get(id, userId);
+  return row && row.rules ? row : null;
+}
+
+export function setRules(userId, id, input) {
+  if (!dynamicRow(userId, id)) return { error: 'not_found' };
+  const rules = rulesFromClient(input);
+  db.prepare("UPDATE playlists SET rules = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?").run(
+    JSON.stringify(rules),
+    id,
+    userId
+  );
+  return { playlist: getPlaylist(userId, id) };
+}
+
+// Kept for good: it needs a name of its own from here on, and no longer expires.
+export function keepPlaylist(userId, id, name) {
+  if (!dynamicRow(userId, id)) return { error: 'not_found' };
+  const clean = cleanName(name, '');
+  if (!clean) return { error: 'invalid_name' };
+  db.prepare("UPDATE playlists SET name = ?, expires_at = '', updated_at = datetime('now') WHERE id = ? AND user_id = ?").run(
+    clean,
+    id,
+    userId
+  );
+  return { playlist: getPlaylist(userId, id) };
+}
+
+export function extendPlaylist(userId, id) {
+  const row = dynamicRow(userId, id);
+  if (!row) return { error: 'not_found' };
+  if (row.expiresAt) db.prepare('UPDATE playlists SET expires_at = ? WHERE id = ? AND user_id = ?').run(expiry(), id, userId);
+  return { playlist: getPlaylist(userId, id) };
+}
+
 // Renames a playlist, pins it, and/or moves it into another folder. Every field
 // is only applied when the caller passed the key at all, so a rename cannot
 // silently move the list out of its folder or unpin it.
@@ -119,7 +222,16 @@ export function updatePlaylist(userId, id, { name, folderId, pinned } = {}) {
   const current = getPlaylist(userId, id);
   if (!current) return { error: 'not_found' };
 
-  const nextName = name === undefined ? current.name : cleanName(name, current.name);
+  // A dynamic list stores '' for "the name the filters write", so it keeps
+  // following them until somebody really names it.
+  const raw = selectRow.get(id, userId).name;
+  let nextName = name === undefined ? raw : cleanName(name, raw);
+  if (current.dynamic && name !== undefined) {
+    const clean = cleanName(name, '');
+    const temporary = !!current.expiresAt;
+    if (!clean) nextName = temporary ? '' : raw;
+    else nextName = temporary && clean === current.autoName ? '' : clean;
+  }
   const nextPinned = pinned === undefined ? current.pinned : !!pinned;
   let nextFolder = current.folderId;
   if (folderId !== undefined) {
@@ -174,9 +286,10 @@ export function deletePlaylist(userId, id) {
 // Tracks of a playlist in their stored order. The item id comes along so the
 // client can remove or reorder a single entry - the same track may appear
 // several times in one playlist.
-export function playlistTracks(userId, id) {
+export function playlistTracks(userId, id, { sort, dir } = {}) {
   const playlist = getPlaylist(userId, id);
   if (!playlist) return null;
+  if (playlist.dynamic) return dynamicTracks(userId, parseRules(selectRow.get(id, userId).rules), { sort, dir });
   return db
     .prepare(
       `SELECT i.id AS itemId, ${TRACK_FIELDS} ${TRACK_FROM}
@@ -203,6 +316,7 @@ const touchPlaylist = db.prepare(
 export const addTracks = db.transaction((userId, id, trackIds) => {
   const playlist = getPlaylist(userId, id);
   if (!playlist) return { error: 'not_found' };
+  if (playlist.dynamic) return { error: 'dynamic_playlist' };
 
   let pos = nextPosition.get(id).pos;
   let added = 0;

@@ -76,6 +76,10 @@ import {
   listPlaylists,
   getPlaylist,
   createPlaylist,
+  createDynamicPlaylist,
+  setRules,
+  keepPlaylist,
+  extendPlaylist,
   updatePlaylist,
   deletePlaylist,
   playlistTracks,
@@ -87,6 +91,7 @@ import {
   renameFolder,
   deleteFolder,
 } from '../models/playlists.js';
+import { filterOptions } from '../models/dynamic.js';
 import {
   setRating,
   recordPlay,
@@ -616,7 +621,10 @@ router.get('/playlists', (req, res) => {
 });
 
 router.post('/playlists', (req, res) => {
-  const result = createPlaylist(req.user.id, req.body.name, id(req.body.folderId) || null);
+  const folderId = id(req.body.folderId) || null;
+  const result = req.body.dynamic
+    ? createDynamicPlaylist(req.user.id, folderId)
+    : createPlaylist(req.user.id, req.body.name, folderId);
   if (result.error) return fail(res, result.error, 'folder');
   res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
 });
@@ -630,10 +638,42 @@ router.put('/playlists/order', (req, res) => {
   res.json({ ok: true, tree: playlistTree(req.user.id) });
 });
 
+// `sort` and `dir` only order a dynamic list; an ordinary one keeps its own order.
 router.get('/playlists/:id', (req, res) => {
   const playlist = getPlaylist(req.user.id, id(req.params.id));
   if (!playlist) return fail(res, 'not_found', 'playlist');
-  res.json({ ok: true, playlist, tracks: playlistTracks(req.user.id, playlist.id) });
+  const order = { sort: req.query.sort, dir: req.query.dir };
+  res.json({ ok: true, playlist, tracks: playlistTracks(req.user.id, playlist.id, order) });
+});
+
+// --- Dynamic playlists --------------------------------------------------------
+
+router.get('/dynamic-options', (req, res) => {
+  res.json({ ok: true, ...filterOptions() });
+});
+
+router.put('/playlists/:id/rules', (req, res) => {
+  const result = setRules(req.user.id, id(req.params.id), req.body.rules);
+  if (result.error) return fail(res, result.error, 'playlist');
+  const order = { sort: req.query.sort, dir: req.query.dir };
+  res.json({
+    ok: true,
+    playlist: result.playlist,
+    tracks: playlistTracks(req.user.id, result.playlist.id, order),
+    tree: playlistTree(req.user.id),
+  });
+});
+
+router.post('/playlists/:id/keep', (req, res) => {
+  const result = keepPlaylist(req.user.id, id(req.params.id), req.body.name);
+  if (result.error) return fail(res, result.error, 'playlist');
+  res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
+});
+
+router.post('/playlists/:id/extend', (req, res) => {
+  const result = extendPlaylist(req.user.id, id(req.params.id));
+  if (result.error) return fail(res, result.error, 'playlist');
+  res.json({ ok: true, playlist: result.playlist, tree: playlistTree(req.user.id) });
 });
 
 router.patch('/playlists/:id', (req, res) => {

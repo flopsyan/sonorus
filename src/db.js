@@ -405,6 +405,10 @@ addColumn('tracks', 'release_date', "TEXT NOT NULL DEFAULT ''");
 // user dragged it into.
 addColumn('playlists', 'pinned', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('playlists', 'position', 'INTEGER NOT NULL DEFAULT 0');
+// A dynamic playlist stores its filters instead of items (JSON, '' = an ordinary
+// list), and a temporary one the ISO instant it goes away ('' = kept).
+addColumn('playlists', 'rules', "TEXT NOT NULL DEFAULT ''");
+addColumn('playlists', 'expires_at', "TEXT NOT NULL DEFAULT ''");
 
 // The album decides the genres of its songs, not the other way round.
 addColumn('albums', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');

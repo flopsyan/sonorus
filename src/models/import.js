@@ -74,6 +74,7 @@ export const importEntries = db.transaction((userId, entries, { fallbackName, fo
 export const importIntoPlaylist = db.transaction((userId, playlistId, entries, { source = '' } = {}) => {
   const playlist = getPlaylist(userId, playlistId);
   if (!playlist) return { error: 'not_found' };
+  if (playlist.dynamic) return { error: 'dynamic_playlist' };
 
   const trackIds = [];
   const issues = [];

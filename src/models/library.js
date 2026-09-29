@@ -14,7 +14,7 @@ import { spreadByArtist } from '../../public/js/shuffle.js';
 // on a compilation ("Various") carries its own interpret, read off the file
 // name by the scanner, and then that one is the answer. Empty everywhere else,
 // so the expression costs nothing for an ordinary library.
-const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.name, au.name)";
+export const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.name, au.name)";
 
 // The same question without the podcast fallback, for the one query that brings
 // its own FROM and never joins the podcasts table. It selects music only, so
@@ -78,7 +78,7 @@ export const MUSIC = 't.podcast_id IS NULL AND t.audiobook_id IS NULL';
 // The other halves of the same rule, for the two spoken-word models.
 export const EPISODE = 't.podcast_id IS NOT NULL';
 export const BOOK_PART = 't.audiobook_id IS NOT NULL';
-const PRESENT_MUSIC = `${PRESENT} AND ${MUSIC}`;
+export const PRESENT_MUSIC = `${PRESENT} AND ${MUSIC}`;
 
 // What "sort by year" actually sorts by: the release date, as exactly as it is
 // known. The year column alone puts two records of the same year in an
@@ -253,19 +253,23 @@ const SORTS = {
 // songs on it.
 const TRACK_SEARCH_FIELDS = ['t.title', 'ar.name', 't.track_artist', 'al.title'];
 
-export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit = 0, offset = 0 } = {}) {
+// NULLS LAST for every sort, so untagged tracks never head the list.
+export function trackOrder(sort, dir) {
   const order = SORTS[sort] || SORTS.title;
   const direction = String(dir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+  return `(${order}) IS NULL, ${order} ${direction}, t.title COLLATE NOCASE ASC`;
+}
+
+export function listTracks({ userId, q = '', sort = 'title', dir = 'asc', limit = 0, offset = 0 } = {}) {
   const search = allWordsIn(TRACK_SEARCH_FIELDS, searchWords(q));
 
   const where = search ? `WHERE ${PRESENT_MUSIC} AND ${search.where}` : `WHERE ${PRESENT_MUSIC}`;
   const page = limit ? `LIMIT @limit OFFSET @offset` : '';
 
-  // NULLS LAST for every sort, so untagged tracks never head the list.
   const rows = db
     .prepare(
       `SELECT ${TRACK_FIELDS} ${TRACK_FROM} ${where}
-        ORDER BY (${order}) IS NULL, ${order} ${direction}, t.title COLLATE NOCASE ASC
+        ORDER BY ${trackOrder(sort, dir)}
         ${page}`
     )
     .all({ userId, ...(search ? search.params : {}), limit, offset });
