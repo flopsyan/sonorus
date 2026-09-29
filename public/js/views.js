@@ -1025,62 +1025,9 @@ export async function genres(_params, ctx) {
   };
 }
 
-// Whether the genre picker is folded open. It lives here rather than in the URL
-// because it says nothing about which list is on screen - and it has to outlive
-// a render, since every switch navigates and rebuilds the whole view.
-let chipsOpen = false;
-
-export function setChipsOpen(open) {
-  chipsOpen = open;
-}
-
-// The genres this list is made of, each one a switch - the same idea as the
-// ratings above the star playlists: tapping one takes it into the selection or
-// out of it again, and the last one standing cannot be switched off because an
-// empty selection has nothing to show.
-//
-// With a hundred genres in the library that row grew taller than the list it
-// filters, so it is capped at three lines and opens on demand. Two things make
-// the cap workable: what is *in* the selection is drawn first, so a switch that
-// is on is never behind the fold and there is always a way back off it - and
-// the button that opens it only appears when something really is cut off, which
-// is measured after the render (see `after` below), because it depends on how
-// wide the window is and not on how many genres there are.
-function genrePicker(all, selected) {
-  const on = (g) => selected.includes(g.id);
-  // Two passes rather than a sort: `filter` keeps the order it is given, so
-  // both halves stay alphabetical.
-  const order = [...all.filter(on), ...all.filter((g) => !on(g))];
-
-  const chips = order
-    .map((g) => {
-      const active = on(g);
-      const rest = active ? selected.filter((id) => id !== g.id) : [...selected, g.id];
-      const target = (rest.length ? rest : [g.id]).sort((a, b) => a - b).join(',');
-      return `<button type="button" class="chip${active ? ' active' : ''}" data-genres="${target}"
-                aria-pressed="${active}">${esc(g.name)}</button>`;
-    })
-    .join('');
-
-  // Both labels ride on the button, so app.js can swap them without knowing how
-  // many genres there are. The caret is the one the sortable columns use.
-  const more = `Alle ${all.length} Genres ▾`;
-  const less = 'Weniger anzeigen ▴';
-
-  return `<div class="chip-picker${chipsOpen ? ' open' : ''}">
-      <div class="chip-row" id="genre-chips" role="group" aria-label="Genres kombinieren">${chips}</div>
-      <button type="button" class="chip-more" data-chips-toggle aria-controls="genre-chips"
-              aria-expanded="${chipsOpen}" data-more="${more}" data-less="${less}">${
-                chipsOpen ? less : more
-              }</button>
-    </div>`;
-}
-
 export async function genre(params) {
   const ids = [...new Set(String(params.ids).split(',').map(Number))].filter((n) => n > 0);
-  // Two requests on purpose: the selection is one list, and the switches above
-  // it need every genre there is, not only the ones that are on.
-  const [{ genre: data }, { genres: all }] = await Promise.all([api.genre(ids.join(',')), api.genres()]);
+  const { genre: data } = await api.genre(ids.join(','));
   const total = data.tracks.reduce((sum, t) => sum + t.duration, 0);
   const label = joinAnd(data.names);
 
@@ -1096,22 +1043,7 @@ export async function genre(params) {
       meta: facts([fmt.plural(data.tracks.length, 'Song', 'Songs'), fmt.durationLong(total)]),
       actions: data.tracks.length ? playActions('view') : '',
     })}
-      ${all.length > 1 ? genrePicker(all, data.ids) : ''}
-      ${
-        data.tracks.length
-          ? trackList(data.tracks)
-          : empty('Nichts in dieser Auswahl', 'Nimm ein Genre dazu oder wieder heraus.')
-      }`,
-    // Whether the switch row is cut off depends on the width of the window, so
-    // it is measured instead of counted - with six genres nothing is hidden and
-    // the button that opens the row has no business being there. An open row
-    // keeps it either way: it is the way back.
-    after(root) {
-      const picker = root.querySelector('.chip-picker');
-      if (!picker) return;
-      const row = picker.querySelector('.chip-row');
-      if (chipsOpen || row.scrollHeight > row.clientHeight) picker.classList.add('clipped');
-    },
+      ${data.tracks.length ? trackList(data.tracks) : empty('Nichts in dieser Auswahl', 'In diesem Genre ist gerade kein Song.')}`,
   };
 }
 
