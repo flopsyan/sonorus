@@ -1439,7 +1439,7 @@ async function dynamicPlaylist(data, order, ctx) {
             <span class="rack-label">Filter</span>
             <button type="button" class="icon-btn icon-btn-sm" data-dyn-fold-panel aria-label="Filter einklappen" title="Filter einklappen">${icon('chevron-right', 16)}</button>
           </div>
-          ${DYN_SECTIONS.map((sec) => dynSection(sec, state, options, !!folds[sec[0]])).join('')}
+          ${DYN_SECTIONS.map((sec) => dynSection(sec, state, options, folds[sec[0]] !== false)).join('')}
         </aside>
         <button type="button" class="dyn-rail" data-dyn-fold-panel aria-label="Filter ausklappen" title="Filter ausklappen">
           ${icon('sliders', 18)}<span class="dyn-badge num" data-dyn-badge${active ? '' : ' hidden'}>${active}</span>
