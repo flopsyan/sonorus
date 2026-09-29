@@ -37,6 +37,13 @@ const shell = {
 // What the current view is showing, so the transport buttons know what to play.
 let view = { tracks: [], playlistId: null, cleanup: null };
 
+// The page's own name: everything before the last " · ", because a dynamic
+// playlist writes " · " into its name as well.
+function pageName() {
+  const at = document.title.lastIndexOf(' · ');
+  return at < 0 ? document.title : document.title.slice(0, at);
+}
+
 const collapsedFolders = new Set(
   JSON.parse(localStorage.getItem('sonorus-folders-collapsed') || '[]')
 );
@@ -1524,7 +1531,7 @@ content.addEventListener('click', async (e) => {
     if (player.currentTrack() && player.currentTrack().id === track.id) {
       player.toggle();
     } else {
-      player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey());
+      player.playTracks(view.tracks, index, pageName(), currentSourceKey());
     }
     return;
   }
@@ -1544,7 +1551,7 @@ content.addEventListener('click', async (e) => {
         0,
         tile
           ? tile.querySelector('.card-title, .list-title')?.textContent || ''
-          : document.title.split(' · ')[0],
+          : pageName(),
         // The card's own link: what was put on is the album or the interpret it
         // points at, not the shelf it was picked off. A button in the page head
         // has no card, and then the list is the page - without its key every
@@ -1567,7 +1574,7 @@ content.addEventListener('click', async (e) => {
     if (!view.tracks.length) return toast('Hier gibt es nichts zum Abspielen.', 'err');
     // A book is read in its order, never shuffled.
     if (player.state.shuffle) player.setShuffle(false);
-    player.playTracks(view.tracks, at, document.title.split(' · ')[0], currentSourceKey());
+    player.playTracks(view.tracks, at, pageName(), currentSourceKey());
     return;
   }
 
@@ -1589,7 +1596,7 @@ content.addEventListener('click', async (e) => {
 
   const shuffleAll = e.target.closest('[data-shuffle-all]');
   if (shuffleAll) {
-    player.shuffleTracks(view.tracks, document.title.split(' · ')[0], currentSourceKey());
+    player.shuffleTracks(view.tracks, pageName(), currentSourceKey());
     return;
   }
 
@@ -1725,7 +1732,7 @@ content.addEventListener('click', async (e) => {
     promptText({
       title: 'Playlist umbenennen',
       label: 'Name',
-      value: document.title.split(' · ')[0],
+      value: pageName(),
       confirmLabel: 'Speichern',
       onSubmit: async (value) => {
         await api.updatePlaylist(id, { name: value });
@@ -1816,7 +1823,7 @@ function openTrackMenu(x, y, trackId, itemId) {
   // queue panel, and there the only sensible answer is the book it belongs to.
   if (track.audiobookId) {
     contextMenu(x, y, [
-      { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
+      { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, pageName(), currentSourceKey()) },
       {
         label: track.bookKind === 'drama' ? 'Zum Hörspiel' : 'Zum Hörbuch',
         icon: 'book',
@@ -1830,7 +1837,7 @@ function openTrackMenu(x, y, trackId, itemId) {
     const items = track.missing
       ? []
       : [
-          { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
+          { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, pageName(), currentSourceKey()) },
           { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
           { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
           null,
@@ -1850,7 +1857,7 @@ function openTrackMenu(x, y, trackId, itemId) {
   const items = track.missing
     ? [{ label: 'Zu Playlist hinzufügen …', icon: 'list', onSelect: () => addToPlaylistDialog([trackId]) }]
     : [
-        { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, document.title.split(' · ')[0], currentSourceKey()) },
+        { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, pageName(), currentSourceKey()) },
         { label: 'Als Nächstes spielen', icon: 'queue', onSelect: () => { player.playNext([track]); toast('Kommt als Nächstes.'); } },
         { label: 'Zur Warteschlange', icon: 'plus', onSelect: () => { player.enqueue([track]); toast('Zur Warteschlange hinzugefügt.'); } },
         null,
