@@ -245,7 +245,17 @@ const insertTitle = db.prepare(
   'INSERT INTO video_titles (kind, folder, title, year, tmdb_id) VALUES (?, ?, ?, ?, ?)'
 );
 const updateTitleName = db.prepare('UPDATE video_titles SET title = ?, year = ? WHERE id = ?');
-const selectVideo = db.prepare('SELECT id, size, mtime FROM videos WHERE title_id = ? AND path = ?');
+const selectVideo = db.prepare('SELECT id, size, mtime, streams FROM videos WHERE title_id = ? AND path = ?');
+
+// Rows probed before subtitle tracks carried `sdh` are probed once more, or a
+// library that never changes would never learn which track is the CC one.
+function probedBeforeSdh(streams) {
+  try {
+    return (JSON.parse(streams || '{}').subs || []).some((sub) => !('sdh' in sub));
+  } catch {
+    return true;
+  }
+}
 
 // Local art is the file on disk; an empty slot keeps whatever TMDB put there.
 function applyLocalArt(table, where, art, current) {
@@ -296,7 +306,7 @@ async function indexVideo(titleId, root, file, place, force, stats) {
   const known = selectVideo.get(titleId, rel);
   const subtitles = JSON.stringify(await subtitleFiles(file));
 
-  if (known && !force && known.size === size && known.mtime === mtime) {
+  if (known && !force && known.size === size && known.mtime === mtime && !probedBeforeSdh(known.streams)) {
     db.prepare(
       'UPDATE videos SET season = ?, episode = ?, episode_end = ?, name = ?, subtitles = ? WHERE id = ?'
     ).run(place.season, place.episode, place.episodeEnd, place.name, subtitles, known.id);

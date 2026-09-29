@@ -414,7 +414,8 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     const at = usable.findIndex((x) => x.key === s.sub);
     const next = at + 1 < usable.length ? usable[at + 1].key : null;
     setSubtitle(next);
-    toast(next ? `Untertitel: ${subtitleLabel(usable[at + 1])}` : 'Untertitel aus');
+    const label = next && subtitleLabel(usable[at + 1]);
+    toast(next ? `Untertitel: ${label.main} · ${label.sub}` : 'Untertitel aus');
   }
 
   // --- Menus ----------------------------------------------------------------------------
@@ -437,11 +438,11 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
        </button>`,
       ...info.subtitles.map((x) => {
         const on = x.key === s.sub;
+        const label = subtitleLabel(x);
+        const sub = x.supported ? (x.external ? `${label.sub} · Datei` : label.sub) : 'Bild-Untertitel, nicht unterstützt';
         return `<button type="button" class="vp-option${on ? ' active' : ''}" data-sub="${x.key}"${x.supported ? '' : ' disabled'}>
             <span class="vp-check">${on ? icon('check', 16) : ''}</span>
-            <span class="vp-option-text"><span>${esc(subtitleLabel(x))}</span>${
-              x.supported ? (x.external ? '<small>Datei</small>' : '') : '<small>Bild-Untertitel, nicht unterstützt</small>'
-            }</span>
+            <span class="vp-option-text"><span>${esc(label.main)}</span><small>${esc(sub)}</small></span>
           </button>`;
       }),
     ].join('');

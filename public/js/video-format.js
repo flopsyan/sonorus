@@ -45,12 +45,12 @@ export function audioLabel(a) {
   return { main: parts.join(' · '), sub: tech };
 }
 
+// The second line is always there, so two English tracks never look alike.
 export function subtitleLabel(s) {
   const parts = [langName(s.lang) || 'Unbekannt'];
   if (s.forced) parts.push('erzwungen');
-  if (s.sdh) parts.push('für Hörgeschädigte');
   if (s.title && !junkTitle(s.title) && s.title.length < 40 && !s.forced) parts.push(s.title);
-  return parts.join(' · ');
+  return { main: parts.join(' · '), sub: s.sdh ? 'Closed Captions' : 'Untertitel' };
 }
 
 /** "FSK 16" for a German rating, the plain rating for anything else. */

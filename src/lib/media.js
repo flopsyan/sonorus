@@ -43,6 +43,11 @@ export function run(bin, args, { timeout = 60_000, maxOutput = 8 * 1024 * 1024 }
 
 const lang = (s) => String((s.tags && s.tags.language) || '').toLowerCase();
 const label = (s) => String((s.tags && (s.tags.title || s.tags.handler_name)) || '').trim();
+// Closed captions: the file's own flag first, the track title as the fallback for
+// files muxed without one ("English SDH", "English [CC]").
+const captions = (s) =>
+  !!(s.disposition && (s.disposition.hearing_impaired || s.disposition.captions)) ||
+  /\b(sdh|cc|hearing impaired)\b/i.test(label(s));
 
 /** The streams of one video file, shaped for the player. */
 export async function probeVideo(file) {
@@ -75,6 +80,7 @@ export async function probeVideo(file) {
       lang: lang(s),
       title: label(s),
       forced: !!(s.disposition && s.disposition.forced),
+      sdh: captions(s),
       default: !!(s.disposition && s.disposition.default),
       text: TEXT_SUBS.has(s.codec_name),
     }));

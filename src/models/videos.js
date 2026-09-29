@@ -268,8 +268,8 @@ function technical(v) {
     hdr: !!(s.video && s.video.hdr),
     audio: (s.audio || []).map((a) => ({ codec: a.codec, lang: a.lang, channels: a.channels, title: a.title })),
     subtitles: [
-      ...json(v.subtitles, []).map((x) => ({ lang: x.lang, forced: x.forced, external: true })),
-      ...(s.subs || []).map((x) => ({ lang: x.lang, forced: x.forced, text: x.text })),
+      ...json(v.subtitles, []).map((x) => ({ lang: x.lang, forced: x.forced, sdh: !!x.sdh, external: true })),
+      ...(s.subs || []).map((x) => ({ lang: x.lang, forced: x.forced, sdh: !!x.sdh, text: x.text })),
     ],
   };
 }
@@ -430,7 +430,7 @@ export function playerInfo(id, userId) {
         key: `x${i}`, lang: s.lang, title: '', forced: s.forced, sdh: s.sdh, supported: true, external: true,
       })),
       ...(streams.subs || []).map((s) => ({
-        key: `s${s.index}`, lang: s.lang, title: s.title, forced: s.forced, sdh: false, supported: s.text, external: false,
+        key: `s${s.index}`, lang: s.lang, title: s.title, forced: s.forced, sdh: !!s.sdh, supported: s.text, external: false,
       })),
     ],
     next,
