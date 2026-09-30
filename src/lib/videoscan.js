@@ -15,6 +15,7 @@ import path from 'node:path';
 
 import db, { movieRoot, showRoot, videoArtDir, getMeta, setMeta } from '../db.js';
 import { probeVideo, resizeImage } from './media.js';
+import { restoreReserved } from './reserved.js';
 
 const VIDEO_EXT = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.avi', '.webm', '.ts', '.m2ts', '.mpg', '.mpeg', '.wmv']);
 const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -46,7 +47,7 @@ export function parseTitleFolder(name) {
     rest = m[1].trim();
     year = Number(m[2]);
   }
-  return { title: rest || String(name).trim(), year, tmdbId };
+  return { title: restoreReserved(rest || String(name).trim()), year, tmdbId };
 }
 
 /** The season a folder stands for, null for a folder that is none. */
@@ -59,7 +60,7 @@ export function seasonOfDir(name) {
 
 /** Episode number and name from a file name without its extension. */
 export function parseEpisode(base) {
-  const clean = (s) => String(s || '').replace(/^[\s._-]+|[\s._-]+$/g, '').replace(/[._]+/g, ' ').trim();
+  const clean = (s) => restoreReserved(String(s || '').replace(/^[\s._-]+|[\s._-]+$/g, '').replace(/[._]+/g, ' ').trim());
   let m = base.match(/[Ss](\d{1,3})[\s._-]?[Ee](\d{1,3})(?:[\s._-]?-?[Ee](\d{1,3}))?(.*)$/);
   if (m) {
     return {

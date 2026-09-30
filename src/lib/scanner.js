@@ -60,6 +60,7 @@ import { readChapters } from './chapters.js';
 import { readEpub, mimeOf } from './epub.js';
 import { isFfmpegReady, pregenerate, PROFILES } from './transcode.js';
 import { normalize, loosen, primaryArtist, isVarious } from './normalize.js';
+import { restoreReserved } from './reserved.js';
 import { parseReleaseDate, yearOf } from './dates.js';
 import { extractLyrics } from './lyrics.js';
 import { resolveIssuesForUser } from '../models/issues.js';
@@ -86,7 +87,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'audiodramas-1';
+const SCANNER_VERSION = 'reserved-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -315,9 +316,10 @@ const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
 // an album like "...Baby One More Time" would never be scanned. Escaping that
 // dot with a backslash - "\...Baby One More Time" - takes the hiding away on
 // the filesystem; the backslash is not part of the name and is dropped here, so
-// the library shows the title the way it is meant to read.
-function unhide(name) {
-  return name.startsWith('\\.') ? name.slice(1) : name;
+// the library shows the title the way it is meant to read. The look-alikes of
+// a character no file name can carry are read back the same way.
+function nameOf(name) {
+  return restoreReserved(name.startsWith('\\.') ? name.slice(1) : name);
 }
 
 // "01 - Titel", "01 Titel", "1-01 Titel". Only used inside an album folder, so
@@ -355,10 +357,10 @@ function splitTrackArtist(title) {
 // the artist folder that is not an album folder is a single.
 function describeFile(filePath) {
   const parts = path.relative(musicDir, filePath).split(path.sep);
-  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
+  const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
 
-  const artist = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_ARTIST;
-  const album = parts.length > 2 ? unhide(parts[1].trim()) : '';
+  const artist = parts.length > 1 ? nameOf(parts[0].trim()) : UNKNOWN_ARTIST;
+  const album = parts.length > 2 ? nameOf(parts[1].trim()) : '';
   if (!album) return { artist, trackArtist: '', album: '', title: base, trackNo: null, discNo: null };
 
   const parsed = splitTrackNumber(base);
@@ -369,7 +371,7 @@ function describeFile(filePath) {
     ? splitTrackArtist(parsed.title)
     : { trackArtist: '', title: parsed.title };
   // A disc folder carries the disc number the file name usually leaves out.
-  const dirName = unhide(parts[parts.length - 2]);
+  const dirName = nameOf(parts[parts.length - 2]);
   const discDir = dirName === album ? null : DISC_DIR.exec(dirName);
   return {
     artist,
@@ -401,8 +403,8 @@ function splitEpisodeNumber(base) {
 // there is no album level to get wrong.
 function describeEpisode(filePath) {
   const parts = path.relative(podcastDir, filePath).split(path.sep);
-  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
-  const show = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_SHOW;
+  const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
+  const show = parts.length > 1 ? nameOf(parts[0].trim()) : UNKNOWN_SHOW;
   const parsed = splitEpisodeNumber(base);
   return { show, title: parsed.title, episodeNo: parsed.episodeNo };
 }
@@ -419,12 +421,12 @@ const UNKNOWN_AUTHOR = 'Unbekannter Autor';
 // number in front of it matters, and even that only for sorting.
 function describeAudiobookPart(filePath, root) {
   const parts = path.relative(root, filePath).split(path.sep);
-  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
+  const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
 
-  const author = parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_AUTHOR;
+  const author = parts.length > 1 ? nameOf(parts[0].trim()) : UNKNOWN_AUTHOR;
   // A file directly in the author folder is a book of one part, named after
   // the file. A book folder is the normal case.
-  const book = parts.length > 2 ? unhide(parts[1].trim()) : base;
+  const book = parts.length > 2 ? nameOf(parts[1].trim()) : base;
   const m = base.match(/^(\d{1,4})\s*[-._)]?\s+/) || base.match(/^(\d{1,4})$/);
   return { author, book, title: base, partNo: m ? Number(m[1]) : null };
 }
@@ -930,10 +932,10 @@ const retireTracks = db.transaction((ids) => {
 // folder is what Florian named.
 function describeEbook(filePath) {
   const parts = path.relative(ebookDir, filePath).split(path.sep);
-  const base = unhide(path.basename(filePath, path.extname(filePath)).trim());
+  const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
   return {
-    author: parts.length > 1 ? unhide(parts[0].trim()) : UNKNOWN_AUTHOR,
-    title: parts.length > 2 ? unhide(parts[1].trim()) : base,
+    author: parts.length > 1 ? nameOf(parts[0].trim()) : UNKNOWN_AUTHOR,
+    title: parts.length > 2 ? nameOf(parts[1].trim()) : base,
   };
 }
 

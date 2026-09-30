@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { restoreReserved } from './lib/reserved.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
@@ -729,6 +731,24 @@ once('album_owns_genres_and_date', () => {
 // different feature entirely and stay exactly as they were.
 once('drop_album_ratings', () => {
   db.exec('DROP TABLE IF EXISTS album_ratings;');
+});
+
+// The scanner reads "AC∕DC" as "AC/DC" now. These rows are found by name, so
+// without this the next scan would make new ones and the old ids would go, and
+// with them the edits of an album and the place a book was heard to. OR IGNORE:
+// where the real name is already taken the scan merges the two instead.
+once('restore_reserved_characters', () => {
+  const named = [
+    ['artists', 'name'], ['authors', 'name'], ['podcasts', 'name'],
+    ['albums', 'title'], ['audiobooks', 'title'], ['ebooks', 'title'],
+  ];
+  for (const [table, column] of named) {
+    const rename = db.prepare(`UPDATE OR IGNORE ${table} SET ${column} = ? WHERE id = ?`);
+    for (const row of db.prepare(`SELECT id, ${column} AS name FROM ${table}`).all()) {
+      const name = restoreReserved(row.name);
+      if (name !== row.name) rename.run(name, row.id);
+    }
+  }
 });
 
 // `audiobooks` was unique on (title, author_id), from the days when a book was
