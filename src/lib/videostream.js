@@ -91,11 +91,14 @@ export async function planPlayback(video, absPath, { audioIndex, langs, start = 
   }
 
   const copy = videoOk && force !== 'encode';
+  // A retry converts the sound too: a phone can list a decoder and still fail on the
+  // track (a Pixel with E-AC-3 Atmos), and then every retry failed the same way.
+  const soundCopy = audioOk && (!force || (audio && audio.codec === 'aac'));
   const offset = copy ? (await keyframeBefore(absPath, start)) + PAST_KEYFRAME : Math.max(0, start);
   const query = new URLSearchParams({
     start: String(Math.round(offset * 1000) / 1000),
     vc: copy ? 'copy' : 'h264',
-    ...(audio ? { audio: String(audio.index), ac: audioOk ? 'copy' : 'aac' } : {}),
+    ...(audio ? { audio: String(audio.index), ac: soundCopy ? 'copy' : 'aac' } : {}),
   });
   return {
     ...base,
