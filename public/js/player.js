@@ -232,7 +232,7 @@ export async function restore(prefs) {
 // server that is being kept up to date with it. The statistics count time spent
 // listening, so pausing, skipping ahead and leaving early all have to show up -
 // which the track length alone would never tell.
-let playCounted = false;
+let playWritten = false;
 let playId = null;
 let listened = 0;
 let lastTick = 0;
@@ -240,9 +240,12 @@ let reported = 0;
 
 const REPORT_EVERY = 20; // seconds of listening between two reports
 
-// A track counts as played after this much real playback. Below it, it was a
-// skip and does not belong in the statistics at all. A track shorter than that
-// can never reach it, so for those a third of the length is the mark.
+// The row is written after the first second, so a skip still counts as time.
+// It counts as a play after COUNT_AFTER - the server decides that from the
+// seconds (stats.js), this side only reports the moment it gets there. A track
+// shorter than that can never reach it, so for those a third of the length is
+// the mark.
+const START_AFTER = 1;
 const COUNT_AFTER = 30;
 
 function countThreshold(duration) {
@@ -259,7 +262,7 @@ function reportListening(keepalive = false) {
 
 function resetListening() {
   reportListening();
-  playCounted = false;
+  playWritten = false;
   playId = null;
   listened = 0;
   lastTick = 0;
@@ -1120,10 +1123,9 @@ audio.addEventListener('timeupdate', () => {
       || (progressComplete && Math.floor(progressSeconds) < progressSent)) flushProgress();
   }
 
-  // Count a play once the track has run long enough to mean something.
-  if (!playCounted && state.duration) {
-    if (listened >= countThreshold(state.duration)) {
-      playCounted = true;
+  if (!playWritten) {
+    if (listened >= START_AFTER) {
+      playWritten = true;
       reported = Math.round(listened);
       const track = currentTrack();
       if (track) {
@@ -1135,8 +1137,9 @@ audio.addEventListener('timeupdate', () => {
           .catch(() => {});
       }
     }
-  } else if (playId && listened - reported >= REPORT_EVERY) {
-    reportListening();
+  } else if (playId) {
+    const mark = countThreshold(state.duration || COUNT_AFTER);
+    if (listened - reported >= REPORT_EVERY || (reported < mark && listened >= mark)) reportListening();
   }
 
   emit();

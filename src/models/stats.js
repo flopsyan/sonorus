@@ -4,9 +4,10 @@
 // belongs to the account, not to the browser: what you listen to on the phone
 // and what you listen to on the desktop count into the same numbers.
 //
-// A play row is written once a track has run far enough to count, and the
-// player keeps reporting how many seconds it really played into `seconds` -
-// so skipping away after a minute is a minute, not a full track.
+// A play row is written as soon as a track plays, and the player keeps
+// reporting how many seconds it really played into `seconds` - so skipping
+// away after a minute is a minute, not a full track. Whether a row also counts
+// as a play is `PLAY_COUNTED` below.
 //
 // The page reads the history **one period at a time**: pick how wide a period
 // is (a day, a week, a month, a year, or everything) and which one, and the
@@ -29,6 +30,19 @@ import db from '../db.js';
 // did run most of the way through. Applied once, in the slicing below, so
 // everything downstream reads a length that is already settled.
 const RAW_SECONDS = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration, 0) END';
+
+// A row is written as soon as something plays, so a skip still adds its time;
+// whether it also counts as a play is decided here, from the seconds: 30 s, or
+// a third of a shorter track. Rows with 0 seconds predate the reporting and
+// were only ever written once they counted.
+const COUNT_AFTER = 30;
+export const PLAY_COUNTED = `(p.seconds = 0 OR p.seconds >= CASE WHEN t.duration > 0 AND t.duration < ${COUNT_AFTER}
+  THEN t.duration / 3 ELSE ${COUNT_AFTER} END)`;
+
+// The same for films and episodes, scaled up to five minutes.
+const VIDEO_COUNT_AFTER = 300;
+const VIDEO_COUNTED = `vp.seconds >= CASE WHEN v.duration > 0 AND v.duration < ${VIDEO_COUNT_AFTER}
+  THEN v.duration / 3 ELSE ${VIDEO_COUNT_AFTER} END`;
 
 // The end of the hour a moment lies in, and how much of that hour is left.
 const HOUR_END = (c) => `datetime(strftime('%Y-%m-%d %H:00:00', ${c}), '+1 hour')`;
@@ -62,28 +76,29 @@ const LEFT_IN_HOUR = (c) => `(strftime('%s', ${HOUR_END(c)}) - strftime('%s', ${
 // Films and episodes come from `video_plays` and ride along with a negative id,
 // so a play of each kind can never be counted as the same play.
 const WITH_SLICES = `
-WITH RECURSIVE source(id, user_id, track_id, video_id, at, remaining) AS (
-  SELECT p.id, p.user_id, p.track_id, NULL,
+WITH RECURSIVE source(id, user_id, track_id, video_id, counted, at, remaining) AS (
+  SELECT p.id, p.user_id, p.track_id, NULL, ${PLAY_COUNTED},
          datetime(p.played_at, 'localtime'),
          ${RAW_SECONDS}
     FROM plays p
     JOIN tracks t ON t.id = p.track_id
    WHERE p.user_id = @userId
   UNION ALL
-  SELECT -vp.id, vp.user_id, NULL, vp.video_id,
+  SELECT -vp.id, vp.user_id, NULL, vp.video_id, ${VIDEO_COUNTED},
          datetime(vp.played_at, 'localtime'), vp.seconds
     FROM video_plays vp
+    JOIN videos v ON v.id = vp.video_id
    WHERE vp.user_id = @userId AND vp.seconds > 0
 ),
-slice(id, user_id, track_id, video_id, at, remaining) AS (
-  SELECT id, user_id, track_id, video_id, at, remaining FROM source
+slice(id, user_id, track_id, video_id, counted, at, remaining) AS (
+  SELECT id, user_id, track_id, video_id, counted, at, remaining FROM source
   UNION ALL
-  SELECT id, user_id, track_id, video_id, ${HOUR_END('at')}, remaining - ${LEFT_IN_HOUR('at')}
+  SELECT id, user_id, track_id, video_id, counted, ${HOUR_END('at')}, remaining - ${LEFT_IN_HOUR('at')}
     FROM slice
    WHERE remaining > ${LEFT_IN_HOUR('at')}
 ),
 sliced AS (
-  SELECT id, user_id, track_id, video_id, at AS played_at,
+  SELECT id, user_id, track_id, video_id, counted, at AS played_at,
          MIN(remaining, ${LEFT_IN_HOUR('at')}) AS seconds
     FROM slice
 )`;
@@ -92,7 +107,7 @@ sliced AS (
 // plays have to be counted by their id - counting rows would make one long
 // evening's listening look like three.
 const SECONDS = 'p.seconds';
-const PLAYS = 'COUNT(DISTINCT p.id)';
+const PLAYS = 'COUNT(DISTINCT CASE WHEN p.counted THEN p.id END)';
 
 // Four libraries write into the same plays table, and this page needs both
 // answers, so there are two FROMs.

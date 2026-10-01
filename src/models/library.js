@@ -5,6 +5,7 @@
 // library rows themselves are shared by all accounts.
 
 import db from '../db.js';
+import { PLAY_COUNTED } from './stats.js';
 import { normalize, loosen, primaryArtist, isVarious } from '../lib/normalize.js';
 // Out of `public/` on purpose: the browser player deals the same way and can
 // only import what is served, so this is the one module both sides run.
@@ -795,7 +796,7 @@ export function recentlyPlayed(userId, limit = 18) {
   return db
     .prepare(
       `SELECT ${TRACK_FIELDS}, MAX(p.played_at) AS lastPlayed ${TRACK_FROM}
-         JOIN plays p ON p.track_id = t.id AND p.user_id = @userId
+         JOIN plays p ON p.track_id = t.id AND p.user_id = @userId AND ${PLAY_COUNTED}
         WHERE ${PRESENT_MUSIC}
         GROUP BY t.id
         ORDER BY lastPlayed DESC
@@ -811,7 +812,7 @@ export function recentlyPlayed(userId, limit = 18) {
 export function mostPlayed(userId, limit = 18) {
   return db
     .prepare(
-      `SELECT ${TRACK_FIELDS}, COUNT(p.id) AS playCount,
+      `SELECT ${TRACK_FIELDS}, COUNT(CASE WHEN ${PLAY_COUNTED} THEN p.id END) AS playCount,
               ROUND(SUM(${LISTENED})) AS listened ${TRACK_FROM}
          JOIN plays p ON p.track_id = t.id AND p.user_id = @userId
         WHERE ${PRESENT_MUSIC}

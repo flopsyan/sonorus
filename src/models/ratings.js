@@ -28,9 +28,10 @@ export function setRating(userId, trackId, stars) {
   return { ok: true, stars: value };
 }
 
-// Records that a track was listened to. The client calls this once a track has
-// played far enough to count, not when playback merely started. The id comes
-// back so the player can keep reporting how long it really played.
+// Records that a track was listened to. The client calls this after the first
+// second; whether the row counts as a play is decided when reading it, from its
+// seconds (`PLAY_COUNTED` in stats.js). The id comes back so the player can keep
+// reporting how long it really played.
 //
 // `playedAt` is for a play the client could not report when it happened: the
 // Android app queues what is heard offline and sends it on the next connection,
