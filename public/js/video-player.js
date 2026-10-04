@@ -165,6 +165,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     dragging: false,
     destroyed: false,
     failed: 0,
+    recoveredAt: 0,
     frame: 0,
     plan: null,
     server: null,
@@ -570,9 +571,9 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     if (track) rows.push(['Ton', `${audioLabel(track).sub}${soundConverted() ? ' → AAC Stereo' : ''}`]);
     rows.push(['Puffer', ahead(bufferedEnd() - at)]);
     if (s.mode !== 'direct' && stream) {
-      rows.push(['Server voraus', ahead(s.offset + stream.sent - at)]);
+      rows.push(['Server voraus', ahead(s.offset + stream.ready - at)]);
       const rate = stream.rate === null ? 'wird gemessen' : `${stream.rate.toFixed(1).replace('.', ',')}x`;
-      rows.push(['Servertempo', stream.waiting ? `${rate} · wartet` : rate]);
+      rows.push(['Servertempo', stream.done ? 'fertig' : stream.waiting ? `${rate} · Platte voll` : rate]);
     }
     const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
     if (q) {
@@ -867,6 +868,13 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
 
   const onVideoError = () => {
     if (s.destroyed || !video.error) return;
+    // Firefox does not reconnect a stream a proxy dropped while it was not reading; it
+    // plays out its buffer and fails. That is picked up where it was, not converted.
+    if (video.error.code === 2 && s.mode !== 'direct' && Date.now() - s.recoveredAt > 10_000) {
+      s.recoveredAt = Date.now();
+      load(now(), { paused: video.paused });
+      return;
+    }
     s.failed += 1;
     // What the browser refused as it is gets one more try the expensive way.
     const force = s.mode === 'direct' ? 'remux' : s.mode === 'remux' ? 'encode' : null;

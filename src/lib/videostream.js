@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { subtitleDir } from '../db.js';
+import { subtitleDir, transcodeDir } from '../db.js';
 import { ffmpegBin, h264Args, keyframeBefore, run } from './media.js';
 
 const BROWSER_AUDIO = new Set(['aac', 'mp3', 'opus', 'flac', 'vorbis']);
@@ -113,20 +113,32 @@ export function directMime(absPath) {
   return DIRECT_MIME[path.extname(absPath).toLowerCase()] || 'application/octet-stream';
 }
 
-// One running ffmpeg per account: a seek starts a new stream, and the old one
-// must not keep encoding into a socket nobody reads.
-const running = new Map();
+// ffmpeg writes each stream into a file, and every request for it is answered from
+// that file. A browser or proxy that drops the connection then gets back in where it
+// was instead of starting ffmpeg over from the plan's start.
+const streamDir = path.join(transcodeDir, 'streams');
+fs.rmSync(streamDir, { recursive: true, force: true });
+fs.mkdirSync(streamDir, { recursive: true });
+
+// The stream files share a disk with the database; production stops short of filling it.
+const MIN_FREE = 2 * 1024 ** 3;
+const CHECK_EVERY = 32 * 1024 ** 2;
+const IDLE_MS = 30 * 60_000;
+const READ_CHUNK = 256 * 1024;
+
+// One stream per account: a seek starts a new one, and the old one goes with its file.
+const jobs = new Map();
 
 /** How far the account's stream of this video has got, for the player's stats overlay. */
 export function streamStats(userId, videoId) {
-  const child = running.get(userId);
-  if (!child || child.stats.videoId !== videoId) return null;
-  const { sent, rate, waitFrom } = child.stats;
-  return { sent, rate, waiting: !!waitFrom };
+  const job = jobs.get(userId);
+  if (!job || job.videoId !== videoId) return null;
+  const { ready, rate, waitFrom } = job.stats;
+  return { ready, rate, waiting: !!waitFrom, done: job.done && !job.failed };
 }
 
-// ffmpeg blocks while the socket is full, so its own speed= sinks to 1x once the
-// browser has enough. Only the time it was free to write says how fast it can go.
+// Seconds of media produced per second of work. Time held back for disk space is
+// left out, so the number says how fast the server can go.
 function trackProgress(stats, chunk) {
   stats.line += chunk;
   const lines = stats.line.split('\n');
@@ -139,19 +151,18 @@ function trackProgress(stats, chunk) {
     const waited = stats.waitedMs + (stats.waitFrom ? t - stats.waitFrom : 0);
     if (stats.at) {
       const busy = t - stats.at - (waited - stats.waitedAt);
-      if (busy > 300 && stats.next > stats.sent) {
-        const sample = (stats.next - stats.sent) / (busy / 1000);
+      if (busy > 300 && stats.next > stats.ready) {
+        const sample = (stats.next - stats.ready) / (busy / 1000);
         stats.rate = stats.rate === null ? sample : stats.rate * 0.7 + sample * 0.3;
       }
     }
     stats.at = t;
     stats.waitedAt = waited;
-    stats.sent = stats.next;
+    stats.ready = stats.next;
   }
 }
 
-/** Pipes ffmpeg's fragmented MP4 into the response until the browser hangs up. */
-export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, userId }) {
+function streamArgs(video, absPath, { start, vc, audio, ac }) {
   const streams = JSON.parse(video.streams || '{}');
   const v = streams.video;
   const a = (streams.audio || []).find((x) => x.index === audio) || null;
@@ -192,50 +203,197 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
     '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof+delay_moov',
     'pipe:1'
   );
+  return args;
+}
 
-  const previous = running.get(userId);
-  if (previous) previous.kill('SIGKILL');
+function freeBytes() {
+  try {
+    const st = fs.statfsSync(streamDir);
+    return st.bavail * st.bsize;
+  } catch {
+    return Infinity;
+  }
+}
 
+// Holds ffmpeg while the disk is short of MIN_FREE, and lets it go again once it is not.
+function guardDisk(job) {
+  if (job.stopped) return;
+  if (freeBytes() >= MIN_FREE) {
+    if (job.stats.waitFrom) {
+      job.stats.waitedMs += Date.now() - job.stats.waitFrom;
+      job.stats.waitFrom = 0;
+    }
+    if (!job.out.writableNeedDrain) job.child.stdout.resume();
+    return;
+  }
+  if (!job.stats.waitFrom) job.stats.waitFrom = Date.now();
+  job.child.stdout.pause();
+  job.guardTimer = setTimeout(() => guardDisk(job), 10_000);
+}
+
+function stopJob(job) {
+  if (jobs.get(job.userId) === job) jobs.delete(job.userId);
+  job.stopped = true;
+  clearTimeout(job.guardTimer);
+  job.child.kill('SIGKILL');
+  job.out.destroy();
+  fs.rm(job.file, { force: true }, () => {});
+  job.wake();
+}
+
+function startJob(userId, key, video, args) {
+  const old = jobs.get(userId);
+  if (old) stopJob(old);
+  const job = {
+    userId,
+    key,
+    videoId: video.id,
+    file: path.join(streamDir, `${userId}-${Date.now()}.mp4`),
+    written: 0,
+    unchecked: 0,
+    readers: 0,
+    lastSeen: Date.now(),
+    done: false,
+    failed: false,
+    stopped: false,
+    waiters: [],
+    stats: { line: '', next: 0, ready: 0, rate: null, at: 0, waitedAt: 0, waitedMs: 0, waitFrom: 0 },
+  };
+  job.wake = () => {
+    const waiting = job.waiters;
+    job.waiters = [];
+    waiting.forEach((resolve) => resolve());
+  };
+  job.more = () => new Promise((resolve) => job.waiters.push(resolve));
+  const finish = (failed) => {
+    job.done = true;
+    job.failed = failed;
+    job.wake();
+  };
+
+  // Opened right here: the request that started the job reads the file a moment later.
+  job.out = fs.createWriteStream(job.file, { fd: fs.openSync(job.file, 'w') });
   const child = spawn(ffmpegBin, args, { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] });
-  child.stats = { videoId: video.id, line: '', next: 0, sent: 0, rate: null, at: 0, waitedAt: 0, waitedMs: 0, waitFrom: 0 };
-  child.stdio[3].on('data', (chunk) => trackProgress(child.stats, chunk));
-  running.set(userId, child);
+  job.child = child;
+  jobs.set(userId, job);
+
+  child.stdio[3].on('data', (chunk) => trackProgress(job.stats, chunk));
+  child.stdout.on('data', (chunk) => {
+    // Readers only see what the file really holds, so `written` moves in the callback.
+    const more = job.out.write(chunk, (err) => {
+      if (err) return;
+      job.written += chunk.length;
+      job.wake();
+    });
+    if (!more) child.stdout.pause();
+    job.unchecked += chunk.length;
+    if (job.unchecked >= CHECK_EVERY) {
+      job.unchecked = 0;
+      guardDisk(job);
+    }
+  });
+  job.out.on('drain', () => {
+    if (!job.stats.waitFrom) child.stdout.resume();
+  });
+  job.out.on('error', (err) => {
+    console.warn(`Sonorus: stream file of video ${video.id}:`, err.message);
+    child.kill('SIGKILL');
+    finish(true);
+  });
+
   let stderr = '';
   child.stderr.on('data', (chunk) => {
     stderr = (stderr + chunk).slice(-2000);
   });
   child.on('error', (err) => {
     console.warn('Sonorus: ffmpeg could not start:', err.message);
-    if (!res.headersSent) res.status(500).end();
+    finish(true);
   });
   child.on('close', (code, signal) => {
-    if (running.get(userId) === child) running.delete(userId);
+    if (job.stopped) return;
     if (code && !signal && stderr) console.warn(`Sonorus: ffmpeg stream of video ${video.id} ended with ${code}: ${stderr.trim()}`);
+    job.out.end(() => finish(!!(code || signal)));
+  });
+  return job;
+}
+
+const sweeper = setInterval(() => {
+  for (const job of jobs.values()) {
+    if (!job.readers && Date.now() - job.lastSeen > IDLE_MS) stopJob(job);
+  }
+}, 60_000);
+sweeper.unref();
+
+const drained = (res) =>
+  new Promise((resolve) => {
+    const done = () => {
+      res.off('drain', done);
+      res.off('close', done);
+      resolve();
+    };
+    res.on('drain', done);
+    res.on('close', done);
   });
 
-  res.writeHead(200, {
-    'Content-Type': 'video/mp4',
-    'Cache-Control': 'no-store',
-    'Accept-Ranges': 'none',
-  });
-  // pipe() by hand, to know when the socket holds ffmpeg back.
-  child.stdout.on('data', (chunk) => {
-    if (!res.write(chunk)) {
-      child.stdout.pause();
-      child.stats.waitFrom = Date.now();
+// Follows the file as ffmpeg writes it, until the stream is complete or the client leaves.
+async function tail(job, res) {
+  job.readers += 1;
+  const leave = () => job.wake();
+  res.on('close', leave);
+  let fh = null;
+  try {
+    fh = await fsp.open(job.file, 'r');
+    let pos = 0;
+    while (!res.destroyed && !job.stopped) {
+      if (pos >= job.written) {
+        if (job.done) break;
+        await job.more();
+        continue;
+      }
+      // A fresh buffer each time: res.write may hold on to it until it is sent.
+      const buf = Buffer.allocUnsafe(Math.min(READ_CHUNK, job.written - pos));
+      const { bytesRead } = await fh.read(buf, 0, buf.length, pos);
+      if (!bytesRead) break;
+      pos += bytesRead;
+      job.lastSeen = Date.now();
+      if (!res.write(buf.subarray(0, bytesRead))) await drained(res);
     }
-  });
-  res.on('drain', () => {
-    if (child.stats.waitFrom) child.stats.waitedMs += Date.now() - child.stats.waitFrom;
-    child.stats.waitFrom = 0;
-    child.stdout.resume();
-  });
-  child.stdout.on('end', () => res.end());
-  req.on('close', () => {
-    child.kill('SIGKILL');
-    // A paused stdout never reaches its end, and without it the child never closes.
-    child.stdout.destroy();
-  });
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.warn(`Sonorus: reading stream of video ${job.videoId}:`, err.message);
+  } finally {
+    job.readers -= 1;
+    job.lastSeen = Date.now();
+    res.off('close', leave);
+    if (fh) await fh.close();
+    res.end();
+  }
+}
+
+/**
+ * Answers one request for a remuxed or re-encoded stream. While ffmpeg still runs the
+ * answer is the whole stream from its first byte (a browser asking for a range skips
+ * ahead itself); once it is complete the file is served like any other, with ranges.
+ */
+export function serveStream(req, res, video, absPath, { start, vc, audio, ac, userId }) {
+  const key = [video.id, start, vc, audio, ac].join('|');
+  let job = jobs.get(userId);
+  if (!job || job.key !== key) job = startJob(userId, key, video, streamArgs(video, absPath, { start, vc, audio, ac }));
+  job.lastSeen = Date.now();
+  // Without it nginx spools the stream into its own temp files, up to 1 GB a request.
+  const headers = { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' };
+
+  if (job.done && !job.failed) {
+    res.sendFile(job.file, { headers, acceptRanges: true, cacheControl: false }, (err) => {
+      if (err && !res.headersSent) res.status(404).end();
+    });
+    return;
+  }
+  res.writeHead(200, { ...headers, 'Accept-Ranges': 'none' });
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  tail(job, res);
 }
 
 // --- Subtitles ----------------------------------------------------------------

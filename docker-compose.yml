@@ -41,7 +41,8 @@ services:
       # when the port is exposed directly without a reverse proxy.
       TRUST_PROXY: ${TRUST_PROXY:-1}
       # Where the smaller copies of the songs are kept, and how large that may
-      # grow before the least recently used ones are dropped.
+      # grow before the least recently used ones are dropped. A film that is
+      # converted for playback is written here too, until another one starts.
       TRANSCODE_DIR: /app/transcodes
       TRANSCODE_MAX_GB: ${TRANSCODE_MAX_GB:-60}
     # For VIDEO_HWACCEL=vaapi: the GPU, and the host's render group (`getent group

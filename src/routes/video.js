@@ -11,7 +11,7 @@ import { tmdbEnabled } from '../lib/tmdb.js';
 import db, { getMeta } from '../db.js';
 import {
   planPlayback,
-  pipeStream,
+  serveStream,
   streamStats,
   directMime,
   externalCues,
@@ -202,7 +202,7 @@ router.get('/videos/:id/file', (req, res) => {
   const video = videoRow(id(req.params.id));
   if (!video) return fail(res, 'not_found', 'video');
   const file = absolutePath(video, video.kind);
-  res.sendFile(file, { headers: { 'Content-Type': directMime(file) }, acceptRanges: true }, (err) => {
+  res.sendFile(file, { headers: { 'Content-Type': directMime(file), 'X-Accel-Buffering': 'no' }, acceptRanges: true }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });
 });
@@ -213,7 +213,7 @@ router.get('/videos/:id/stream', (req, res) => {
   const file = absolutePath(video, video.kind);
   if (!fs.existsSync(file)) return fail(res, 'not_found', 'videoFile');
   const audio = req.query.audio === undefined ? null : id(req.query.audio);
-  pipeStream(req, res, video, file, {
+  serveStream(req, res, video, file, {
     start: Math.max(0, Number(req.query.start) || 0),
     vc: req.query.vc === 'copy' ? 'copy' : 'h264',
     audio,
@@ -273,7 +273,7 @@ router.get('/videos/:id/download/:key', (req, res) => {
   const key = preparedKey(req);
   if (!key) return fail(res, 'not_found', 'download');
   touch(key);
-  res.sendFile(preparedPath(key), { headers: { 'Content-Type': 'video/mp4' }, acceptRanges: true }, (err) => {
+  res.sendFile(preparedPath(key), { headers: { 'Content-Type': 'video/mp4', 'X-Accel-Buffering': 'no' }, acceptRanges: true }, (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });
 });
