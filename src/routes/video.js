@@ -12,6 +12,7 @@ import db, { getMeta } from '../db.js';
 import {
   planPlayback,
   pipeStream,
+  streamStats,
   directMime,
   externalCues,
   embeddedCues,
@@ -218,6 +219,18 @@ router.get('/videos/:id/stream', (req, res) => {
     audio,
     ac: req.query.ac === 'copy' ? 'copy' : 'aac',
     userId: req.user.id,
+  });
+});
+
+// The player's stats overlay: what the file is, and how the stream is keeping up.
+router.get('/videos/:id/playback', (req, res) => {
+  const video = videoRow(id(req.params.id));
+  if (!video) return fail(res, 'not_found', 'video');
+  const v = JSON.parse(video.streams || '{}').video;
+  res.json({
+    ok: true,
+    source: v ? { codec: v.codec, width: v.width, height: v.height, pixFmt: v.pixFmt, hdr: !!v.hdr } : null,
+    stream: streamStats(req.user.id, video.id),
   });
 });
 

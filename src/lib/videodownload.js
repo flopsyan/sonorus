@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { transcodeDir } from '../db.js';
-import { ffmpegBin } from './media.js';
+import { ffmpegBin, h264Args } from './media.js';
 import { audioPlayable, pickAudio, playsAsIs, videoPlayable } from './videostream.js';
 
 // A subfolder: the music cache's eviction only looks at top-level files.
@@ -65,26 +65,28 @@ function ffmpegArgs(video, absPath, variant) {
   const streams = JSON.parse(video.streams || '{}');
   const v = streams.video;
   const a = variant.audio;
-  const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', '-i', absPath];
+  const small = variant.kind === 'small';
+  const enc =
+    v && variant.kind !== 'remux'
+      ? h264Args(
+          [...(v.interlaced ? ['yadif'] : []), small ? "scale=w=-2:h='min(720,ih)'" : "scale=w='min(1920,iw)':h=-2"],
+          small
+            ? { crf: '23', bitrate: '1400k', maxrate: '2M', bufsize: '4M' }
+            : { crf: '21', bitrate: v.height >= 720 ? '8M' : '3M', maxrate: '12M', bufsize: '24M' }
+        )
+      : null;
+  const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', ...(enc ? enc.input : []), '-i', absPath];
   if (v) args.push('-map', `0:${v.index}`);
   if (a) args.push('-map', `0:${a.index}`);
   if (v && variant.kind === 'remux') {
     args.push('-c:v', 'copy');
     if (v.codec === 'hevc') args.push('-tag:v', 'hvc1');
   } else if (v) {
-    const filters = [];
-    if (v.interlaced) filters.push('yadif');
-    const small = variant.kind === 'small';
-    filters.push(small ? "scale=w=-2:h='min(720,ih)'" : "scale=w='min(1920,iw)':h=-2", 'format=yuv420p');
-    args.push(
-      '-vf', filters.join(','),
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', small ? '23' : '21',
-      '-maxrate', small ? '2M' : '12M', '-bufsize', small ? '4M' : '24M', '-profile:v', 'high'
-    );
+    args.push(...enc.output);
   }
   if (a) {
     if (variant.copyAudio) args.push('-c:a', 'copy');
-    else args.push('-c:a', 'aac', '-b:a', variant.kind === 'small' ? '128k' : '192k', '-ac', '2');
+    else args.push('-c:a', 'aac', '-b:a', small ? '128k' : '192k', '-ac', '2');
   }
   args.push('-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1', '-movflags', '+faststart', '-f', 'mp4', '-y');
   return args;

@@ -398,6 +398,16 @@ body.watching { overflow: hidden; }
   background: var(--lamp); color: var(--lamp-ink); cursor: pointer; box-shadow: var(--shadow-lg);
 }
 
+.vp-stats {
+  position: absolute; top: 84px; left: 22px; z-index: 4; margin: 0;
+  display: grid; grid-template-columns: auto auto; gap: 3px 14px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  background: rgba(22, 20, 27, 0.86); border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.78rem; pointer-events: none;
+}
+.vp-stats dt { color: rgba(255, 255, 255, 0.55); }
+.vp-stats dd { margin: 0; }
+
 .vp-panel {
   position: absolute; right: 22px; bottom: 100px; z-index: 5;
   max-height: min(62vh, 560px); overflow-y: auto; overscroll-behavior: contain;

@@ -26,6 +26,8 @@ services:
       VIDEO_DIR: /videos
       # Optional: descriptions, cast and missing artwork for films and series.
       TMDB_API_KEY: ${TMDB_API_KEY:-}
+      # Optional: vaapi encodes films on the GPU. Needs devices and group_add below.
+      VIDEO_HWACCEL: ${VIDEO_HWACCEL:-}
       # auto (scan when the library is empty) | always | never
       SCAN_ON_START: ${SCAN_ON_START:-auto}
       # Optional: bootstrap the first admin account non-interactively. If left
@@ -42,6 +44,12 @@ services:
       # grow before the least recently used ones are dropped.
       TRANSCODE_DIR: /app/transcodes
       TRANSCODE_MAX_GB: ${TRANSCODE_MAX_GB:-60}
+    # For VIDEO_HWACCEL=vaapi: the GPU, and the host's render group (`getent group
+    # render`) so the container's user may open it.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "993"
     volumes:
       # Your music folder, mounted read-only: Sonorus never writes to it.
       - "${MUSIC_DIR:-./music}:/music:ro"

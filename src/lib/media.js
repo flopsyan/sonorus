@@ -8,6 +8,32 @@ import fsp from 'node:fs/promises';
 const ffmpegBin = process.env.FFMPEG_PATH || 'ffmpeg';
 const ffprobeBin = process.env.FFPROBE_PATH || 'ffprobe';
 
+// VIDEO_HWACCEL=vaapi hands the H.264 encode to the GPU. Decoding and scaling stay
+// on the CPU, so every source takes the same path whatever the GPU can decode.
+const vaapiDevice = process.env.VIDEO_HWACCEL === 'vaapi' ? process.env.VAAPI_DEVICE || '/dev/dri/renderD128' : null;
+export const hwEncode = !!vaapiDevice && fs.existsSync(vaapiDevice);
+if (vaapiDevice && !hwEncode) console.warn(`Sonorus: ${vaapiDevice} is missing, films are encoded on the CPU.`);
+
+/** The H.264 picture after `filters`: options before the input, and the encoder. */
+export function h264Args(filters, { crf, bitrate, maxrate, bufsize }) {
+  if (hwEncode) {
+    return {
+      input: ['-vaapi_device', vaapiDevice],
+      output: [
+        '-vf', [...filters, 'format=nv12', 'hwupload'].join(','),
+        '-c:v', 'h264_vaapi', '-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize, '-profile:v', 'high',
+      ],
+    };
+  }
+  return {
+    input: [],
+    output: [
+      '-vf', [...filters, 'format=yuv420p'].join(','),
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf, '-maxrate', maxrate, '-bufsize', bufsize, '-profile:v', 'high',
+    ],
+  };
+}
+
 // Text subtitles can be turned into cues; bitmap ones (PGS, DVD) cannot without OCR.
 const TEXT_SUBS = new Set(['subrip', 'srt', 'ass', 'ssa', 'webvtt', 'mov_text', 'text']);
 

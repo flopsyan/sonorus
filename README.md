@@ -64,6 +64,7 @@ Alle Einstellungen stehen in der `.env`, die Vorlage ist `.env.example`.
 | `EBOOK_DIR` | `./ebooks` | E-Books |
 | `VIDEO_DIR` | `./videos` | Filme und Serien |
 | `TMDB_API_KEY` | leer | Schlüssel von themoviedb.org für Infos und Bilder zu Filmen und Serien |
+| `VIDEO_HWACCEL` | leer | `vaapi` wandelt Filme auf der Grafikkarte um statt auf der CPU |
 | `TZ` | `Europe/Berlin` | Zeitzone, nach der die Statistik zählt |
 | `PORT` | `3000` | Port auf dem Host |
 | `SITE_NAME` | `Sonorus` | Name in Kopfzeile und Browser-Tab |
@@ -75,6 +76,8 @@ Alle Einstellungen stehen in der `.env`, die Vorlage ist `.env.example`.
 
 Die Medienordner werden nur lesend eingehängt, dürfen fehlen und dürfen nicht
 innerhalb von `MUSIC_DIR` liegen. TMDB ist die einzige Verbindung ins Internet.
+Für `VIDEO_HWACCEL` muss die Grafikkarte in den Container: `devices` und
+`group_add` in der `docker-compose.yml` einkommentieren.
 
 ## Ordneraufbau
 

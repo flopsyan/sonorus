@@ -17,6 +17,11 @@ const PLAY_REPORT_EVERY = 30;
 const COMPLETE_AT = 0.9;
 const SKIP = 10;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const MODE_NAMES = { direct: 'Direkt', remux: 'Umverpackt', encode: 'Umgewandelt' };
+const CODEC_NAMES = { h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9', mpeg2video: 'MPEG-2', mpeg4: 'MPEG-4', vc1: 'VC-1' };
+
+// Module-wide, so the overlay stays open from one episode to the next.
+let statsOpen = false;
 
 function browserCaps() {
   const v = document.createElement('video');
@@ -30,6 +35,7 @@ function browserCaps() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const ahead = (sec) => (sec < 100 ? `${Math.max(0, Math.round(sec))} s` : fmt.duration(sec));
 
 // Cue text is escaped whole, then the three tags the server lets through come back.
 function cueHtml(text) {
@@ -46,6 +52,7 @@ function template(info, heading) {
     <div class="vp-subs" aria-live="off"></div>
     <div class="vp-spinner" aria-hidden="true"></div>
     <div class="vp-flash" aria-hidden="true"></div>
+    <dl class="vp-stats num" hidden></dl>
     <button type="button" class="vp-bigplay" data-vp="play" hidden aria-label="Abspielen">${icon('play', 44)}</button>
 
     <div class="vp-top">
@@ -159,6 +166,10 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     destroyed: false,
     failed: 0,
     frame: 0,
+    plan: null,
+    server: null,
+    statsTimer: null,
+    statsBusy: false,
   };
   const duration = info.duration || 0;
 
@@ -194,6 +205,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     if (seq !== s.loadSeq || s.destroyed) return;
     s.mode = plan.mode;
     s.audio = plan.audio;
+    s.plan = plan;
     if (plan.mode === 'direct') {
       const url = new URL(plan.url, window.location.href).href;
       s.offset = 0;
@@ -304,16 +316,20 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
       rail.setAttribute('aria-valuenow', String(Math.round(frac * 100)));
       rail.setAttribute('aria-valuetext', fmt.duration(at));
     }
-    // After a jump the last range can lie far ahead of the playhead; only the one it sits in counts.
+    buffer.style.width = `${duration ? clamp(bufferedEnd() / duration, 0, 1) * 100 : 0}%`;
+    renderCue(at);
+    checkNext(at);
+  }
+
+  // After a jump the last range can lie far ahead of the playhead; only the one it sits in counts.
+  function bufferedEnd() {
     const b = video.buffered;
     const t = video.currentTime;
     let end = 0;
     for (let i = 0; i < b.length; i += 1) {
       if (b.start(i) <= t + 1 && t <= b.end(i)) end = s.offset + b.end(i);
     }
-    buffer.style.width = `${duration ? clamp(end / duration, 0, 1) * 100 : 0}%`;
-    renderCue(at);
-    checkNext(at);
+    return end;
   }
 
   function loop() {
@@ -475,6 +491,9 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
                  <span class="vp-option-text"><span>Nächste Folge automatisch</span></span></label>`
             : ''
         }
+        <span class="rack-label vp-menu-gap">Anzeige</span>
+        <label class="vp-option vp-switch"><input type="checkbox" data-stats${statsOpen ? ' checked' : ''} />
+          <span class="vp-option-text"><span>Technische Infos</span></span></label>
       </div>`;
   }
 
@@ -526,6 +545,63 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
       p.hidden = true;
     });
     el.classList.remove('panel-open');
+  }
+
+  // --- Stats overlay ------------------------------------------------------------------------
+
+  function soundConverted() {
+    return !!s.plan && s.mode !== 'direct' && new URL(s.plan.url, window.location.href).searchParams.get('ac') === 'aac';
+  }
+
+  function renderStats() {
+    const box = $('.vp-stats');
+    box.hidden = !statsOpen;
+    if (!statsOpen) return;
+    const at = now();
+    const src = s.server && s.server.source;
+    const stream = s.server && s.server.stream;
+    const rows = [['Modus', MODE_NAMES[s.mode] || '-']];
+    if (src) {
+      const depth = /p(10|12)/.exec(src.pixFmt || '');
+      const codec = `${CODEC_NAMES[src.codec] || String(src.codec).toUpperCase()}${depth ? ` ${depth[1]} bit` : ''}${src.hdr ? ' HDR' : ''}`;
+      rows.push(['Bild', `${codec} · ${src.width}×${src.height}${s.mode === 'encode' ? ' → H.264' : ''}`]);
+    }
+    const track = info.audio.find((a) => a.index === s.audio);
+    if (track) rows.push(['Ton', `${audioLabel(track).sub}${soundConverted() ? ' → AAC Stereo' : ''}`]);
+    rows.push(['Puffer', ahead(bufferedEnd() - at)]);
+    if (s.mode !== 'direct' && stream) {
+      rows.push(['Server voraus', ahead(s.offset + stream.sent - at)]);
+      const rate = stream.rate === null ? 'wird gemessen' : `${stream.rate.toFixed(1).replace('.', ',')}x`;
+      rows.push(['Servertempo', stream.waiting ? `${rate} · wartet` : rate]);
+    }
+    const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+    if (q) {
+      const n = (x) => x.toLocaleString('de-DE');
+      rows.push(['Ausgelassen', `${n(q.droppedVideoFrames)} von ${n(q.totalVideoFrames)} Bildern`]);
+    }
+    box.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+  }
+
+  async function pollStats() {
+    if (s.statsBusy) return;
+    s.statsBusy = true;
+    try {
+      s.server = await api.videoPlayback(info.id);
+    } catch {
+      // keeps the last numbers
+    } finally {
+      s.statsBusy = false;
+    }
+    if (!s.destroyed) renderStats();
+  }
+
+  function setStats(open) {
+    statsOpen = open;
+    clearInterval(s.statsTimer);
+    s.statsTimer = open ? setInterval(pollStats, 1000) : null;
+    if (open) pollStats();
+    renderStats();
+    if (!$('[data-panel="settings"]').hidden) renderSettingsMenu();
   }
 
   // --- The end, and what follows it --------------------------------------------------------
@@ -672,6 +748,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
 
   const onChange = (e) => {
     if (e.target.matches('[data-autoplay]')) ctx.setPref('videoAutoplay', e.target.checked);
+    if (e.target.matches('[data-stats]')) setStats(e.target.checked);
   };
 
   const onDblClick = (e) => {
@@ -770,6 +847,9 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
         break;
       case 'n':
         goNext();
+        break;
+      case 'i':
+        setStats(!statsOpen);
         break;
       case 'Escape':
         if (el.classList.contains('panel-open')) closePanels();
@@ -885,6 +965,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
   renderPlayState();
   const startAt = start >= duration - 5 ? 0 : start;
   load(startAt);
+  if (statsOpen) setStats(true);
   const firstSub = defaultSubtitle();
   if (firstSub) setSubtitle(firstSub, { remember: false });
   poke();
@@ -895,6 +976,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     cancelAnimationFrame(s.frame);
     clearTimeout(hideTimer);
     clearTimeout(s.pendingTimer);
+    clearInterval(s.statsTimer);
     save(true);
     reportWatched(true);
     video.pause();

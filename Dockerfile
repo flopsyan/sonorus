@@ -28,8 +28,12 @@ WORKDIR /app
 # as they are. `--no-install-recommends` still brings the codecs (libx264 is a
 # hard dependency of libavcodec) and leaves out the X11 stack. Without ffmpeg the
 # app still runs - it then serves the original files and says so.
+# The Intel VA drivers are for VIDEO_HWACCEL=vaapi and exist for amd64 only; libva
+# tries iHD first, LIBVA_DRIVER_NAME=i965 picks the older one.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg \
+  && apt-get install -y --no-install-recommends ffmpeg vainfo \
+  && if [ "$(dpkg --print-architecture)" = amd64 ]; then \
+       apt-get install -y --no-install-recommends intel-media-va-driver i965-va-driver; fi \
   && rm -rf /var/lib/apt/lists/*
 
 # Take the compiled dependencies from the build stage

@@ -15,7 +15,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import { subtitleDir } from '../db.js';
-import { ffmpegBin, keyframeBefore, run } from './media.js';
+import { ffmpegBin, h264Args, keyframeBefore, run } from './media.js';
 
 const BROWSER_AUDIO = new Set(['aac', 'mp3', 'opus', 'flac', 'vorbis']);
 // ffmpeg seeks 3/23 s before -ss when the picture has B-frames, so -ss right on a
@@ -117,13 +117,55 @@ export function directMime(absPath) {
 // must not keep encoding into a socket nobody reads.
 const running = new Map();
 
+/** How far the account's stream of this video has got, for the player's stats overlay. */
+export function streamStats(userId, videoId) {
+  const child = running.get(userId);
+  if (!child || child.stats.videoId !== videoId) return null;
+  const { sent, rate, waitFrom } = child.stats;
+  return { sent, rate, waiting: !!waitFrom };
+}
+
+// ffmpeg blocks while the socket is full, so its own speed= sinks to 1x once the
+// browser has enough. Only the time it was free to write says how fast it can go.
+function trackProgress(stats, chunk) {
+  stats.line += chunk;
+  const lines = stats.line.split('\n');
+  stats.line = lines.pop();
+  for (const line of lines) {
+    const out = /^out_time_(?:us|ms)=(\d+)/.exec(line);
+    if (out) stats.next = Number(out[1]) / 1e6;
+    if (!line.startsWith('progress=')) continue;
+    const t = Date.now();
+    const waited = stats.waitedMs + (stats.waitFrom ? t - stats.waitFrom : 0);
+    if (stats.at) {
+      const busy = t - stats.at - (waited - stats.waitedAt);
+      if (busy > 300 && stats.next > stats.sent) {
+        const sample = (stats.next - stats.sent) / (busy / 1000);
+        stats.rate = stats.rate === null ? sample : stats.rate * 0.7 + sample * 0.3;
+      }
+    }
+    stats.at = t;
+    stats.waitedAt = waited;
+    stats.sent = stats.next;
+  }
+}
+
 /** Pipes ffmpeg's fragmented MP4 into the response until the browser hangs up. */
 export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, userId }) {
   const streams = JSON.parse(video.streams || '{}');
   const v = streams.video;
   const a = (streams.audio || []).find((x) => x.index === audio) || null;
+  const enc =
+    v && vc !== 'copy'
+      ? h264Args([...(v.interlaced ? ['yadif'] : []), "scale=w='min(1920,iw)':h=-2"], {
+          crf: '21',
+          bitrate: v.height >= 720 ? '8M' : '3M',
+          maxrate: '12M',
+          bufsize: '24M',
+        })
+      : null;
 
-  const args = ['-nostdin', '-hide_banner', '-loglevel', 'error'];
+  const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:3', ...(enc ? enc.input : [])];
   // Picture and sound both start at the keyframe; the edit list then trims them to `start`.
   if (vc === 'copy') args.push('-noaccurate_seek');
   if (start > 0) args.push('-ss', String(start));
@@ -137,14 +179,7 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
     args.push('-c:v', 'copy');
     if (v.codec === 'hevc') args.push('-tag:v', 'hvc1');
   } else {
-    const filters = [];
-    if (v.interlaced) filters.push('yadif');
-    filters.push("scale=w='min(1920,iw)':h=-2", 'format=yuv420p');
-    args.push(
-      '-vf', filters.join(','),
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21',
-      '-maxrate', '12M', '-bufsize', '24M', '-profile:v', 'high', '-g', '48'
-    );
+    args.push(...enc.output, '-g', '48');
   }
   if (a) {
     if (ac === 'copy') args.push('-c:a', 'copy');
@@ -161,7 +196,9 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
   const previous = running.get(userId);
   if (previous) previous.kill('SIGKILL');
 
-  const child = spawn(ffmpegBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(ffmpegBin, args, { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] });
+  child.stats = { videoId: video.id, line: '', next: 0, sent: 0, rate: null, at: 0, waitedAt: 0, waitedMs: 0, waitFrom: 0 };
+  child.stdio[3].on('data', (chunk) => trackProgress(child.stats, chunk));
   running.set(userId, child);
   let stderr = '';
   child.stderr.on('data', (chunk) => {
@@ -181,8 +218,24 @@ export function pipeStream(req, res, video, absPath, { start, vc, audio, ac, use
     'Cache-Control': 'no-store',
     'Accept-Ranges': 'none',
   });
-  child.stdout.pipe(res);
-  req.on('close', () => child.kill('SIGKILL'));
+  // pipe() by hand, to know when the socket holds ffmpeg back.
+  child.stdout.on('data', (chunk) => {
+    if (!res.write(chunk)) {
+      child.stdout.pause();
+      child.stats.waitFrom = Date.now();
+    }
+  });
+  res.on('drain', () => {
+    if (child.stats.waitFrom) child.stats.waitedMs += Date.now() - child.stats.waitFrom;
+    child.stats.waitFrom = 0;
+    child.stdout.resume();
+  });
+  child.stdout.on('end', () => res.end());
+  req.on('close', () => {
+    child.kill('SIGKILL');
+    // A paused stdout never reaches its end, and without it the child never closes.
+    child.stdout.destroy();
+  });
 }
 
 // --- Subtitles ----------------------------------------------------------------

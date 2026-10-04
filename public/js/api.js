@@ -123,6 +123,7 @@ export const api = {
   person: (id) => request('GET', `/api/people/${id}`),
   video: (id) => request('GET', `/api/videos/${id}`),
   videoPlan: (id, body) => request('POST', `/api/videos/${id}/plan`, body),
+  videoPlayback: (id) => request('GET', `/api/videos/${id}/playback`),
   videoSubtitles: (id, key) => request('GET', `/api/videos/${id}/subtitles/${key}`),
   videoProgress: (id, body, keepalive = false) =>
     request('PUT', `/api/videos/${id}/progress`, body, keep(keepalive)),

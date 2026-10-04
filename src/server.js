@@ -9,6 +9,7 @@ import { attachAuth, bootstrapAdmin, setupRequired } from './lib/auth.js';
 import { securityHeaders, rejectCrossSite } from './lib/security.js';
 import { scanOnStart } from './lib/scanner.js';
 import { probeFfmpeg } from './lib/transcode.js';
+import { hwEncode } from './lib/media.js';
 import { unexpected } from './lib/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -152,6 +153,7 @@ app.listen(port, () => {
         ? 'ffmpeg found - the smaller quality can be served.'
         : 'ffmpeg missing - only the original quality is served.'
     );
+    if (ready && hwEncode) console.log('Films are encoded on the GPU (VAAPI).');
     scanOnStart();
   });
 });
