@@ -1,13 +1,6 @@
-// eBooks: authors, their books, and how far into one the reader got.
-//
-// A shelf of its own rather than a fifth kind of audiobook. Nothing here is
-// played, so none of it belongs in `tracks` - but it shares the `authors`
-// table, because somebody Florian both hears and reads is one author.
-//
-// The unit the reader moves through is the **spine document**, the piece the
-// EPUB itself is cut into, and a fraction of the way through it. Not a page
-// number: a page is whatever fits at the font size on the phone in hand, and a
-// position stored in pages would land somewhere else on a different one.
+// eBooks are not played, so they stay out of `tracks`, but share `authors` with the spoken word.
+// Progress is a spine document plus a fraction through it, never a page: a page depends on
+// font size and screen, so a stored one would land elsewhere on another device.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -49,11 +42,8 @@ const selectProgress = db.prepare(
 );
 
 /**
- * Where the reader stopped, and how far through the book that is.
- *
- * The share is measured in documents rather than in characters: a chapter is a
- * document, they are roughly a chapter long each, and counting characters would
- * mean unzipping the whole book to answer a list view.
+ * Where the reader stopped. The share counts documents, roughly a chapter each, because
+ * counting characters would mean unzipping the whole book to answer a list view.
  */
 function placeIn(row, userId) {
   const progress = selectProgress.get(userId, row.id);
@@ -105,8 +95,7 @@ export function getAuthor(id, userId) {
     .map((b) => ({ ...b, progress: placeIn(b, userId) }));
   if (books.length === 0) return null;
 
-  // The author's own picture wins; without one they borrow a book's, the same
-  // way an interpret borrows an album's.
+  // The author's own picture wins over one borrowed from a book.
   const borrowed = (books.find((b) => b.cover) || {}).cover || null;
   return {
     id: author.id,
@@ -127,6 +116,12 @@ export function listBooks(userId) {
     .map((b) => ({ ...b, progress: placeIn(b, userId) }));
 }
 
+/** Where an account stands in one book, without opening its file. */
+export function progressOf(id, userId) {
+  const row = db.prepare('SELECT id, documents FROM ebooks WHERE id = ?').get(id);
+  return row ? placeIn(row, userId) : null;
+}
+
 /** Begun and not finished, most recently read first. The "Weiterlesen" row. */
 export function continueBooks(userId, limit = 12) {
   return db
@@ -134,21 +129,18 @@ export function continueBooks(userId, limit = 12) {
       `SELECT ${BOOK_ROW} ${BOOK_FROM}
          JOIN ebook_progress p ON p.ebook_id = b.id AND p.user_id = @userId
         WHERE p.finished = 0
-        ORDER BY p.updated_at DESC
-        LIMIT @limit`
+        ORDER BY p.updated_at DESC`
     )
-    .all({ userId, limit })
+    .all({ userId })
     .map(shapeBook)
     .map((b) => ({ ...b, progress: placeIn(b, userId) }))
-    .filter((b) => b.progress.started);
+    .filter((b) => b.progress.started)
+    .slice(0, limit);
 }
 
 /**
- * One book, with its chapter list.
- *
- * The chapters come out of the file rather than the database: they are a fact
- * about the EPUB, they change only when the file does, and reading them costs
- * one open of a zip whose directory is a few kilobytes.
+ * One book with its chapters, read from the file rather than the database: they change
+ * only with the file, and the zip directory is a few kilobytes.
  */
 export function getBook(id, userId) {
   const row = db.prepare(`SELECT ${BOOK_ROW}, b.path ${BOOK_FROM} WHERE b.id = ?`).get(id);
@@ -166,10 +158,8 @@ export function getBook(id, userId) {
       chapters = epub.toc;
       spine = epub.spine.map((item) => item.href);
       book.documents = epub.spine.length;
-      // How much text each document holds, which is what turns "page 3 of 12
-      // in this chapter" into a page number for the whole book. Counted on the
-      // server because it means inflating every document once, and the reader
-      // would otherwise do it on the phone at every chapter.
+      // Text per document turns "page 3 of 12 in this chapter" into a page of the book.
+      // Counted here, or the phone would inflate every document at every chapter.
       lengths = epub.spine.map((item) => textLength(epub.read(item.href)));
     } finally {
       epub.close();
@@ -194,17 +184,15 @@ function textLength(buffer) {
 
 // --- Serving a document to the reader -----------------------------------------
 
-// The reading view's own stylesheet and script are static files rather than
-// something injected inline: the site's CSP allows neither an inline script nor
-// an inline style, and a book's document is served under a CSP of its own that
-// only relaxes what an EPUB really needs.
+// Static files rather than inline: the site's CSP forbids inline script and style, and a
+// book's document gets its own CSP that only relaxes what an EPUB really needs.
 const READER_HEAD =
   '<meta name="viewport" content="width=device-width, initial-scale=1, ' +
   'maximum-scale=1, user-scalable=no">' +
   '<link rel="stylesheet" href="/static/reader/reader.css">' +
   '<script defer src="/static/reader/reader.js"></script>';
 
-/** What a book's own document may do: style itself, and nothing else. */
+/** What a book's own document may do: style itself and run the reader's script, never its own. */
 export const READER_CSP = [
   "default-src 'none'",
   "img-src 'self' data:",
@@ -216,11 +204,8 @@ export const READER_CSP = [
 ].join('; ');
 
 /**
- * One document of the book, ready to be read.
- *
- * Served as `text/html` rather than as the XHTML it is: an XHTML parser stops
- * at the first thing it dislikes and shows a blank page, and a book that
- * displays is worth more than one that is well-formed.
+ * Served as `text/html`, not XHTML: an XHTML parser shows a blank page at the first
+ * error, and a book that displays beats one that is well-formed.
  */
 export function readerDocument(buffer, language = '') {
   let html = String(buffer)
@@ -261,10 +246,8 @@ export function setProgress(userId, id, { doc, ratio, finished }) {
 }
 
 /**
- * The EPUB itself, for a client that wants to take the book with it.
- *
- * The path rather than the bytes: the route sends the file, which is what gets
- * a resumable download and a byte range for free.
+ * The EPUB's path, not its bytes: the route sends the file, which makes the
+ * offline download resumable for free.
  */
 export function ebookFile(id) {
   const row = db.prepare('SELECT path, title FROM ebooks WHERE id = ?').get(id);
@@ -289,11 +272,8 @@ export function searchEbooks(userId, words, limit = 10) {
 // --- Reading ------------------------------------------------------------------
 
 /**
- * One file out of a book, by its path inside the zip.
- *
- * The path is the caller's, so it is checked against the zip's own directory
- * rather than trusted: an entry that is not in the book does not exist, which
- * is also what makes `..` harmless.
+ * One file by its path inside the zip. The caller's path is checked against the zip's
+ * own directory rather than trusted, which also makes `..` harmless.
  */
 export function readResource(id, name) {
   const row = db.prepare('SELECT path, title, language FROM ebooks WHERE id = ?').get(id);

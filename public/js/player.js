@@ -1,11 +1,6 @@
-// The playback engine: queue, transport, shuffle/repeat, volume, the Web Audio
-// analyser behind the level meter, and the Media Session integration.
-//
-// The queue keeps two lists. `queue` is what you added, in the order you added
-// it. `order` is a list of positions into `queue` - the order playback actually
-// follows. Sequential playback is the identity mapping; shuffle rewrites
-// `order` once instead of picking a random track each time, which is what makes
-// the queue panel able to show the real upcoming order.
+// The playback engine. `order` holds positions into `queue` (what was added, as added); shuffle
+// rewrites `order` once instead of picking at random each time, so the queue panel can show the
+// real upcoming order.
 
 import { api, mediaFailure } from './api.js';
 import { toast } from './ui.js';
@@ -30,22 +25,14 @@ export const state = {
   duration: 0,
   buffered: 0,
   source: '',
-  // Where the queue was put on, as the route that was open at the time. `source`
-  // is the name for a human ("First Album"); this is the identity the lists ask
-  // about - a song sits in an album, in an interpret's page, in playlists and in
-  // the search at once, and only the list it is actually playing from should
-  // light up in full. Deliberately the path without its query: sorting or
-  // filtering "Alle Songs" rewrites the query and is still the same list. The
-  // price is that two different searches share a key, which marks one song a
-  // shade too strongly and breaks nothing.
+  // The route the queue was put on, so only the list actually playing lights up in full. Without
+  // its query, as sorting "Alle Songs" is still the same list; two searches then share a key,
+  // which marks one song a shade too strongly and breaks nothing.
   sourceKey: '',
 };
 
-// What was actually played, most recent last, as positions in `queue`. "Back"
-// walks this list instead of stepping down `order`: with shuffle on, `order`
-// gets re-dealt when the queue wraps around, and the track that came before is
-// then anywhere but at pos - 1. Positions in `queue` stay valid because the
-// queue is only ever appended to, never spliced.
+// What was actually played, as positions in `queue`: shuffled "back" walks this, since a wrap
+// re-deals `order`. Positions stay valid because `queue` is only appended to, never spliced.
 let history = [];
 const HISTORY_MAX = 100;
 
@@ -82,7 +69,6 @@ export function currentTrack() {
   return state.queue[state.order[state.pos]] || null;
 }
 
-// The tracks still to come, in playback order, for the queue panel.
 export function upcoming() {
   return state.order.slice(state.pos + 1).map((i) => state.queue[i]).filter(Boolean);
 }
@@ -159,11 +145,8 @@ function save() {
   }
 }
 
-// Where the playhead stood, written as it moves so that closing the app and
-// opening it again comes back to the second the song was left at instead of to
-// its beginning. Every few seconds is enough: being wrong costs a handful of
-// seconds of music, while saving on every `timeupdate` would write to
-// localStorage four times a second for the rest of the song.
+// The playhead is saved every few seconds so a reopened app resumes where the song was left;
+// on every `timeupdate` it would write localStorage four times a second.
 const SAVE_TIME_EVERY = 5; // seconds of playback between two writes
 let savedTimeAt = 0;
 
@@ -205,15 +188,14 @@ export async function restore(prefs) {
       const { tracks } = await api.tracksByIds(stored.ids);
       if (tracks.length) {
         state.queue = tracks;
-        // Tracks can disappear between sessions, and the answer only carries
-        // the ones that are still there. The stored order is positions in the
-        // old list, so a single missing track shifts every position behind it
-        // onto a different song - it is only usable when everything came back.
+        // The stored order is positions in the old list, so one track gone since then shifts
+        // every later position onto another song: only usable when every track came back.
         const complete = tracks.length === stored.ids.length;
         const validOrder = complete
           ? (stored.order || []).filter((i) => i >= 0 && i < tracks.length)
           : [];
-        state.order = validOrder.length === tracks.length ? validOrder : tracks.map((_, i) => i);
+        // Shorter than the queue is normal: removing a track only takes it out of the order.
+        state.order = validOrder.length ? validOrder : tracks.map((_, i) => i);
         state.pos = Math.min(Math.max(stored.pos ?? 0, 0), state.order.length - 1);
         state.source = stored.source || '';
         state.sourceKey = stored.sourceKey || '';
@@ -228,23 +210,20 @@ export async function restore(prefs) {
 
 // --- Loading and playback ---------------------------------------------------
 
-// How much of the current track was really listened to, and the play row on the
-// server that is being kept up to date with it. The statistics count time spent
-// listening, so pausing, skipping ahead and leaving early all have to show up -
-// which the track length alone would never tell.
+// Time really listened to and the play row it updates: statistics count listening, so pausing,
+// skipping ahead and leaving early have to show up, which the track length never tells.
 let playWritten = false;
 let playId = null;
+let playSeq = 0; // bumped per track, so a late answer cannot hand over its play row
 let listened = 0;
 let lastTick = 0;
 let reported = 0;
 
 const REPORT_EVERY = 20; // seconds of listening between two reports
 
-// The row is written after the first second, so a skip still counts as time.
-// It counts as a play after COUNT_AFTER - the server decides that from the
-// seconds (stats.js), this side only reports the moment it gets there. A track
-// shorter than that can never reach it, so for those a third of the length is
-// the mark.
+// The row is written after the first second, so a skip still counts as time. The server makes
+// it a play after COUNT_AFTER seconds (stats.js), a third of a shorter track; this side only
+// reports the moment it gets there.
 const START_AFTER = 1;
 const COUNT_AFTER = 30;
 
@@ -262,6 +241,7 @@ function reportListening(keepalive = false) {
 
 function resetListening() {
   reportListening();
+  playSeq += 1;
   playWritten = false;
   playId = null;
   listened = 0;
@@ -270,23 +250,12 @@ function resetListening() {
 }
 
 // --- Podcast progress -------------------------------------------------------
-// A song is played and forgotten; an episode is 70 minutes long and has to pick
-// up where it was left. None of this runs for a song - `progressTrack` is only
-// ever set for an episode, and every function below leaves immediately without
-// one.
-//
-// The position is reported on a timer while it plays and once more whenever
-// playback leaves the episode: pausing, skipping, closing the tab.
+// Spoken word resumes where it was left; a song is played and forgotten. Everything below leaves
+// at once without `progressTrack`, which is only set for an episode or an audiobook part.
 
 const PROGRESS_EVERY = 15; // seconds of playback between two reports
-// Close enough to the end to call it heard. Without it a track stopped during
-// the outro stays half-finished forever and keeps offering itself.
-//
-// Proportional, not a flat 30 s, and that difference is load-bearing: an
-// audiobook is cut into parts of whatever length the ripper chose, and against
-// a 40-second part a flat half minute would call everything past second ten
-// "finished". Five percent is half a minute of a ten-minute part and two
-// seconds of a forty-second one.
+// Close enough to the end to call it heard, or a track stopped in the outro keeps offering itself.
+// Capped at 5%: audiobook parts can be 40 s long, and a flat 30 s would call those finished early.
 const NEARLY_DONE = 30;
 const nearlyDone = (duration) => Math.min(NEARLY_DONE, (duration || 0) * 0.05);
 
@@ -359,22 +328,27 @@ function flushProgress(keepalive = false) {
   sendProgress(track, at, false, keepalive);
 }
 
+// The pending start position. Replaced, not stacked: a source that never opened
+// must not hand its seek to the next one.
+let seekOnOpen = null;
+function seekWhenOpen(fn) {
+  audio.removeEventListener('loadedmetadata', seekOnOpen);
+  seekOnOpen = fn;
+  if (fn) audio.addEventListener('loadedmetadata', fn, { once: true });
+}
+
 function load(track, autoplay, startAt = 0) {
   if (!track) return;
   // Where the episode being left off stood, before anything points at the new
   // one.
   flushProgress();
   resetListening();
-  // An episode picks up where it was left. An explicit startAt wins: it comes
-  // from the queue restore and describes this very session.
+  // An explicit startAt (queue restore, chapter jump, error recovery in start()) wins over
+  // the episode's saved resume point: it describes this very session.
   const at = startAt || (isSpoken(track) ? track.resumeAt || 0 : 0);
   armProgress(track, at);
   audio.src = streamUrl(track.id);
-  if (at > 0) {
-    audio.addEventListener('loadedmetadata', () => {
-      audio.currentTime = Math.min(at, audio.duration || at);
-    }, { once: true });
-  }
+  seekWhenOpen(at > 0 ? () => (audio.currentTime = Math.min(at, audio.duration || at)) : null);
   state.duration = track.duration || 0;
   state.currentTime = at;
   savedTimeAt = at;
@@ -424,16 +398,8 @@ export function playTracks(tracks, startIndex = 0, source = '', sourceKey = '') 
   emit();
 }
 
-// A collection put on from its "Mischen" button.
-//
-// Nothing was clicked here, so no song has earned the front of the queue -
-// `buildOrder` keeps the index it is given in front while shuffling, and a fixed
-// zero would open every random run of a genre or an artist with the same song,
-// the first row of the list. The opener is drawn like every other position.
-//
-// Drawn from what can actually be played rather than from `tracks`: a missing
-// file never enters the queue, and drawing one would fall back to the front of
-// the list - exactly the song this is here to avoid.
+// From a "Mischen" button nothing was clicked, so the opener is drawn at random, not row 0 every
+// time - and only from playable tracks, as a missing one would fall back to the front.
 export function shuffleTracks(tracks, source = '', sourceKey = '') {
   const pool = (tracks || []).filter((t) => t && !t.missing);
   if (!pool.length) return;
@@ -493,10 +459,8 @@ export function next(manual = false) {
   if (state.pos + 1 < state.order.length) {
     state.pos += 1;
   } else if (state.repeat === 'all' || manual) {
-    // Wrapping while shuffled deals a fresh order, so a repeated queue does not
-    // play the same random sequence forever. Dealt from the order, not from the
-    // queue: `queue` still holds everything ever added, so rebuilding from it
-    // would bring tracks back that were taken out of the queue.
+    // A fresh deal per wrap, so a repeated queue does not replay one random sequence. Dealt from
+    // `order`, not `queue`, which still holds tracks that were taken out.
     if (state.shuffle) {
       const last = state.order[state.pos];
       // A new round must not open with the interpret that just finished, which
@@ -518,25 +482,17 @@ export function next(manual = false) {
 }
 
 // --- Chapters ---------------------------------------------------------------
-// The marks inside the book that is playing. An audiobook is one enormous file
-// and the transport has always described it as one - so "back" and "forward"
-// had nothing to move between, and the notification's two buttons did nothing
-// a listener would want. The chapters are what they move between now.
-//
-// Held per *track* rather than per book, because that is the unit the transport
-// works in: the playhead is a second inside a file, and matching a chapter to
-// it must not depend on how many parts came before. `app.js` fills this in
-// whenever the running track belongs to a different book (see loadChapters).
+// The marks "back" and "forward" move between inside a book. Held per track, as the playhead is
+// a second inside one file; app.js fills them in when the running track belongs to another book
+// (see loadChapters).
 
 let chapterBook = null;
 let chapterTotal = 0;
 let chaptersByTrack = new Map();
 
 /**
- * `list` is what `GET /api/audiobooks/books/:id` returns: chapters numbered
- * across the whole book, each saying which part it sits in and how far into it.
- * `parts` is the book's parts in the same order, so a part index becomes a
- * track id here and nothing downstream has to know about the indexing.
+ * `list` is the book's chapters from `GET /api/audiobooks/books/:id`, each with its part and
+ * offset; `parts` turns a part index into a track id here, so nothing downstream knows the indexing.
  */
 export function setChapters(bookId, list, parts) {
   chapterBook = bookId;
@@ -557,7 +513,7 @@ export function clearChapters() {
   chaptersByTrack = new Map();
 }
 
-/** Which book the chapters in hand belong to, so app.js can skip a re-fetch. */
+/** Which book the chapters in hand belong to. */
 export function chapterBookId() {
   return chapterBook;
 }
@@ -569,7 +525,7 @@ export function chaptersHere() {
   return chaptersByTrack.get(track.id) || [];
 }
 
-/** How many chapters the whole book has - "Kapitel 12 von 59". */
+/** How many chapters the whole book has. */
 export function chapterCount() {
   return chapterTotal;
 }
@@ -588,15 +544,8 @@ export function currentChapter() {
 }
 
 /**
- * One chapter back or forward.
- *
- * Back mirrors what "back" already does to a track: it puts the playhead at the
- * start of the chapter that is running, and only a second press inside
- * [RESTART_AFTER] leaves it. That is the behaviour a listener wants from a book
- * - the usual reason to press it is having missed the last minute.
- *
- * Running out of chapters at either end falls through to the queue, so a book
- * of several parts carries on into the next file instead of stopping dead.
+ * One chapter back or forward. Back restarts the running chapter, like a track; only a second press
+ * within [RESTART_AFTER] leaves it. False at either end, so the queue moves on to the next part.
  */
 export function skipChapter(delta) {
   const list = chaptersHere();
@@ -624,19 +573,12 @@ export function skipChapter(delta) {
 // it. The second press then falls inside this window and goes back for real.
 const RESTART_AFTER = 3;
 
-// Back either starts the track over or goes back to the one that played before,
-// and what "before" means depends on the mode. Shuffled it comes from
-// `history`: the queue re-deals its order when it wraps, so the track that
-// played is anywhere but one position back. Without shuffle the play order *is*
-// the order on screen, so "before" is one step down it - reading the history
-// there is what made switching shuffle off feel broken, because the list played
-// in its normal order again while "back" still walked the random path from
-// before and, once its entries ran out, landed on the track that run started on.
+// Shuffled, "before" comes from `history`, as a wrap re-deals the order. Unshuffled it is one step
+// down the order on screen: reading history there kept walking the old random path.
 export function previous() {
   if (!state.order.length) return;
 
-  // Inside a book "back" means one chapter, not one file - there is only ever
-  // the one file, so the old meaning had nothing to do.
+  // Inside a book "back" means one chapter, not one file.
   if (skipChapter(-1)) {
     resetListening();
     return;
@@ -684,29 +626,19 @@ export function seekTo(fraction) {
   seekToTime(Math.max(0, Math.min(1, fraction)) * (audio.duration || state.duration));
 }
 
-// The same jump in seconds. The rail drags a fraction of the width around and
-// never knows the running time; a lyric line only ever knows the second it is
-// sung at, and turning that back into a fraction here would be arithmetic for
-// nothing.
+// The same jump in seconds, for callers like a lyric line that only know the second.
 export function seekToTime(seconds) {
   const total = audio.duration || state.duration;
   if (!total || !Number.isFinite(total) || !Number.isFinite(seconds)) return;
   audio.currentTime = Math.max(0, Math.min(total, seconds));
 }
 
-/**
- * How far one skip moves the playhead in spoken word.
- *
- * Florian asked for fifteen seconds, which is also what every reader uses. The
- * Android client holds the same number in `PlayerController`.
- */
+/** One skip in spoken word, in seconds; Android's `PlayerController` holds the same number. */
 export const SKIP_SECONDS = 15;
 
 /**
- * A jump of [seconds] from where the playhead is, clamped to the file.
- *
- * What the two skip buttons do for spoken word: a chapter is not a track, and
- * stepping to the next file is not what "back" means in the middle of one.
+ * A jump of [seconds] from the playhead, clamped to the file: the spoken-word skip buttons,
+ * since mid-chapter stepping to another file is not what "back" means.
  */
 export function skipBy(seconds) {
   seekToTime((audio.currentTime || 0) + seconds);
@@ -881,15 +813,9 @@ export function toggleMute() {
   emit();
 }
 
-// Updates a rating that is already in the queue, so the player bar and the
-// queue panel stay in sync with the list the user rated from.
 /**
- * Reopens the running track at the quality that is set now.
- *
- * Called when the setting is changed while something is playing. The position
- * and whether it was playing are carried over, so the switch costs the buffer
- * and nothing else - anything more would be a setting you have to stop the music
- * to change.
+ * Reopens the running track at the quality set now, keeping position and play state, so
+ * changing the setting costs the buffer and nothing else.
  */
 export function reopenAtCurrentQuality() {
   const track = currentTrack();
@@ -897,16 +823,14 @@ export function reopenAtCurrentQuality() {
   const at = audio.currentTime || 0;
   const wasPlaying = !audio.paused;
   audio.src = streamUrl(track.id);
-  audio.addEventListener(
-    'loadedmetadata',
-    () => {
-      audio.currentTime = Math.min(at, audio.duration || at);
-      if (wasPlaying) audio.play().catch(() => {});
-    },
-    { once: true }
-  );
+  seekWhenOpen(() => {
+    audio.currentTime = Math.min(at, audio.duration || at);
+    if (wasPlaying) audio.play().catch(() => {});
+  });
 }
 
+// Updates a rating that is already in the queue, so the player bar and the
+// queue panel stay in sync with the list the user rated from.
 export function applyRating(trackId, starValue) {
   let touched = false;
   for (const track of state.queue) {
@@ -919,11 +843,8 @@ export function applyRating(trackId, starValue) {
 }
 
 // --- Media Session ----------------------------------------------------------
-// This is the whole notification the phone shows while something is playing.
-// It has three halves and it needs all of them: the metadata fills the card,
-// a registered action handler is what makes a button exist at all, and
-// setPositionState is what draws the progress bar. Without the last one the
-// notification has a title and a play button and nothing else.
+// The phone's notification needs all three: metadata fills the card, a registered action
+// handler makes a button exist at all, and setPositionState draws the progress bar.
 
 const session = 'mediaSession' in navigator ? navigator.mediaSession : null;
 const canPosition = !!session && typeof session.setPositionState === 'function';
@@ -934,10 +855,8 @@ function updateMediaSession(track) {
   const artwork = track.cover
     ? [{ src: track.cover, sizes: '512x512', type: 'image/jpeg' }]
     : [];
-  // A book on a lock screen: the chapter where a song has its title, the book
-  // where it has its interpret, the author where it has its album. The three
-  // lines say something that moves while the file does not, which is the whole
-  // reason the notification was useless for a book before.
+  // A book shows chapter, book and author in place of title, interpret and album, so the
+  // lock screen moves on while one file plays.
   const chapter = track.audiobookId ? currentChapter() : null;
   const meta = chapter
     ? { title: chapter.title || `Kapitel ${chapter.index + 1}`, artist: track.book || track.title, album: track.author || '' }
@@ -1016,15 +935,9 @@ function clearMediaSession() {
 let wiredSpoken = null;
 
 /**
- * The notification's buttons, and which pair it gets.
- *
- * A notification has room for a few buttons and the browser picks them from
- * what is **registered**, so the two pairs cannot both be on. A song gets the
- * track skips; spoken word gets the fifteen seconds and gives up the track
- * skips for them - in the middle of a three-hour play "next" meant the next
- * *file*, which is not a thing anybody reaches for on a lock screen.
- *
- * Handing `setActionHandler` a null is what takes a button away again.
+ * The browser picks the notification's few buttons from what is registered, so only one pair can
+ * be on: track skips for a song, the 15 s jumps for spoken word, where "next" would mean the next
+ * file. A null handler takes a button away again.
  */
 function wireMediaSession(spoken) {
   if (!session || wiredSpoken === spoken) return;
@@ -1128,11 +1041,12 @@ audio.addEventListener('timeupdate', () => {
       playWritten = true;
       reported = Math.round(listened);
       const track = currentTrack();
+      const seq = playSeq;
       if (track) {
         api
           .play(track.id, reported)
           .then((res) => {
-            playId = res.playId;
+            if (seq === playSeq) playId = res.playId;
           })
           .catch(() => {});
       }

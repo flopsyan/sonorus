@@ -1,12 +1,6 @@
-// Reading an EPUB with nothing but what Node ships.
-//
-// An EPUB is a zip of XHTML and `zlib` inflates its entries, so the only piece
-// missing is the zip's own central directory - a hundred lines against the
-// first dependency this project would take on for one file format.
-//
-// Deliberately no XML parser either. The three files that are read here - the
-// container, the OPF and the table of contents - are machine-written and
-// shallow, and the alternative is a second dependency for the same reason.
+// EPUB with Node built-ins only: `zlib` inflates the entries, and reading the central
+// directory is a hundred lines against a new dependency. No XML parser either: the
+// container, OPF and table of contents are machine-written and shallow.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,13 +9,13 @@ import zlib from 'node:zlib';
 const SIG_EOCD = 0x06054b50;
 const SIG_CENTRAL = 0x02014b50;
 
-/** Extensions this library knows how to serve out of a book. */
+// Extensions served out of a book. No `.js`: sent as octet-stream, nosniff
+// keeps a book's own script from running in the reader.
 export const RESOURCE_MIME = {
   '.xhtml': 'application/xhtml+xml',
   '.html': 'text/html',
   '.htm': 'text/html',
   '.css': 'text/css',
-  '.js': 'text/javascript',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
@@ -38,17 +32,19 @@ export function mimeOf(name) {
   return RESOURCE_MIME[path.extname(name).toLowerCase()] || 'application/octet-stream';
 }
 
+// A short read would hand out whatever memory the unsafe buffer held.
 function readAt(fd, length, position) {
   const buf = Buffer.allocUnsafe(length);
-  fs.readSync(fd, buf, 0, length, position);
+  if (fs.readSync(fd, buf, 0, length, position) < length) throw new Error('Das Buch ist unvollständig.');
   return buf;
 }
 
+// Far above any real chapter, low enough that a zip bomb cannot take the server's memory.
+const MAX_ENTRY = 64 * 1024 * 1024;
+
 /**
- * The entries of a zip and a reader for one of them.
- *
- * Only the central directory is held; an entry is inflated when it is asked
- * for. The handle owns a file descriptor and has to be closed.
+ * Holds only the central directory and inflates an entry when asked for.
+ * The handle owns a file descriptor and has to be closed.
  */
 export function openZip(file) {
   const fd = fs.openSync(file, 'r');
@@ -94,7 +90,7 @@ export function openZip(file) {
       const local = readAt(fd, 30, entry.header);
       const start = entry.header + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
       const raw = readAt(fd, entry.compressed, start);
-      return entry.method === 0 ? raw : zlib.inflateRawSync(raw);
+      return entry.method === 0 ? raw : zlib.inflateRawSync(raw, { maxOutputLength: MAX_ENTRY });
     };
 
     return { entries, read, close: () => fs.closeSync(fd) };
@@ -199,7 +195,7 @@ export function openEpub(file) {
       meta,
       manifest,
       spine,
-      toc: tableOfContents(zip, manifest, spineXml, spine),
+      toc: tableOfContents(zip, manifest, openingTags(opf, 'spine')[0] || '', spine),
       cover: coverName(manifest, metadata),
       read: zip.read,
       has: (name) => zip.entries.has(name),
@@ -212,14 +208,10 @@ export function openEpub(file) {
 }
 
 /**
- * The chapter list, as an index into the spine.
- *
- * EPUB 3 keeps it in a nav document and EPUB 2 in an NCX; both are read,
- * because a book from 2011 is as likely as one from last year. An entry that
- * points at a document the spine does not have is dropped rather than guessed
- * at.
+ * The chapter list as spine indexes, from the EPUB 3 nav or the EPUB 2 NCX. An entry
+ * pointing at a document outside the spine is dropped rather than guessed at.
  */
-function tableOfContents(zip, manifest, spineXml, spine) {
+function tableOfContents(zip, manifest, spineTag, spine) {
   const bySpine = new Map(spine.map((item) => [item.href, item.index]));
   const found = [];
 
@@ -235,11 +227,12 @@ function tableOfContents(zip, manifest, spineXml, spine) {
   }
 
   if (found.length === 0) {
-    const ncx = manifest.get(attr(spineXml, 'toc'));
+    const ncx = manifest.get(attr(spineTag, 'toc'));
     if (ncx) {
       const xml = zip.read(ncx.href)?.toString('utf8') || '';
       const base = path.posix.dirname(ncx.href);
-      for (const point of xml.match(/<navPoint\b[\s\S]*?<\/navPoint>/gi) || []) {
+      // Up to its own <content>, not to a </navPoint>: a nested child's would end the parent early.
+      for (const point of xml.match(/<navPoint\b[\s\S]*?<content\b[^>]*>/gi) || []) {
         const href = attr(openingTags(point, 'content')[0] || '', 'src');
         if (href) found.push({ title: plainText(element(point, 'text')), href: resolve(base, href) });
       }

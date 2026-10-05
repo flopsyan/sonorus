@@ -7,8 +7,8 @@ import { draft } from './pending.js';
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
-// Everything that ends up in innerHTML goes through this. Track titles come
-// from file tags, which are arbitrary text.
+// Every text from data goes through this before innerHTML (numbers and server-normalised
+// dates go in as they are): track titles come from file tags, which are arbitrary text.
 export function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ESCAPES[c]);
 }
@@ -21,11 +21,8 @@ export function art(src, label, alt = '') {
   return `<span class="art-fallback" aria-hidden="true">${esc(initial)}</span>`;
 }
 
-// A 2x2 mosaic of four covers, used wherever a collection has no artwork of its
-// own: a playlist, a star playlist, a genre.
-//
-// Below four it falls back to the first cover alone, the way the genre cards
-// have always looked, and without any cover at all to the typographic panel.
+// A 2x2 mosaic for a collection without artwork of its own (playlist, star playlist, genre).
+// Below four covers it shows the first alone, without any the typographic panel.
 export function coverMosaic(covers, label) {
   const list = (covers || []).slice(0, 4);
   if (!list.length) return art(null, label);
@@ -38,11 +35,8 @@ export function mosaic(tracks, label) {
   return coverMosaic(albumCovers(tracks), label);
 }
 
-// The cover of each of the first four records in a track list, in the order the
-// list has them. It counts *albums*, not songs: four songs off one record would
-// otherwise show the same cover four times, which says nothing about what is in
-// the list - so a record only ever contributes its first track, and a single,
-// which belongs to no album, stands for itself.
+// One cover per record, not per song: four songs off one album would otherwise show the
+// same cover four times. A single belongs to no album and stands for itself.
 function albumCovers(tracks) {
   const covers = [];
   const seen = new Set();
@@ -57,13 +51,9 @@ function albumCovers(tracks) {
   return covers;
 }
 
-// Five stars, rendered 5..1 so CSS can light up "this one and lower" on hover
-// (see .stars in the stylesheet). `attrs` is what a click has to carry to say
-// what is being rated.
-//
-// Read-only stars are spans and not buttons, and that is not cosmetic: they are
-// drawn inside the <a> of an album card, where a nested button is invalid markup
-// and swallows the click that should open the record.
+// Rendered 5..1 so CSS can light up "this one and lower" on hover (.stars in the stylesheet).
+// Read-only stars are spans, not buttons: inside a card's <a> a nested button is invalid
+// markup and swallows the click that should open the record.
 function starRow(value, attrs, readonly) {
   const current = Number(value) || 0;
   const tag = readonly ? 'span' : 'button';
@@ -81,13 +71,8 @@ function starRow(value, attrs, readonly) {
   return parts.join('');
 }
 
-// The stars of one song.
-//
-// A rating still on its way to the server is drawn instead of the value the
-// caller holds, and the widget says so with `waiting`. Reading the queue here
-// rather than at each of the four call sites is what makes the pale state
-// survive a re-render, a navigation and a reload without any of them knowing
-// the queue exists.
+// A rating still on its way to the server is drawn instead of `value`, marked `waiting`.
+// Reading the queue here, not at the call sites, keeps that across re-render and reload.
 export function stars(value, trackId, readonly = false) {
   const waiting = draft(trackId);
   const inner = starRow(
@@ -121,11 +106,8 @@ function sortHead(col, sort) {
      data-sort="${col.key}">${col.label}<span class="sort-caret">${caret}</span></button></span>`;
 }
 
-// options:
-//   sort      { key, dir }  - renders sortable headers, or omit for a plain one
-//   numbering 'index' | 'track' - running number, or the track number from tags
-//   draggable true          - playlist rows that can be reordered
-//   year      true          - the album column shows the year instead (singles)
+// `numbering` 'track' uses the tag's track number; `year` puts the year in the album column
+// (singles); `draggable` is for reorderable playlist rows; without `sort` headers are plain.
 export function trackList(tracks, options = {}) {
   if (!tracks.length) return '';
   const { sort = null, numbering = 'index', draggable = false, year = false } = options;
@@ -195,19 +177,9 @@ export function trackList(tracks, options = {}) {
 
 // --- Episode list -----------------------------------------------------------
 
-// The episodes of one show. Built out of the same `.track-row.item` as a song,
-// on purpose and not by accident: clicking a row to play it, the long press
-// that opens its menu, the right-click, and the equaliser that marks what is
-// playing are all wired to that class in app.js, and an episode wants every one
-// of them. Only the cells differ, because the questions differ - a song asks
-// which album and how many stars, an episode asks how much of it is left.
-// `offset` is where this list starts inside the page's own track list. Only the
-// search page needs it, where the episodes sit behind the songs in one array
-// and data-play-index has to point at the right entry of it.
-//
-// `showName` names the podcast on every row. Off inside one show, where the
-// page already says which one it is; on wherever the list spans several -
-// "Weiterhören" and the search results.
+// Same `.track-row.item` as a song on purpose: play on click, long press, right-click and the
+// playing marker are wired to that class in app.js. `offset` is for the search page, where
+// the episodes follow the songs in one array that data-play-index points into.
 export function episodeList(episodes, { offset = 0, showName = false } = {}) {
   if (!episodes.length) return '';
 
@@ -217,15 +189,11 @@ export function episodeList(episodes, { offset = 0, showName = false } = {}) {
       const at = offset + i;
       const shown = ep.episodeNo != null ? ep.episodeNo : at + 1;
       const left = Math.max(0, (ep.duration || 0) - (ep.position || 0));
-      // Three states, and each says something the other two do not: finished,
-      // part-way through with the rest named, or untouched.
       const state = ep.completed
         ? `<span class="ep-done">${icon('check-circle', 14)}<span class="ep-word">Gehört</span></span>`
         : ep.position > 0 && ep.duration
-          ? // The width goes on as a data attribute and is applied by the view's
-            // `after` hook: the CSP is style-src 'self', so an inline style
-            // attribute is simply dropped and the bar would stay at zero. Same
-            // construction as the scan progress in the settings.
+          ? // The width is applied by the view's `after` hook: the CSP is style-src 'self',
+            // so an inline style attribute would be dropped and the bar stay at zero.
             `<span class="ep-progress" title="Noch ${duration(left)}">
                <span class="ep-bar"><span data-progress="${Math.min(100, Math.round((ep.position / ep.duration) * 100))}"></span></span>
                <span class="ep-left">noch ${duration(left)}</span>
@@ -269,15 +237,9 @@ export function episodeList(episodes, { offset = 0, showName = false } = {}) {
 
 // --- Cards ------------------------------------------------------------------
 
-// `covers` is the collection case: a card for something that has no artwork of
-// its own carries the covers of what is in it, the same mosaic as its page.
-//
-// `rating` is ready-made star markup rather than a number, because only the
-// caller knows what is being rated - a record has stars, an interpret and a
-// genre have none. It has to be the read-only widget: the tile is one link, and
-// a control inside it would eat the click that opens the record.
-// `portrait` is the shelf case: a book cover is taller than it is wide, and a
-// square tile crops the top off it - which is where a cover puts its title.
+// `rating` is ready-made markup because only the caller knows what is rated; it must be the
+// read-only widget, as a control inside the link eats its click. `portrait` is for book
+// covers, whose title at the top a square tile would crop off.
 export function card({
   href, cover, covers, title, sub, round = false, portrait = false, playAction, rating = '',
 }) {
@@ -292,10 +254,8 @@ export function card({
     </a>`;
 }
 
-// The same thing as a row instead of a tile: one line per entry, built to the
-// height of a track row so a list of albums reads like a list of songs. Takes
-// exactly what `card` takes, plus the count that sits on the right - and the
-// stars, when there are any, go between the two.
+// `card` as a row, built to a track row's height so a list of albums reads like a list of
+// songs. `meta` is the count on the right.
 export function listRow({ href, cover, covers, title, sub, meta, round = false, playAction, rating = '' }) {
   return `<a class="list-row" href="${esc(href)}" data-link>
       <span class="list-art${round ? ' round' : ''}">${covers?.length ? coverMosaic(covers, title) : art(cover, title)}</span>
@@ -320,9 +280,7 @@ export function empty(title, text, action = '') {
 
 // --- Overlays ---------------------------------------------------------------
 
-// Everything in here lies over the page, and on a phone the back button is what
-// closes that. app.js hangs its history bookkeeping into these two hooks; with
-// nothing hooked in they do nothing and the overlays behave as they always did.
+// On a phone the back button closes overlays: app.js hangs its history bookkeeping in here.
 let overlayHooks = { push: () => {}, drop: () => {} };
 
 export function setOverlayHooks(hooks) {
@@ -370,13 +328,8 @@ export function lightbox(src, label) {
 
 let closeModalFn = null;
 
-// Opens a modal and returns its root element so the caller can wire up its
-// own controls. Only one modal is open at a time.
-//
-// `autofocus` decides whether the first field is focused. On a desktop that is
-// what everybody expects; on a phone it throws the keyboard over half the
-// dialog before anything has been decided, so only the dialogs that exist to be
-// typed into ask for it there.
+// Only one modal is open at a time. `autofocus` defaults to off on touch, where the
+// keyboard would cover half the dialog before anything is decided.
 export function modal({ title, body, footer = '', wide = false, autofocus, onOpen }) {
   closeModal();
 
@@ -436,6 +389,7 @@ export function confirmDialog({ title, message, confirmLabel = 'Löschen', dange
     });
     root.querySelector('[data-confirm]').addEventListener('click', () => {
       decided = true;
+      observer.disconnect();
       closeModal();
       resolve(true);
     });
@@ -452,12 +406,8 @@ export function confirmDialog({ title, message, confirmLabel = 'Löschen', dange
 
 let openMenu = null;
 
-// A context menu anchored to the pointer. `items` is a list of
-// { label, icon, danger, onSelect } - a null entry draws a separator.
-//
-// Without a pointer there is nothing to anchor it to, and a menu of 210 px in
-// the middle of a phone screen is a menu for a mouse: on a touch screen it
-// comes up from the bottom edge instead, full width, over a scrim.
+// `items` are { label, icon, danger, onSelect }, null draws a separator. On touch there is no
+// pointer to anchor to, so it becomes a full-width sheet from the bottom edge.
 export function contextMenu(x, y, items) {
   closeContextMenu();
 
@@ -495,11 +445,8 @@ export function contextMenu(x, y, items) {
   menu.addEventListener('click', (e) => {
     const button = e.target.closest('[data-item]');
     if (!button) return;
-    // The press that opened the sheet is still on its way: a long press ends in
-    // a synthetic click, and by then the sheet can be standing under the finger
-    // that asked for it. Ignoring the first moment is what keeps that click
-    // from picking an entry nobody aimed at - a little longer than the sheet
-    // takes to arrive, and far shorter than a deliberate second tap.
+    // The long press that opened the sheet ends in a synthetic click that can land on an entry;
+    // 260 ms is a bit longer than the sheet takes to arrive, far shorter than a second tap.
     if (sheet && performance.now() - openedAt < 260) return;
     const item = items[Number(button.dataset.item)];
     closeContextMenu();
@@ -515,11 +462,8 @@ export function contextMenu(x, y, items) {
   const onKey = (e) => {
     if (e.key === 'Escape') closeContextMenu();
   };
-  // The scrim needs no handler of its own: a tap on it is a pointerdown outside
-  // the menu, which is what `onAway` already answers. Giving it a click handler
-  // instead is what closed the menu the moment the long press let go - the
-  // browser sends that click to whatever lies under the finger afterwards, and
-  // by then the scrim does.
+  // No click handler on the scrim: the long press's release click lands on it and would close
+  // the menu at once. A tap on it is a pointerdown outside, which `onAway` answers.
   setTimeout(() => {
     document.addEventListener('pointerdown', onAway);
     document.addEventListener('keydown', onKey);

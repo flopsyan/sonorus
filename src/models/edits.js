@@ -1,23 +1,6 @@
-// Hand edits to the library.
-//
-// The music folder is read-only and stays that way: an edit here changes what
-// Sonorus shows, never the file. Everything lands in the database (and, for a
-// cover, in the data directory), and each edited field sets a lock so the next
-// scan puts the file's version back only where nobody has decided otherwise.
-//
-// What can be edited is what the file has to answer: release date, genres and
-// cover.
-// Title, artist and track number come from the folder structure - editing those
-// here would only last until the next scan reads the folder names again. The
-// profile picture of an artist is the one thing that comes from nowhere else at
-// all, so it needs no lock: no scan ever writes it.
-//
-// An album edit is a fact about the *album*, never about the songs that are in
-// it at the moment. It is stored on the album row (date, cover) and in
-// `album_genres`, and written down onto its songs from there - by the edit and,
-// for every song the album gains later, by the scanner. Storing it on the songs
-// alone is what used to make it fall apart: a renamed file is a new row, and a
-// new row would take the file's genres and the file's date back.
+// Hand edits go to the database (covers to the data dir), never the read-only music folder.
+// Each edited field sets a lock, so a scan restores the file's value only where nobody decided
+// otherwise. Names come from folders and are not editable: the next scan would read them back.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -144,10 +127,8 @@ const setTrackGenres = db.transaction((trackIds, genres) => {
 
 const albumTrackIds = db.prepare('SELECT id FROM tracks WHERE album_id = ?');
 
-// The genres of an album belong to the album, not to the songs that happen to
-// be in it right now. They are stored on it and written down onto every song it
-// has; the scanner does the same for every song it gains later, which is what
-// makes an edit outlive a rename or a new file.
+// Stored on the album and written down onto its songs (the scanner does the same for songs
+// it gains later), so an edit outlives a rename: a renamed file is a new row.
 const setAlbumGenres = db.transaction((albumId, genres) => {
   const ids = genreIds(genres);
   db.prepare('DELETE FROM album_genres WHERE album_id = ?').run(albumId);
@@ -200,11 +181,8 @@ export async function updateAlbum(albumId, patch) {
   return { ok: true };
 }
 
-// Release date, genres and cover art of a single. An album track takes all
-// three from its album, so this is only for the files that belong to none -
-// they have nowhere else to carry them. Same deal as an album edit: it lives in
-// the database, and the locks keep the next scan from putting the file's version
-// back (an emptied date, emptied genres and a removed cover too).
+// Singles only: an album track takes date, genres and cover from its album. The locks keep
+// the next scan from restoring the file's version, emptied values included.
 export async function updateSingle(trackId, patch) {
   const track = db.prepare('SELECT id, album_id, cover FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
@@ -256,13 +234,8 @@ export async function updateArtistCover(artistId, cover) {
   return { ok: true };
 }
 
-// The picture of an author, and nothing else about them: the name is the folder
-// name and the next scan would read it again anyway. Exactly the artist rule,
-// and for exactly the artist reason - which is why this is a copy of
-// updateArtistCover and not a shared function with a table name passed in. The
-// two look alike today; an author is not an interpret, and the moment one of
-// them grows a second editable field a shared version would have to be pulled
-// apart again.
+// The picture only, as for an artist. A copy of updateArtistCover on purpose, so either
+// can grow a second editable field without pulling a shared version apart.
 export async function updateAuthorCover(authorId, cover) {
   const author = db.prepare('SELECT id, cover FROM authors WHERE id = ?').get(authorId);
   if (!author) return { error: 'not_found' };
@@ -279,19 +252,9 @@ export async function updateAuthorCover(authorId, cover) {
   return { ok: true };
 }
 
-// The two things about a book the file cannot answer well enough.
-//
-// The narrator it does answer - `composer` on every Audible m4b - so this is
-// only for correcting it. The release date it answers badly: the tag holds a
-// bare year where the listener may know the day, and Sonorus fetches nothing
-// from the internet to find out. Both set a lock, so a later scan puts the
-// file's version back only where nobody has decided otherwise.
 /**
- * The year of a book that is read.
- *
- * Only the date: the title and the author are the folder names, and the cover
- * and the blurb come out of the EPUB itself. Locked once set, or the next scan
- * would put the file's own wrong year back.
+ * Only the date: title and author are folder names, cover and blurb come from the EPUB.
+ * Locked once set, or the next scan would put the file's own wrong year back.
  */
 export function updateEbook(bookId, patch) {
   const book = db.prepare('SELECT id FROM ebooks WHERE id = ?').get(bookId);
@@ -307,6 +270,8 @@ export function updateEbook(bookId, patch) {
   return { ok: true };
 }
 
+// Corrects the narrator (`composer` on Audible m4b) and the date, which a tag often holds
+// only as a year. Both lock, so a later scan cannot put the file's version back.
 export function updateBook(bookId, patch) {
   const book = db.prepare('SELECT id FROM audiobooks WHERE id = ?').get(bookId);
   if (!book) return { error: 'not_found' };

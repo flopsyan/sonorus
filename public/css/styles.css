@@ -1,15 +1,5 @@
-/* ============================================================================
-   Sonorus - stylesheet.
-
-   The visual idea is a piece of audio equipment: a deep ink chassis, one warm
-   amber lamp colour, and hi-fi style labelling (small, wide-tracked, uppercase
-   monospace) over the section titles. Numbers - durations, bitrates, track
-   numbers, the transport counter - are always monospace and tabular, the way a
-   display on a hi-fi front panel is.
-
-   Dark is the default and the theme the layout is designed for; light exists
-   for daytime and is derived from the same tokens.
-   ========================================================================== */
+/* Sonorus - stylesheet. Dark is the theme the layout is designed for; light is
+   derived from the same tokens. Numbers are mono and tabular, like a hi-fi display. */
 
 :root {
   --bg: #100e14;
@@ -48,11 +38,8 @@
   /* What is left of the sidebar when it is folded away: wide enough for
      the brand mark and the button that brings the rest back. */
   --sidebar-rail: 62px;
-  /* How long the fold takes, in one place so the width, the brand name and
-     the list underneath it all move together. Its own curve rather than
-     --sheet-ease: that one is built to shoot off the mark, which reads as a
-     snap on a 200 px move and is not what a panel folding away should look
-     like. This is the even one. */
+  /* One duration so width, name and list move together. Its own even curve:
+     --sheet-ease shoots off the mark and reads as a snap on a 200 px move. */
   --fold-ms: 0.26s;
   --fold-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --player-h: 92px;
@@ -134,10 +121,9 @@ h3 { font-size: 0.98rem; font-weight: 600; }
 
 ::selection { background: var(--accent-soft); }
 
-/* Chromium - and with it the desktop client - otherwise draws a light grey bar
-   with arrow buttons. This copies Firefox's overlay bar on Linux, which keeps
-   its own and ignores these: hidden at rest, a 3 px line while the pointer or
-   the page moves (see app.js), the full bar under the pointer. */
+/* Chromium (and the desktop client) otherwise draws a grey bar with arrows. This
+   copies Firefox's Linux overlay bar, which ignores these rules: hidden at rest,
+   a 3 px line while moving (see app.js), the full bar under the pointer. */
 @media (hover: hover) {
   ::-webkit-scrollbar { width: 12px; height: 12px; }
   ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
@@ -168,8 +154,7 @@ h3 { font-size: 0.98rem; font-weight: 600; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* The equipment label: every section in the app is titled like a control on a
-   hi-fi front panel. This is the one type gesture the whole design leans on. */
+/* Every section is titled like a control on a hi-fi front panel. */
 .rack-label {
   font-family: var(--font-mono);
   font-size: 0.66rem;
@@ -242,7 +227,6 @@ textarea { resize: vertical; min-height: 70px; }
 .btn-block { width: 100%; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 6px 11px; font-size: 0.82rem; }
-/* A toggle that is on: the pin button of a playlist */
 .btn.is-pinned { color: var(--accent); border-color: var(--accent-line); }
 
 .icon-btn {
@@ -254,21 +238,16 @@ textarea { resize: vertical; min-height: 70px; }
 .icon-btn.is-on { color: var(--accent); }
 .icon-btn-sm { width: 28px; height: 28px; }
 
-/* Hover belongs to a pointer, and only to a pointer. A phone keeps :hover on
-   the last thing it touched until something else is touched, so every one of
-   these tints would stay behind on the button that was just used - which is
-   exactly the "Buttons sind danach immer noch grau hinterlegt". What a tap gets
-   instead is the :active block at the end of this file. */
+/* Hover only under a pointer: a phone keeps :hover on the last thing touched, so
+   the tint would stay on the button just used. A tap gets :active (see Touch). */
 @media (hover: hover) {
   .btn-primary:hover { background: var(--accent-hi); }
   .btn-ghost:hover { background: var(--surface-3); }
   .btn-quiet:hover { background: var(--surface-2); color: var(--text); }
   .btn-danger:hover { background: var(--danger); color: var(--bg); }
   .icon-btn:hover { background: var(--surface-2); color: var(--text); }
-  /* A switched-on button keeps its accent under the pointer. Without this the
-     hover colour wins (same specificity, later in the file) and shuffle and
-     repeat look identical whether they are on or off - which is the one thing
-     the colour is there to say. The background tint still answers the hover. */
+  /* Without this the later .icon-btn:hover colour wins (same specificity), and
+     shuffle and repeat look off under the pointer while they are on. */
   .icon-btn.is-on:hover { color: var(--accent); }
   .icon-btn:disabled:hover { background: transparent; color: var(--text-faint); }
   .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
@@ -283,11 +262,9 @@ textarea { resize: vertical; min-height: 70px; }
    App shell
    ========================================================================== */
 
-/* dvh, not vh: on a phone `100vh` is the tallest the viewport ever gets, so
-   with the address bar showing, the bottom of the app - the transport - sits
-   below the fold. The vh line stays as the fallback for anything that does not
-   know dvh yet. `overscroll-behavior` is what stops a scroll that has reached
-   the end of a list from turning into a pull-to-refresh of the whole app. */
+/* dvh, not vh: a phone's 100vh is its tallest viewport, which puts the transport
+   below the fold while the address bar shows (vh is the fallback). No overscroll,
+   or the end of a list turns into a pull-to-refresh of the whole app. */
 body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
 
 /* Deliberately not ".app": that class is also on <body>, and a shared rule
@@ -295,10 +272,8 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
    toast host and the modal host into grid cells over the content. */
 .shell {
   display: grid;
-  /* `auto` rather than the width itself: the column follows the sidebar, and the
-     sidebar animates its own width. Animating the track directly would work in
-     Firefox but is the less portable of the two, and this way the drawer on a
-     phone - which is out of flow - changes nothing here. */
+  /* `auto`, not the width: the column follows the sidebar's own width animation
+     (more portable than animating the track) and ignores the out-of-flow drawer. */
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) var(--player-h);
   height: 100vh;
@@ -445,10 +420,8 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 
-/* Statistik and Einstellungen, left of the avatar. Einstellungen is the icon
-   alone - the cog says it - while Statistik carries its word as long as the
-   window is wide enough for it. The badge is the count of open import notices,
-   which used to hang on the sidebar entry. */
+/* Einstellungen is the icon alone - the cog says it - while Statistik keeps its
+   word as long as the window has room. The badge counts open import notices. */
 .top-link {
   position: relative;
   display: inline-flex; align-items: center; gap: 7px;
@@ -462,8 +435,7 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   .top-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 }
 
-/* The segmented switch, now only the time range on the statistics page and the
-   theme picker under Einstellungen. */
+/* The segmented switch: the statistics time range and the theme picker. */
 .seg-switch {
   display: inline-flex; background: var(--surface); border: 1px solid var(--line);
   border-radius: 999px; padding: 2px;
@@ -533,8 +505,6 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
 
 /* --- Home: the equipment readout ------------------------------------------ */
-/* The library as a front-panel display: hairline-separated readouts, mono
-   numbers, no cards. This is the home page's opening statement. */
 
 .readout {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -552,10 +522,8 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .readout-cell.accent .readout-value { color: var(--accent); }
 .readout-sub { display: block; margin-top: 5px; font-size: 0.78rem; color: var(--text-dim); }
 
-/* Two kinds of value do not share a row of equal columns: five plain counts,
-   and the ones that need the width - a playtime heading for four digits of
-   hours, a date under the number. Ten columns are what makes both rows divide
-   evenly, five cells of two and then two of five. */
+/* Ten columns so both kinds of row divide evenly: five plain counts at two each,
+   then the wide values (playtime, a dated number) at five each. */
 .readout.split { grid-template-columns: repeat(10, 1fr); }
 .readout.split > .readout-cell { grid-column: span 2; }
 .readout.split > .readout-cell:nth-child(5) { border-right: none; }
@@ -625,10 +593,8 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   color: var(--text-faint); white-space: nowrap;
 }
 
-/* A day is 24 bars and a long month is 31, so the columns have to give up most
-   of their width. The numbers stay - a value you only see after hovering is a
-   value you do not see - they are just allowed to wrap onto a second line
-   instead of pushing the whole chart into a horizontal scroll. */
+/* A day is 24 bars and a long month 31, so the columns give up most of their
+   width; the numbers wrap rather than hide behind hover or force a scroll. */
 .chart.dense { gap: 3px; }
 .chart.dense .chart-col { min-width: 26px; max-width: 56px; }
 .chart.dense .chart-value { white-space: normal; font-size: 0.58rem; }
@@ -701,10 +667,8 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
    Without this one card in a shelf grows past the 164px and stands out. */
 .grid.row > * { flex: 0 0 164px; min-width: 0; }
 
-/* The other way to show a collection: one row per entry instead of a tile.
-   Built to the height of a track row on purpose - a list of albums has to read
-   like the list of songs it leads to, so `min-height` and padding are the ones
-   from .track-row and nothing else. */
+/* One row per entry instead of a tile. min-height and padding are .track-row's on
+   purpose, so a list of albums reads like the list of songs it leads to. */
 .list-rows { display: flex; flex-direction: column; }
 .list-row {
   display: flex; align-items: center; gap: 12px;
@@ -736,13 +700,8 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   .list-play { opacity: 1; }
 }
 
-/* Tiles or rows: two icons, the segmented switch the statistics page uses.
-   The padding has to be reset, and that is the whole reason this rule sets it:
-   .seg-switch button carries 4px 11px for the text buttons it was written for,
-   and with box-sizing: border-box that leaves 8px of content width in a 30px
-   box. The 16px icon then overflows its own track and sits 11px from the left
-   and 3px from the right instead of centred - visible as a switch whose icons
-   lean right. */
+/* The padding reset is the point: .seg-switch button's 4px 11px leaves 8px of
+   content in a 30px border-box, so the 16px icon overflows and leans right. */
 .view-switch .switch-icon {
   display: inline-grid; place-items: center; width: 30px; height: 26px;
   padding: 0; border: none; background: transparent; color: var(--text-dim);
@@ -754,10 +713,9 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 }
 
 .card { cursor: pointer; border: none; background: none; padding: 0; text-align: left; display: block; width: 100%; }
-/* The card is built from spans, and an inline box ignores width, aspect-ratio
-   and overflow - so every part of it has to be told to be a block. Without
-   that the artwork keeps the natural ratio of the image file instead of the
-   square tile, and a cover-less card collapses around its fallback. */
+/* The card is built from spans, and an inline box ignores width, aspect-ratio and
+   overflow - so each part is a block, or the art keeps the file's own ratio and a
+   cover-less card collapses around its fallback. */
 .card-art {
   display: block;
   position: relative; width: 100%; aspect-ratio: 1;
@@ -775,7 +733,6 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .card-sub { display: block; font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card.round .card-title, .card.round .card-sub { text-align: center; }
 
-/* The play button rises out of the artwork on hover, tinted like the lamp */
 .card-play {
   position: absolute; right: 9px; bottom: 9px;
   width: 42px; height: 42px; border-radius: 50%;
@@ -880,12 +837,7 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   .track-row.item:hover .row-menu { opacity: 1; }
 }
 
-/* ----------------------------------------------------------------------------
-   Episodes
-   A podcast episode is a track row with different questions asked of it. What a
-   song answers with an album, a genre and five stars, an episode answers with
-   one thing: how much of it is left.
-   -------------------------------------------------------------------------- */
+/* --- Episodes: a track row that only asks how much is left ---------------- */
 
 .track-row.episode-row { grid-template-columns: 46px minmax(0, 1fr) 150px 66px 32px; }
 /* Heard all the way through: still there, still playable, just no longer
@@ -945,15 +897,11 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 }
 .stars .star .icon { width: 15px; height: 15px; }
 .stars .star.on { color: var(--accent); }
-/* A rating the server has not confirmed yet: the same amber, turned down. The
-   tap has been registered and is queued, and the full colour is what says it
-   really arrived. A rating being taken away keeps its stars lit here until the
-   server agrees, which is why this can show while the value is already 0. */
+/* A rating the server has not confirmed yet. A rating being removed keeps its
+   stars lit until the server agrees, so this can show while the value is 0. */
 .stars.waiting .star.on { color: var(--accent-dim); }
-/* A read-only widget is spans, so there is nothing to click anyway - but the
-   rule stays for the one that is buttons: the rating dialog renders the same
-   widget disabled. pointer-events is what lets a click through to the album
-   card underneath. */
+/* Read-only stars are spans anyway; this is for the disabled widget in the rating
+   dialog. pointer-events lets a click through to the album card underneath. */
 .stars.readonly .star { cursor: default; pointer-events: none; }
 @media (hover: hover) {
   .stars:not(.readonly):hover .star { color: var(--text-faint); }
@@ -961,9 +909,7 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
   .stars:not(.readonly) .star:hover ~ .star { color: var(--accent-hi); }
 }
 
-/* The record's own rating, shown on an album tile and on an album row. It is
-   never set from here - the album's own page is where the stars are clickable -
-   so this is a line of five and nothing more. */
+/* An album's own rating on its tile and row: read-only, set on the album page. */
 /* The alignment is inherited on purpose: .stars is row-reverse, so its own
    justify-content: flex-end is what puts the first star on the left. Setting
    flex-start here would push the row to the right edge of the tile. */
@@ -1156,9 +1102,6 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .detail-facts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-dim); font-size: 0.88rem; }
 .detail-facts .dot { color: var(--text-faint); }
 .detail-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; align-items: center; }
-/* The record's own stars, set from here and nowhere else. Set apart from the
-   buttons next to them by a gap of their own and their own little title: those
-   change the shared library, this one belongs to the account. */
 
 /* Cover picker in the album editor: the artwork next to what it can be */
 .cover-edit { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; }
@@ -1176,10 +1119,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .cover-edit-side .panel-hint { margin-bottom: 10px; }
 .cover-edit-side .form-actions { margin-top: 0; justify-content: flex-start; }
 
-/* A collection without artwork of its own - a playlist, a star playlist, a
-   genre - shows the covers of the first four albums in it as a 2x2 mosaic.
-   Both tracks are stated: an implicit `auto` row does not take the free height
-   of the tile, so the pictures would size themselves instead of the box. */
+/* A playlist or genre without artwork shows its first four covers as a 2x2 mosaic.
+   Both tracks are stated: an implicit `auto` row ignores the tile's free height. */
 .mosaic {
   display: grid;
   grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
@@ -1249,10 +1190,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
   .seek-rail:hover .seek-track { height: 5px; }
   .seek-rail:hover .seek-knob { transform: translate(-50%, -50%) scale(1); }
 }
-/* A thumb needs a taller strip to find than the hairline a mouse aims at. The
-   knob stays hidden here: on the top edge of the bar it would be cut in half by
-   the edge of the screen at the start of a track. The full screen shows it (see
-   .player.expanded), where the rail sits inside the padding. */
+/* A thumb needs a taller strip than a mouse's hairline. No knob here: at the top
+   edge it would be cut in half by the screen; .player.expanded shows it. */
 @media (hover: none) {
   .seek-rail { height: 16px; transform: translateY(-7px); }
 }
@@ -1373,10 +1312,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .queue-title { display: block; font-size: 0.87rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-artist { display: block; font-size: 0.78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-actions { display: flex; align-items: center; }
-/* The handle is the only part of the row a drag may start on. On a touch screen
-   a drag anywhere else is the list being scrolled - the same gesture - and
-   `touch-action: none` is what hands this one to the app instead of to the
-   browser's own panning. */
+/* Drags start only on the handle: on touch a drag elsewhere scrolls the list, and
+   `touch-action: none` hands this one to the app instead of the browser's panning. */
 .queue-drag { cursor: grab; touch-action: none; }
 .queue-drag:active { cursor: grabbing; }
 .queue-item.dragging { opacity: 0.4; }
@@ -1392,10 +1329,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
 .chapter-row .queue-title { white-space: normal; }
 .chapter-row.playing .queue-title { color: var(--accent); }
 
-/* Where the chapters of a book begin. Hairlines rather than notches: on a
-   fifty-hour book there are hundreds of them, and anything heavier turns the
-   rail into a comb. They sit under the knob and over the fill, so the amber
-   still reads as one continuous run. */
+/* Hairlines, not notches: a fifty-hour book has hundreds of chapters, and anything
+   heavier turns the rail into a comb. */
 .seek-chapters { position: absolute; inset: 0; pointer-events: none; }
 .seek-chapter {
   position: absolute; top: 0; bottom: 0; width: 1px;
@@ -1406,10 +1341,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    Lyrics
    ========================================================================== */
 
-/* Moving the text against the song. It floats over the bottom right of whichever
-   text view is up - the side panel or the big view's Songtext tab - and has no
-   backdrop, because the lines behind it have to keep running while the number
-   moves. Above the panel it sits on (z 46) and clear of the transport. */
+/* No backdrop: the lyric lines behind it keep running while the number moves.
+   z 47 puts it above the lyrics panel (46); the bottom offset clears the transport. */
 .lyric-offset {
   position: fixed; z-index: 47;
   right: 16px; bottom: calc(var(--player-h) + 16px);
@@ -1472,10 +1405,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    a song usually says the thing you looked it up for. */
 
 .lyric-lines { display: flex; flex-direction: column; gap: 2px; }
-/* A timed line is a button - clicking it jumps the song there - and an untimed
-   one a paragraph. They have to read as one text either way, so the button is
-   stripped back to the paragraph it replaces. The padding sits inside it, so
-   the whole strip is the target and not just the glyphs. */
+/* A timed line is a button that seeks, an untimed one a paragraph: the button is
+   stripped back so both read as one text. Its padding makes the strip the target. */
 .lyric-line {
   margin: 0; padding: 5px 0;
   border: none; background: none; width: 100%; text-align: left;
@@ -1536,11 +1467,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 /* ============================================================================
    The big view: the song, its text, the visualizer
    ========================================================================== */
-/* Takes the place of the content area rather than covering the screen: the
-   sidebar and the topbar stay where they are, so the library is one click away.
-   It is a flex child of .main next to #content, which is hidden while it is up -
-   that way the page underneath keeps its scroll position and nothing is layered
-   over anything. */
+/* Replaces the content area, not the screen, so sidebar and topbar stay. As a flex
+   child of .main beside the hidden #content, the page underneath keeps its scroll. */
 
 .bigview {
   flex: 1; min-height: 0;
@@ -1869,10 +1797,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   /* The transport keeps its height and adds whatever the phone's gesture bar
      covers, so the play button never ends up under it. */
   :root { --player-h: calc(76px + var(--safe-bottom)); }
-  /* The album and the year go, the rating stays: it is what the star playlists
-     are built from, and a window at half a screen has room for it. What gives
-     way instead is the title, which cuts off with an ellipsis and says its full
-     name on hover (see the truncation handler in app.js). */
+  /* The album and year go, the rating stays: star playlists are built from it. The
+     title gives way instead, with an ellipsis and its full name on hover (app.js). */
   .track-row { grid-template-columns: 30px minmax(0, 1fr) 92px 58px 32px; }
   .track-row .col-album, .track-row .col-year { display: none; }
   .track-row.episode-row { grid-template-columns: 40px minmax(0, 1fr) 96px 58px 32px; }
@@ -1922,11 +1848,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   .meter { display: none; }
 }
 
-/* Below this the volume slider has nowhere left to shrink to. The mute button
-   stays, and the mouse wheel over it still changes the volume.
-   The rating and the plus go with it: from here on the title next to them has
-   less width than the two controls need, and both are still a tap away - in
-   the row's own menu, and on a phone in the full screen. */
+/* No room left for the volume slider (the wheel over mute still sets it), nor for
+   rating and plus next to the title; both stay in the row menu and the full screen. */
 @media (max-width: 640px) {
   .volume-slider { display: none; }
   .now .now-actions { display: none; }
@@ -1953,10 +1876,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 }
 
 /* --- The transport as a screen of its own (phones only) -------------------- */
-/* Tapping what is playing blows the bar up into a full screen, the way a
-   streaming app does. Deliberately the same element: every control in here is
-   the one from the bar, so state, wiring and rendering are shared and only the
-   layout changes. */
+/* Deliberately the same element as the bar: every control is shared, so state,
+   wiring and rendering stay one and only the layout changes. */
 @media (max-width: 900px) {
   .player.expanded {
     position: fixed; inset: 0; z-index: 60;
@@ -1967,10 +1888,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
     gap: 0;
     padding: calc(12px + var(--safe-top)) 20px calc(24px + var(--safe-bottom));
     border-top: none;
-    /* Comes up and goes down like a sheet. `.sheet-out` is the closed position
-       just below the screen, so the same transition carries both directions -
-       and a finger on the artwork writes its own translate over it while it
-       drags, which is what `.sheet-moving` switches the transition off for. */
+    /* `.sheet-out` is the closed position just below the screen, so one transition
+       carries both ways; `.sheet-moving` turns it off while a finger drags the art. */
     transform: translateY(0);
     transition: transform 0.32s var(--sheet-ease);
   }
@@ -1987,10 +1906,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
     border-radius: var(--radius); box-shadow: var(--shadow-lg);
   }
   .player.expanded .now-art .art-fallback { font-size: 3.2rem; }
-  /* The gap between the artwork and the title is where the line being sung
-     goes - the one bit of the lyric a phone has room for without leaving the
-     player. `.is-on` and not `hidden`: a display rule beats the attribute, and
-     a song without a timed lyric must not reserve the space. */
+  /* `.is-on` and not `hidden`: a display rule beats the attribute, and a song
+     without a timed lyric must not reserve the space. */
   .player.expanded .now-line.is-on {
     display: block; width: 100%; flex: none;
     max-height: 4.2em; overflow: hidden;
@@ -2050,10 +1967,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   /* A row is tapped, not pointed at, so it needs the height of a target and no
      text selection under the long press that opens its menu. */
   .track-row.item { min-height: 56px; user-select: none; -webkit-user-select: none; }
-  /* The row's job here is to play. The interpret under the title is a link two
-     lines high in a row that is one tap wide, so it swallowed taps meant for
-     the song - it stops being a target and the row's menu keeps the way to the
-     interpret ("Zum Interpreten"). */
+  /* The interpret link is two lines high in a one-tap row and would swallow taps
+     meant for the song; the row menu keeps "Zum Interpreten". */
   .track-row.item .track-artist a { pointer-events: none; }
   .track-row.item .row-menu { width: 34px; height: 34px; }
   .nav-item { padding: 11px 10px; }
@@ -2099,16 +2014,10 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 }
 
 /* --- The reading view -------------------------------------------------------
-   The page inside the frame brings its own typography - it is the same page the
-   Android app shows - so everything here is the furniture around it. The frame
-   itself is given a height rather than left to grow: the columns inside it are
-   laid out against the viewport, and a frame without a height has none to lay
-   them against. */
+   The framed page brings its own typography (the Android app shows the same page). */
 
-/* The content area is a scroller everywhere else; for the reading view it is a
-   column that hands its leftover height to the page. `height: 100%` would not
-   do - it would be the height *before* the padding is taken off, and the last
-   line of the bar would end up under the player. */
+/* Here the content area hands its leftover height to the page. Not `height: 100%`:
+   that is the height before padding, which would put the bar under the player. */
 .content.is-full { display: flex; flex-direction: column; overflow: hidden; }
 .content.is-full .content-inner { max-width: none; margin: 0; flex: 1; min-height: 0; }
 

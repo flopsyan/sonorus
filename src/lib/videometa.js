@@ -31,7 +31,8 @@ async function pool(items, size, fn) {
   );
 }
 
-// Images are a nicety: a failed download leaves the slot empty for the next scan.
+// Images are a nicety: a failed one leaves the slot empty. meta_at is stamped anyway, so it is
+// only retried by a manual refresh (or, for a show, by new episodes).
 async function image(filePath, size) {
   try {
     return await tmdbImage(filePath, size);

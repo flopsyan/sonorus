@@ -49,6 +49,7 @@ export function run(bin, args, { timeout = 60_000, maxOutput = 8 * 1024 * 1024 }
     let out = '';
     let err = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), timeout);
+    child.stdout.setEncoding('utf8'); // a chunk boundary can split a UTF-8 character
     child.stdout.on('data', (chunk) => {
       if (out.length < maxOutput) out += chunk;
     });
@@ -173,10 +174,8 @@ export async function resizeImage(source, target, width) {
     await fsp.copyFile(source, temp);
   } else {
     const png = target.endsWith('.png');
-    // A logo is a PNG because it is transparent, and scaling a palette PNG
-    // drops the alpha unless the frame is made RGBA first - which left the
-    // transparent parts standing in whatever colour the palette had behind
-    // them (a green box around Stranger Things, 2026-09-22).
+    // Scaling a palette PNG drops the alpha unless the frame is made RGBA first,
+    // which leaves a transparent logo in a coloured box.
     const filter = `${png ? 'format=rgba,' : ''}scale=w='min(${width},iw)':h=-2`;
     await run(
       ffmpegBin,

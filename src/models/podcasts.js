@@ -1,10 +1,5 @@
-// Read access to the spoken-word half of the library: the shows, their episodes
-// and how far the account asking has got into each one.
-//
-// An episode is a row in `tracks` exactly like a song is, so everything that
-// plays, streams or queues one needs no idea that podcasts exist. What a song
-// has no place for is where listening stopped: `episode_progress` is per
-// account, the same way ratings and playlists are.
+// An episode is a row in `tracks` like a song, so playing, streaming and queueing need nothing
+// podcast-specific. Only where listening stopped is extra, per account in `episode_progress`.
 
 import db from '../db.js';
 import {
@@ -36,10 +31,8 @@ const PROGRESS_FIELDS = `
     WHERE ep.track_id = t.id AND ep.user_id = @userId) AS completed
 `;
 
-// Newest first is the default, because a podcast is a feed and the last episode
-// is the one you have not heard. Both orders read the episode number first and
-// the date second: a show that numbers its episodes is exact that way, and one
-// that does not - the feed is then the only source of order - still sorts right.
+// Newest first by default: in a feed the last episode is the unheard one. Episode number
+// before date, so numbered shows sort exactly and unnumbered ones still sort by the feed.
 export const EPISODE_SORTS = {
   new: `t.episode_no IS NULL, t.episode_no DESC, ${EPISODE_DATE} DESC, t.title COLLATE NOCASE DESC`,
   old: `t.episode_no IS NULL, t.episode_no ASC,  ${EPISODE_DATE} ASC,  t.title COLLATE NOCASE ASC`,
@@ -118,10 +111,8 @@ export function getPodcast(id, userId, { sort = 'new' } = {}) {
     .all({ id, userId })
     .map(shapeEpisode);
 
-  // The episode "Weiterhören" leads to: the one this account last stopped in
-  // the middle of. Asked for separately rather than picked out of the list
-  // above, because that list is sorted by episode number and "last" is a
-  // question about time.
+  // The episode "Weiterhören" leads to, asked separately: the list above is sorted by
+  // episode number, and "last stopped in" is a question about time.
   const resume = db
     .prepare(
       `SELECT ${TRACK_FIELDS}, ${PROGRESS_FIELDS} ${TRACK_FROM}
@@ -156,9 +147,7 @@ export function continueListening(userId, limit = 12) {
     .map(shapeEpisode);
 }
 
-// Anything that remembers where it stopped: a podcast episode and a part of an
-// audiobook alike. The player reports both through the same endpoint, because
-// from its side they are the same thing - a long spoken track you leave and
+// Episodes and book parts alike: to the player both are a long spoken track you leave and
 // come back to. A song has no row here.
 const isSpoken = db.prepare(
   `SELECT id, duration FROM tracks
@@ -174,12 +163,8 @@ const writeProgress = db.prepare(`
          updated_at = excluded.updated_at
 `);
 
-// Where listening stopped, and whether the episode is done with.
-//
-// A finished episode keeps no position: it would be one second before its own
-// end, "Weiterhören" would offer it forever, and playing it again would start
-// it there. Marking one unplayed by hand clears the position for the same
-// reason - it is the request to start over.
+// A finished episode keeps no position, or "Weiterhören" would offer it forever one second
+// before its end. Marking one unplayed clears it too: that is the request to start over.
 export function setProgress(userId, trackId, { position, completed } = {}) {
   const track = isSpoken.get(trackId);
   if (!track) return { error: 'not_found' };

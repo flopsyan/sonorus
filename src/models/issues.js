@@ -1,11 +1,6 @@
-// Import notices: the rows of a CSV import that no file in the library matched.
-//
-// They are deliberately persistent. An import that silently drops half a
-// playlist is worse than useless, so every unmatched row is kept with enough
-// detail (playlist, title, artist, album) to go and find the file by hand. The
-// notices show up under Einstellungen and stay until dismissed - or until a
-// later scan turns up the file, at which point the track is added to its
-// playlist and the notice disappears on its own.
+// CSV rows no library file matched, kept on purpose with enough detail to find the file by
+// hand: a silently halved playlist is worse than useless. A notice stays until dismissed or
+// until a later scan finds the file and adds it to its playlist.
 
 import db from '../db.js';
 import { findTrackForImport } from './library.js';
@@ -60,11 +55,8 @@ export function clearIssues(userId) {
   return { ok: true, removed: info.changes };
 }
 
-// Re-checks open notices against the library. Called after every scan, and on
-// demand from the settings page. A notice whose song now exists is added to its
-// playlist (when that playlist still exists) and then removed.
-//
-// Pass a user id to check one account, or null for all of them.
+// Runs after every scan and from the settings page; a song that now exists is added to its
+// playlist (if still there) and the notice removed. Null checks every account.
 export function resolveIssuesForUser(userId = null) {
   const open = userId
     ? db.prepare('SELECT * FROM import_issues WHERE user_id = ?').all(userId)

@@ -60,10 +60,8 @@ export function deleteFolder(userId, id) {
 
 // --- Playlists --------------------------------------------------------------
 
-// The sidebar order, and the only one there is: pinned lists first, then the
-// order the user dragged them into. Everything nobody has moved yet shares
-// position 0 and therefore still sorts by name.
-// A temporary dynamic list heads it: it is the one that is about to go.
+// A temporary dynamic list first (it is about to go), then pinned, then the dragged order.
+// Lists nobody has moved share position 0 and so still sort by name.
 const PLAYLIST_ORDER = "(p.expires_at <> '') DESC, p.pinned DESC, p.position ASC, p.name COLLATE NOCASE ASC";
 
 // A temporary list is gone once its time is up. Swept on every read of the
@@ -247,10 +245,8 @@ export function updatePlaylist(userId, id, { name, folderId, pinned } = {}) {
   return { playlist: getPlaylist(userId, id) };
 }
 
-// Writes the sidebar order of one container - a folder, or the top level when
-// `folderId` is null. The client sends the ids of everything in that container
-// in their new order after a drag, which is also how a list moves from one
-// folder into another: it simply arrives in the target's list.
+// The sidebar order of one folder, or the top level when `folderId` is null. A list
+// moves between folders the same way: it simply arrives in the target's id list.
 export const reorderPlaylists = db.transaction((userId, folderId, ids) => {
   const folder = folderId
     ? db.prepare('SELECT id FROM playlist_folders WHERE id = ? AND user_id = ?').get(folderId, userId)

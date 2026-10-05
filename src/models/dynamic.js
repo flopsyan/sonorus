@@ -1,10 +1,6 @@
-// Dynamic playlists: a list that is nothing but its filters. No song is stored;
-// the songs are whatever passes every filter, asked for again on each read, so
-// a new record that fits turns up by itself.
-//
-// A category is stored as the shorter of "only these" and "all except these",
-// measured against the library at the moment it was set. That is what keeps an
-// artist added next month in a list that said "everyone but Queen".
+// A dynamic playlist is only its filters, re-read on every request, so a new record that
+// fits turns up by itself. A category stores the shorter of "only these" and "all except
+// these", which keeps an artist added later in a list that said "everyone but Queen".
 
 import db from '../db.js';
 import { TRACK_FIELDS, TRACK_FROM, TRACK_ARTIST, PRESENT_MUSIC, shapeTrack, trackOrder } from './library.js';
@@ -228,7 +224,7 @@ function conditions(rules, params) {
   return out.length ? out.join(' AND ') : '1';
 }
 
-/** The songs of a dynamic playlist; without a sort, interpret > album > track. */
+/** The songs of a dynamic playlist; without a sort, artist > album > track. */
 export function dynamicTracks(userId, rules, { sort, dir } = {}) {
   const params = { userId };
   const where = conditions(rules, params);

@@ -1,7 +1,5 @@
-// The video player: one full-window screen over the app, built on a plain
-// <video>. A remuxed or re-encoded stream starts at a keyframe and cannot seek,
-// so the player keeps its own clock (`offset` + the element's time) and asks the
-// server for a new stream whenever it jumps outside of a direct file.
+// Full-window player on a plain <video>. A remuxed or re-encoded stream cannot seek, so the
+// player keeps its own clock (`offset` + the element's time) and requests a new stream on a jump.
 
 import { api, errorText } from './api.js';
 import { icon, paintIcons } from './icons.js';
@@ -201,6 +199,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     } catch (err) {
       toast(errorText(err), 'err');
       el.classList.remove('is-loading');
+      if (seq === s.loadSeq) s.pending = null;
       return;
     }
     if (seq !== s.loadSeq || s.destroyed) return;
@@ -240,7 +239,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     if (video.paused) {
       bigPlay.hidden = true;
       if (video.ended) seek(0);
-      else play();
+      if (!video.ended || s.mode === 'direct') play();
     } else {
       video.pause();
     }
@@ -258,7 +257,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
     } else {
       s.pending = target;
       clearTimeout(s.pendingTimer);
-      const paused = video.paused;
+      const paused = video.paused && !video.ended;
       s.pendingTimer = setTimeout(() => load(target, { paused }), 350);
     }
     paint(true);
@@ -733,7 +732,7 @@ export function mountPlayer(el, info, ctx, { start = 0 } = {}) {
         break;
       case 'again':
         seek(0);
-        play();
+        if (s.mode === 'direct') play();
         break;
       case 'fullscreen':
         toggleFullscreen();

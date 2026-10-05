@@ -18,33 +18,20 @@ const coversDir = path.join(dataDir, 'covers');
 // The music library itself. Mounted read-only; Sonorus only ever reads from it.
 const musicDir = path.resolve(process.env.MUSIC_DIR || path.join(projectRoot, 'music'));
 
-// Spoken word, in a root of its own. It is deliberately not a folder inside the
-// music library: since 2026-07-25 the folder structure *is* the library
-// (artist / album / track), and a podcast read through that rule would turn
-// every show into an interpret and every episode into a single. A second root
-// keeps the two apart without a rule that has to guess which is which. Missing
-// is fine - an instance without podcasts simply has nothing to scan there.
+// A root of its own, not a folder in the music library: read as artist / album / track, every
+// show would become an artist and every episode a single. May be missing.
 const podcastDir = path.resolve(process.env.PODCAST_DIR || path.join(projectRoot, 'podcasts'));
 
-// Audiobooks, a third root. Deeper than the podcasts by one level, because a
-// book has an author and a show does not: audiobooks/<Author>/<Book>/*.mp3.
-// The files inside a book folder are its parts and are never shown - a book is
-// one thing to the listener, and the parts only decide the order it plays in.
+// audiobooks/<Author>/<Book>/*.mp3. The files in a book folder are its parts: never shown,
+// they only decide the order the book plays in.
 const audiobookDir = path.resolve(process.env.AUDIOBOOK_DIR || path.join(projectRoot, 'audiobooks'));
 
-// Radio plays, a fourth root, laid out exactly like the audiobooks:
-// audiodramas/<Autor>/<Stück>/*.m4b. Florian wanted them apart from the books
-// and they are apart on disk, but they are not a second kind of *thing* - a
-// play is a book with a cast instead of a narrator, so one table carries both
-// and `audiobooks.kind` says which. That is what stops every audiobook feature
-// from having to be built twice, which is the debt this project has already
-// paid once (see the cross-repo rule in the vault).
+// audiodramas/<Author>/<Title>/*.m4b, laid out like the audiobooks. Apart on disk, but one
+// table (audiobooks.kind) carries both, so no audiobook feature has to be built twice.
 const audiodramaDir = path.resolve(process.env.AUDIODRAMA_DIR || path.join(projectRoot, 'audiodramas'));
 
-// eBooks, a fifth root, laid out like the audiobooks: ebooks/<Autor>/<Titel>/
-// *.epub. Nothing in it is played, so it shares no table with the tracks - but
-// it does share the `authors` table, because an author who wrote a book Florian
-// both hears and reads is one author.
+// ebooks/<Author>/<Title>/*.epub. Shares the authors table with the audiobooks, so an author
+// both heard and read is one author.
 const ebookDir = path.resolve(process.env.EBOOK_DIR || path.join(projectRoot, 'ebooks'));
 
 // Films and series share one root with a folder for each, laid out the way
@@ -70,12 +57,8 @@ const videoArtDir = path.join(dataDir, 'video-art');
 // Embedded subtitles, extracted on first use: that means reading the whole file.
 const subtitleDir = path.join(dataDir, 'subtitles');
 
-// The smaller copies of the songs, made on demand and kept. A root of its own
-// rather than a folder in dataDir, because it is the one directory here that
-// grows with the size of the library rather than with the number of rows: the
-// whole music folder re-encoded is measured in tens of gigabytes, and it has no
-// business sitting in the same volume as the database and the covers, which a
-// backup wants and this one does not.
+// A root of its own, not inside dataDir: the re-encoded library runs to tens of gigabytes and
+// does not belong in the volume a backup wants.
 const transcodeDir = path.resolve(process.env.TRANSCODE_DIR || path.join(dataDir, 'transcodes'));
 
 fs.mkdirSync(coversDir, { recursive: true });
@@ -111,10 +94,9 @@ db.exec(`
 `);
 
 // --- Library ----------------------------------------------------------------
-// Rebuilt from the files on every scan, so it is safe to throw away. Artists
-// and albums are their own rows so the browse tabs are plain indexed lookups.
-// Albums are keyed by (title, album artist): two different artists can each
-// have a "Greatest Hits" without colliding.
+// Not disposable: locks, album_genres, artist covers, lyrics_offset and kept missing rows live
+// only here. Albums are keyed by (title, album artist), so two artists can each have a
+// "Greatest Hits".
 db.exec(`
   CREATE TABLE IF NOT EXISTS artists (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -392,11 +374,8 @@ addColumn('tracks', 'track_artist', "TEXT NOT NULL DEFAULT ''");
 // until a scan runs, because only the file knows them.
 addColumn('tracks', 'lyrics', "TEXT NOT NULL DEFAULT ''");
 addColumn('tracks', 'lyrics_sync', "TEXT NOT NULL DEFAULT ''");
-// How far the timed text has to be pushed against the song, in seconds, because
-// the file's own stamps are early or late. A fact about the file rather than
-// about a listener, so it sits on the track and not per account - the library is
-// shared, and a lyric that runs a second late runs a second late for everybody.
-// Positive means the words appear later. No scan writes it, so it needs no lock.
+// Seconds the timed lyrics are shifted, positive = later. On the track, not per account: a
+// mis-stamped file is off for everybody. No scan writes it, so it needs no lock.
 addColumn('tracks', 'lyrics_offset', 'REAL NOT NULL DEFAULT 0');
 // The full release date next to the year. Filled by the next scan, which
 // re-reads every file after the scanner version bump.
@@ -415,33 +394,26 @@ addColumn('playlists', 'expires_at', "TEXT NOT NULL DEFAULT ''");
 // The album decides the genres of its songs, not the other way round.
 addColumn('albums', 'genres_locked', 'INTEGER NOT NULL DEFAULT 0');
 
-// Podcast episodes share the tracks table with the music. NULL is "this is a
-// song", which is what every music query filters on - so an existing library
-// becomes a library of pure music the moment the column exists, without a
-// migration. A foreign key may be added this way because the default is NULL.
+// NULL means "a song", which every music query filters on, so an existing library needs no
+// data migration. ALTER may add a foreign key here only because the default is NULL.
 addColumn('tracks', 'podcast_id', 'INTEGER REFERENCES podcasts(id) ON DELETE SET NULL');
 addColumn('tracks', 'episode_no', 'INTEGER');
-// The audiobook side of the same idea, added 2026-08-19.
+// The audiobook side of the same idea.
 addColumn('tracks', 'audiobook_id', 'INTEGER REFERENCES audiobooks(id) ON DELETE SET NULL');
 addColumn('tracks', 'part_no', 'INTEGER');
-// The show a cover was taken from, added after the podcasts table itself.
+// When the cover's episode came out; added after the podcasts table itself.
 addColumn('podcasts', 'cover_date', "TEXT NOT NULL DEFAULT ''");
 
-// Who reads the book aloud, and when it came out. Both are read from the file
-// (`composer` and `date`, which is what an Audible m4b carries) and both can be
-// typed over, because the file only ever knows the year and the listener may
-// know the day. `date_locked` covers the release date and the year together,
-// the way `year_locked` does for an album - they are one field to the user.
+// Read from the file (composer, date) and editable, since the file often knows only the year.
+// date_locked covers release date and year together, like year_locked on an album.
 addColumn('audiobooks', 'narrator', "TEXT NOT NULL DEFAULT ''");
 addColumn('audiobooks', 'release_date', "TEXT NOT NULL DEFAULT ''");
 addColumn('audiobooks', 'year', 'INTEGER');
 addColumn('audiobooks', 'narrator_locked', 'INTEGER NOT NULL DEFAULT 0');
 addColumn('audiobooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
-// 'book' or 'drama'. Everything that reads this table takes it as an argument,
-// so the two libraries stay apart everywhere the listener looks while sharing
-// every query, every edit and every chapter behind it. Existing rows default to
-// 'book', which is what they all are.
+// 'book' or 'drama'. Every reader of the table takes it as an argument, so both libraries share
+// every query while staying apart for the listener.
 addColumn('audiobooks', 'kind', "TEXT NOT NULL DEFAULT 'book'");
 
 // After the column exists, never before: on an existing database the CREATE
@@ -450,18 +422,9 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_podcast ON tracks(podcast_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_audiobook ON tracks(audiobook_id)');
 
 // --- Chapters ---------------------------------------------------------------
-// The marks inside one file. An Audible m4b is a single file of forty hours
-// with the chapters written into it, so this is the only thing that can tell a
-// listener where they are in a book - the parts cannot, because there is one.
-//
-// Keyed to the *track* and not to the book on purpose: a chapter is a position
-// inside a file, and a book made of several files has each part's chapters
-// starting at zero again. Turning that into one list across a whole book is
-// arithmetic the audiobook model does (see `chaptersOf`), not something to
-// bake into the rows - it would go wrong the moment a part is replaced.
-//
-// `start` is seconds into the file. There is no `end` column: a chapter runs
-// until the next one starts, and the last one until the file does.
+// Keyed to the track, not the book: each part's chapters start at zero, and chaptersOf merges
+// them, so replacing a part cannot corrupt the rest. `start` is seconds into the file; a
+// chapter runs until the next one starts.
 db.exec(`
   CREATE TABLE IF NOT EXISTS chapters (
     track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
@@ -473,11 +436,8 @@ db.exec(`
 `);
 
 // --- eBooks -----------------------------------------------------------------
-// One EPUB, one row. `path` is the file and `documents` the number of pieces
-// the spine is made of, which is what the reader pages through.
-//
-// Identity is title plus author rather than the path, so renaming the file
-// inside its folder keeps the row - and with it where the reader had got to.
+// Keyed by title and author, not path, so renaming the file keeps the row and the reading
+// position. `documents` is the number of spine pieces the reader pages through.
 db.exec(`
   CREATE TABLE IF NOT EXISTS ebooks (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -514,24 +474,13 @@ db.exec(`
     ON ebook_progress(user_id, updated_at DESC);
 `);
 
-// A year set by hand on a book that is read. Locked for the same reason the
-// spoken word's date is: an EPUB that carries the wrong year carries it on
-// every scan, so a correction has to say "leave this alone" or it lasts until
-// the next one.
-//
-// Down here rather than up with the other columns, and that is the whole point:
-// ebooks is created below the migration block, so on a *fresh* database the
-// ALTER ran against a table that did not exist yet and the server died on
-// "no such table: ebooks" before it ever listened. An existing install had the
-// table from an earlier release and never noticed. Same trap as audiobooks.kind
-// in August: a migration may only stand after the table it names.
+// Must stand below the ebooks CREATE TABLE: above it, a fresh database dies on "no such table".
+// Locked so a correction survives the next scan of an EPUB with the wrong year.
 addColumn('ebooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 
 // --- Films and series ---------------------------------------------------------
-// A title is a film or a series: one folder under VIDEO_DIR/movies or /shows. The
-// folder name is its identity and its name, the way the music library works;
-// TMDB only adds what a folder cannot say. Paths in `videos` are relative to
-// the root, so remounting the library somewhere else keeps every position.
+// A title is one folder under movies/ or shows/, and the folder is its identity; TMDB only adds
+// to it. Paths in `videos` are relative to the root, so a remount keeps every position.
 db.exec(`
   CREATE TABLE IF NOT EXISTS video_collections (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -681,12 +630,8 @@ function once(key, run) {
   );
 }
 
-// An album edit used to be written into its tracks and nowhere else, so the
-// album itself did not know it had been edited: a song that was renamed or
-// added afterwards was a fresh row, and a fresh row takes the file's genres and
-// the file's date. Both are the album's from now on, so what is already in the
-// library is lifted onto the album here and pushed back down over every song of
-// it - including the ones that had already fallen back to their file.
+// Lifts hand-edited genres and dates from the tracks onto their album and pushes them back over
+// every song of it, so a renamed or new song no longer falls back to its file's tags.
 once('album_owns_genres_and_date', () => {
   db.exec(`
     -- 1. What the hand-edited tracks carry is what the album was set to.
@@ -725,18 +670,14 @@ once('album_owns_genres_and_date', () => {
   `);
 });
 
-// A record could be rated as a whole for a while, apart from the songs on it.
-// It was never used - not once, on the instance it was built for - so the whole
-// mechanic is gone, and with it its table. The stars on the *songs* are a
-// different feature entirely and stay exactly as they were.
+// Album ratings were never used. Song ratings are a separate feature and stay.
 once('drop_album_ratings', () => {
   db.exec('DROP TABLE IF EXISTS album_ratings;');
 });
 
-// The scanner reads "AC∕DC" as "AC/DC" now. These rows are found by name, so
-// without this the next scan would make new ones and the old ids would go, and
-// with them the edits of an album and the place a book was heard to. OR IGNORE:
-// where the real name is already taken the scan merges the two instead.
+// The scanner reads "AC∕DC" as "AC/DC". Rows are found by name, so without this a scan would
+// make new rows and lose the old ids with their edits and progress. OR IGNORE: where the real
+// name is taken, the scan merges the two instead.
 once('restore_reserved_characters', () => {
   const named = [
     ['artists', 'name'], ['authors', 'name'], ['podcasts', 'name'],
@@ -751,29 +692,9 @@ once('restore_reserved_characters', () => {
   }
 });
 
-// `audiobooks` was unique on (title, author_id), from the days when a book was
-// the only thing in it. A radio play is the same row with `kind = 'drama'`, so
-// the key had to grow - and it is not a cosmetic change: moving a title from
-// the audiobook root to the radio-play root has both rows alive at the same
-// time, because the old one is only pruned *after* everything has been read.
-// Without this the move fails with a UNIQUE violation and the play never
-// appears (found exactly that way, moving five titles on 2026-08-29).
-//
-// SQLite cannot drop a constraint, so the table is rebuilt - and this one is
-// deliberately **not** wrapped in `once()`, for two reasons that are the whole
-// difficulty of it:
-//
-//   - `PRAGMA foreign_keys` is a no-op inside a transaction, and `once` runs
-//     its body in one. The pragma has to be set before BEGIN.
-//   - With foreign keys on, `DROP TABLE audiobooks` performs an implicit delete
-//     of every row, which fires `ON DELETE SET NULL` and would quietly empty
-//     `tracks.audiobook_id` - every book in the library detached from its
-//     parts. Deferring the check does not help: the action still runs.
-//
-// So: pragma off, rebuild in a transaction of its own, pragma on. Ids are
-// carried over, which is what keeps `tracks.audiobook_id` and `chapters`
-// pointing at the right rows. The guard reads the schema rather than a meta
-// row, so it describes its own condition and cannot run twice.
+// Rebuilds audiobooks for the key (title, author_id, kind): moving a title between roots has
+// both rows alive until the prune. Not in once(): PRAGMA foreign_keys is a no-op inside a
+// transaction, and with it on DROP TABLE would SET NULL every tracks.audiobook_id. Ids are kept.
 const audiobooksSchema = db
   .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'audiobooks'")
   .get();

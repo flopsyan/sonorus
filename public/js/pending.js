@@ -1,25 +1,11 @@
-// Ratings the server has not confirmed yet.
-//
-// The web app had no queue at all: `rate()` sent the request and, when it
-// failed, showed a toast and forgot the rating. On a connection that drops for
-// a second that is one rating lost per hiccup, and the loss is silent - the
-// song simply turns up unrated again days later, in the middle of a random run.
-//
-// One entry per track and the last value wins, the same two rules the Android
-// queue follows (`PendingWrites`): the server only ever sees the last number
-// anyway, and a queue that grew by one entry per tap on a star row would send a
-// dozen requests to set one.
-//
-// It lives in `localStorage` rather than in memory because the case it exists
-// for outlives the page: the tab is closed, the laptop is shut, and the rating
-// still has to go up on the next visit.
+// Ratings the server has not confirmed yet, so a dropped connection cannot silently lose one.
+// One entry per track, last value wins (as Android's `PendingWrites`); in localStorage because
+// a closed tab or a shut laptop must not lose it before the next visit sends it.
 
 const KEY = 'sonorus-pending-ratings';
 
-// `stars` is the value being written. `shown` is what the widget draws while it
-// waits, and the two differ for exactly one case: taking a rating away keeps the
-// old stars on screen, pale, until the server agrees - otherwise the row would
-// go empty at once and the pale state would have nothing left to show.
+// `shown` is what the widget draws while waiting. It differs from `stars` only when a rating
+// is taken away: the old stars stay on screen, pale, until the server agrees.
 let drafts = read();
 
 function read() {
@@ -58,7 +44,9 @@ export function put(trackId, stars, shown) {
   save();
 }
 
-export function clear(trackId) {
+// With `stars`, only that draft: a newer click may have replaced it while this one was in flight.
+export function clear(trackId, stars) {
+  if (stars !== undefined && drafts[trackId]?.stars !== stars) return;
   delete drafts[trackId];
   save();
 }

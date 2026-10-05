@@ -64,10 +64,8 @@ function facts(parts) {
 }
 
 // --- Grid or list, per collection -------------------------------------------
-// Interpreten, Alben and Genres can each be tiles or one row per entry, and the
-// choice is the account's - kept per collection, so the albums can be a list
-// while the interpreters stay a grid. Written through ctx.setPref like every
-// other preference, so it follows the user to another device.
+// Kept per collection, so the albums can be a list while the interpreters stay a grid.
+// Stored through ctx.setPref, so the choice follows the account to another device.
 
 const COLLECTION_VIEWS = ['grid', 'list'];
 
@@ -169,10 +167,8 @@ export async function home() {
       <div class="hero-actions">
         <button type="button" class="btn btn-primary" data-shuffle-library>${icon('shuffle', 16)} Zufallsmix starten</button>
         ${
-          // The other reason to start a random run: rating a library is done by
-          // ear, and picking the next unrated song out of a list of a few
-          // thousand by hand is the part that makes it stop happening. Only
-          // offered while there is anything left to rate.
+          // Rating is done by ear, and picking the next unrated song out of thousands by hand
+          // is what makes it stop happening. Only offered while anything is left to rate.
           data.unrated
             ? `<button type="button" class="btn btn-ghost" data-shuffle-unrated>
                 ${icon('star-outline', 16)} Unbewertete mischen
@@ -252,10 +248,8 @@ export async function artist(params) {
   const { artist: data } = await api.artist(params.id);
   const total = data.tracks.reduce((sum, t) => sum + t.duration, 0);
 
-  // Filled for Various and nothing else: the compilation folder is no person,
-  // so it shows the four records it is made of instead of the artwork of
-  // whichever one happens to be newest. The server decides that - see
-  // mosaicCovers() - and hands out an empty list for every other interpret.
+  // Filled only for Various (mosaicCovers() on the server): the compilation folder is no
+  // person, so it shows the records it is made of, not whichever one is newest.
   const covers = data.covers || [];
 
   // The way into "nur die 5-Sterne-Songs von diesem Interpreten": one switch per
@@ -610,15 +604,9 @@ export async function podcast(params, ctx) {
 }
 
 // --- Spoken word: audiobooks and radio plays ---------------------------------
-// A book is one thing. The files it is made of are never drawn - no parts list,
-// no part titles - because that is the whole point of the feature: you open a
-// book and carry on, the way you would with a paper one.
-//
-// Radio plays are the same three pages with different words. Florian wanted
-// them as a tab of their own ("Ist im Grunde zum Großteil eine Kopie") and they
-// are one - but a copy is what would have to be maintained twice, so the words
-// live in SPOKEN and the pages are written once. The one real difference is the
-// narrator: a play has a cast, and "Gesprochen von" stays away from it.
+// A book is one thing: its files are never drawn, you open it and carry on like a paper one.
+// Radio plays are the same pages with other words (SPOKEN), written once so nothing is kept
+// twice. The one real difference: a play has a cast, so it gets no "Gesprochen von".
 
 const SPOKEN = {
   book: {
@@ -824,10 +812,8 @@ export const audiodrama = (params) => spokenBook(params, 'drama');
 
 // --- E-Books ------------------------------------------------------------------
 
-// Shaped like the spoken word's three pages, because a shelf is a shelf: the
-// authors, one author's books, and one book. The fourth page is the one that
-// makes this a reading app rather than a catalogue - see reading.js, whose
-// frame holds the very page the Android app holds.
+// The spoken word's three pages (authors, one author, one book), plus the reader in
+// reading.js that makes this a reading app rather than a catalogue.
 
 // What a book says about itself in a grid: who wrote it, and how far in.
 function ebookSub(b) {
@@ -977,11 +963,8 @@ export async function ebook(params) {
 }
 
 /**
- * The reading view.
- *
- * A page of its own rather than a dialog: it is the one screen in Sonorus that
- * wants the whole window, and a book you can link to is a book you can come
- * back to.
+ * A page rather than a dialog: it wants the whole window, and a book you can link to is a
+ * book you can come back to.
  */
 export async function reader(params) {
   const { book } = await api.ebook(params.id);
@@ -1065,15 +1048,9 @@ export function starSelectionLabel(values) {
   return joinAnd(parts);
 }
 
-// The ratings this list is made of, each one a switch. Clicking one adds it to
-// the selection or takes it out again - that is the whole "mehrere Sterne auf
-// einmal". The last one standing cannot be switched off; an empty list would
-// have nothing to show.
-//
-// `base` is the list the switches lead to, so the same picker drives the star
-// playlists and the ratings of a single artist; app.js reads it back off the
-// row. `available` narrows the row to the ratings that exist in this scope - a
-// selected one is always shown, so a hand-typed address keeps its switch.
+// The last selected rating cannot be switched off: an empty list would show nothing. `base`
+// (read back by app.js) serves star playlists and one artist alike; `available` hides absent
+// ratings, but a selected one stays so a hand-typed address keeps its switch.
 function starPicker(values, { base = '/stars', available = null } = {}) {
   const chip = (value, content, label) => {
     const on = values.includes(value);
@@ -1111,8 +1088,7 @@ export async function starred(params) {
   return {
     title: label,
     tracks: list,
-    // A star playlist is a playlist and now looks like one: the covers of the
-    // first four albums in it, next to what the selection adds up to.
+    // Headed like any playlist, with the covers of its first four albums.
     html: `${detailHead({
       label: 'Automatische Playlist',
       title: label,
@@ -1140,14 +1116,8 @@ export async function starred(params) {
   };
 }
 
-// The same idea narrowed to one artist, reached from the switches on that
-// artist's page: "5 und 4 Sterne von Metallica". The artist comes back whole
-// anyway - it is the very request the artist page makes - so the selection is
-// applied here instead of in a query of its own, which also keeps the order of
-// the artist page: newest album first, then disc and track number.
-//
-// Songs whose file is gone stay out of it, unlike in the star playlists: this is
-// a view of an artist, and the artist page does not show them either.
+// Filtered here, not in a query of its own: the artist request returns every track anyway,
+// and this keeps the artist page's order. Missing files stay out, as on the artist page.
 export async function artistStarred(params) {
   const values = [...new Set(String(params.stars).split(',').map(Number))].filter((n) => n >= 0 && n <= 5);
   const { artist: data } = await api.artist(params.id);
@@ -1456,6 +1426,7 @@ function wireDynamic(root, { playlist, options, state, order, ctx, folds }) {
   let pending = null;
   let seq = 0;
   let ticking = null;
+  let live = true;
 
   const paintSummaries = () => {
     for (const [key] of DYN_SECTIONS) {
@@ -1494,7 +1465,8 @@ function wireDynamic(root, { playlist, options, state, order, ctx, folds }) {
       const mine = (seq += 1);
       try {
         const res = await send();
-        if (mine === seq) apply(res);
+        if (!live) ctx.setPlaylists(res.tree); // the page under #content is another one by now
+        else if (mine === seq) apply(res);
       } catch (err) {
         toast(errorText(err), 'err');
       }
@@ -1628,6 +1600,7 @@ function wireDynamic(root, { playlist, options, state, order, ctx, folds }) {
   }
 
   return () => {
+    live = false;
     ac.abort();
     clearInterval(ticking);
     // A change made just before leaving still counts, it only is not drawn.
@@ -1823,11 +1796,8 @@ export async function profile(_params, ctx) {
 }
 // --- Statistics -------------------------------------------------------------
 
-// The history is read one period at a time. The switch picks how *wide* a
-// period is (a day, a week, a month, a year, or everything), the arrows next to
-// it pick *which* one - and the chart, the readout and the three top lists all
-// answer for exactly that period. "Meistgehörte Songs" therefore means "in
-// this week", not "ever"; "ever" is what the "Gesamt" width is for.
+// The switch picks how wide a period is, the arrows which one. Chart, readout and top lists
+// all answer for that period: "Meistgehörte Songs" means this week, "ever" is "Gesamt".
 
 const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -1839,10 +1809,8 @@ const isoDay = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.get
 // no timezone can move it to the day before.
 const dayLabel = (key) => `${key.slice(8)}.${key.slice(5, 7)}.${key.slice(0, 4)}`;
 
-// A period key back into a local Date. Keys are 'YYYY', 'YYYY-MM' or
-// 'YYYY-MM-DD' and the parts they do not say start at the beginning of the
-// period. Built from the pieces, never handed to `new Date('2026-07-25')` -
-// that is parsed as UTC midnight and lands on the 24th west of Greenwich.
+// A period key ('YYYY', 'YYYY-MM', 'YYYY-MM-DD') as a local Date, built from the pieces:
+// `new Date('2026-07-25')` is parsed as UTC midnight and lands on the 24th west of Greenwich.
 function keyDate(key) {
   const [y, m, d] = String(key).split('-').map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
@@ -1860,12 +1828,8 @@ function isoWeek(day) {
 
 const monthTitle = (key) => keyDate(key).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
 
-// One entry per width, in the order the switch shows them. `title` names the
-// single period the arrows have landed on, `step` walks to the neighbouring
-// one, and `slots` lists every bar the period is made of - all of them, because
-// the query only returns what was played and a silent Tuesday is a real zero,
-// not a missing value. Everything here works in the browser's own timezone,
-// the same one the server grouped the plays by.
+// `slots` lists every bar of the period: the query returns only what was played, and a
+// silent Tuesday is a real zero. All in the browser's timezone, as the server grouped by.
 const RANGES = {
   day: {
     label: 'Tage',
@@ -1971,10 +1935,8 @@ function series(range, key, rows) {
 // instead of pushing the whole chart into a horizontal scroll.
 const DENSE_FROM = 14;
 
-// A column chart without a library: the bars are divs and their height is set
-// through the CSSOM afterwards, because the CSP forbids inline styles. Both
-// numbers stand at the bar, listening time above it and plays below - a value
-// you only see after hovering is a value you do not see.
+// Bar heights are set through the CSSOM afterwards, because the CSP forbids inline styles.
+// Both numbers stand at the bar: a value you only see on hover is a value you do not see.
 function chart(rows) {
   if (!rows.some((r) => r.plays)) {
     return '<div class="empty small"><p>In diesem Zeitraum lief nichts.</p></div>';
@@ -1994,11 +1956,8 @@ function chart(rows) {
     .join('')}</div>`;
 }
 
-// "Meistgehört" is measured in time listened, not in times started: two runs
-// through a 20-minute suite are more listening than five runs through a
-// three-minute song, and the row that stands for more time says so. The play
-// count stays on the row - it is worth knowing - but it neither decides the
-// order nor draws the bar.
+// Ranked by time listened, not plays: two runs through a 20-minute suite outweigh five of a
+// three-minute song. The play count stays on the row but neither orders nor draws the bar.
 function topList(title, rows, href, subOf = null) {
   if (!rows.length) return '';
   const peak = Math.max(...rows.map((r) => r.seconds), 1);
@@ -2024,10 +1983,8 @@ function topList(title, rows, href, subOf = null) {
     </section>`;
 }
 
-// One value on the front panel. `span` is how many of the split readout's ten
-// columns the cell takes and `sub` a quiet second line under the number - both
-// only used by the library readout, where two values need more room than a
-// plain count does.
+// `span` (of the split readout's ten columns) and `sub` are only used by the library
+// readout, where two values need more room than a plain count.
 const readoutCell = (label, value, opts = {}) =>
   `<div class="readout-cell${opts.accent ? ' accent' : ''}${opts.span ? ` span-${opts.span}` : ''}">
     <span class="rack-label">${esc(label)}</span>
@@ -2035,19 +1992,14 @@ const readoutCell = (label, value, opts = {}) =>
     ${opts.sub ? `<span class="readout-sub">${esc(opts.sub)}</span>` : ''}
   </div>`;
 
-// The four libraries, in the order they are worth reading: the big one first,
-// then the spoken ones in the order the sidebar lists them.
+// Music first, then the spoken libraries in sidebar order, then films and series.
 const KIND_LABELS = {
   music: 'Musik', podcast: 'Podcasts', book: 'Hörbücher', drama: 'Hörspiele', movie: 'Filme', show: 'Serien',
 };
 const KIND_ORDER = ['music', 'podcast', 'book', 'drama', 'movie', 'show'];
 
-// The selected period's listening time, split by the library it came from.
-//
-// Every kind gets a row, a silent one included: "Podcasts 0 Sek." is what tells
-// the reader that podcasts are counted on this page at all, and an omitted row
-// would tell them nothing. The share is of the total, so the four bars are
-// comparable with each other rather than each with its own scale.
+// Every kind gets a row, a silent one too: "Podcasts 0 Sek." says podcasts are counted at
+// all. Shares are of the total, so the bars compare with each other.
 function kindTable(kinds) {
   const total = kinds.total.seconds;
   const row = (key, label, value) => {
@@ -2074,10 +2026,8 @@ function kindTable(kinds) {
     </div>`;
 }
 
-// The three spoken libraries as the library panel sees them: how much there is
-// and how much of it is still ahead. One row each, because the three answer the
-// same question with different words - a podcast has Folgen where a book has
-// Teile - and three separate readouts would say that three times.
+// One row per spoken library, not three readouts: they answer the same question in
+// different words (Folgen, Teile), and three readouts would say it three times.
 function spokenPanel(spoken) {
   const rows = [
     {
@@ -2130,10 +2080,8 @@ function spokenPanel(spoken) {
     </div>`;
 }
 
-// Everything that belongs to the selected period, as one block: the switch, the
-// arrows, what that period adds up to, its chart and the three top lists. It is
-// re-rendered in one piece whenever the selection changes, so no part of it can
-// be left showing the numbers of the period before.
+// Re-rendered in one piece on every selection change, so no part of it can be left
+// showing the previous period's numbers.
 function periodSection(listening) {
   const { range, key, first, current, totals } = listening.period;
   const spec = RANGES[range];
@@ -2281,11 +2229,8 @@ export async function stats(params, ctx) {
       const view = root.querySelector('#period-view');
       if (!view) return;
 
-      // One handler for both controls: the switch hands over a width, the
-      // arrows a period key. Either way the whole block is fetched again and
-      // swapped in - the top lists under the switch must never be older than
-      // the switch itself. Changing the width lands on the current period, so
-      // picking "Jahre" shows this year and the arrows walk back from there.
+      // Either control refetches the whole block, so the top lists are never older than the
+      // switch. A new width lands on the current period.
       let busy = false;
       view.addEventListener('click', async (e) => {
         const width = e.target.closest('[data-range]');
@@ -2325,10 +2270,8 @@ function applyBars(root) {
 
 // --- Settings ---------------------------------------------------------------
 
-// One library root: where it is mounted and the layout it is read by. The
-// layout used to be one paragraph above all four roots, which meant reading
-// about podcasts to find the rule for music. Next to the folder it describes it
-// is one line, and only music needs a second one for the Various case.
+// The layout sits next to the folder it describes, so finding the rule for music does not
+// mean reading about podcasts. Music and video need two lines.
 function dirRow(label, dir, layout) {
   return `<div class="setting-row">
         <div>
@@ -2351,8 +2294,8 @@ function scanBlock(scan, lastScan) {
     walking: 'Ordner wird gelesen',
     reading: 'Dateien werden ausgelesen',
     pruning: 'Aufräumen',
-    // By far the longest of the four, and the reason the bar is worth watching:
-    // the whole library is re-encoded once so no phone ever waits for one.
+    // Usually by far the longest phase: the whole library is re-encoded once so no phone
+    // ever waits for one.
     transcoding: 'Kleinere Qualität wird erzeugt',
     metadata: 'Film- und Seriendaten von TMDB',
   };
@@ -2443,13 +2386,9 @@ function issueRows(issues) {
     .join('')}</div>`;
 }
 
-// A song whose file is gone and that something still holds on to: a rating, a
-// place in a playlist, or both. Which of the two it is is the first line,
-// because it is also what the button is about to let go of.
-//
-// The album is a link when the record still has files of its own, and it opens
-// in its own tab - this is a page you work through, and losing your place in it
-// after every third entry would be the whole annoyance back again.
+// What still holds the song (rating, playlists) leads, as it is what the button lets go of.
+// The album opens in a new tab: this page is worked through, and losing the place in it
+// after every third entry would be the annoyance all over again.
 function missingRows(list) {
   if (!list.length) {
     return `<div class="empty small"><p>Nichts vermisst. Hier landen Songs, deren Datei weg ist und die du bewertet oder in eine Playlist gelegt hast.</p></div>`;
@@ -2564,11 +2503,8 @@ export async function settings(_params, ctx) {
   };
 }
 
-// The quality switch and what the cache behind it currently holds.
-//
-// Deliberately a picker and a readout and nothing else: the choice is the whole
-// feature, and the size is there so a "warum ist die Platte voll" has an answer
-// on the page rather than in a shell.
+// Only a picker and a readout: the choice is the feature, and the size answers "warum ist
+// die Platte voll" on the page rather than in a shell.
 function qualityBlock(quality) {
   if (!quality || !quality.ready) {
     return `<div class="setting-row">
@@ -2613,11 +2549,9 @@ function qualityBlock(quality) {
     </div>`;
 }
 
-// The same three buttons as in the topbar, for the screens the topbar drops
-// them on. `.seg-switch` and not `.theme-switch`: that class is what is hidden
-// below 760 px, which is exactly the case this exists for. The click is handled
-// by the delegated theme listener in app.js; the choice comes out of the same
-// storage key theme-init.js reads before the first paint.
+// For screens where the topbar drops its theme buttons: `.theme-switch` is hidden below
+// 760 px, hence `.seg-switch`. app.js's delegated listener handles the click; the storage
+// key is the one theme-init.js reads before the first paint.
 function themeSwitch() {
   let choice = 'dark';
   try {
@@ -2764,7 +2698,7 @@ function applyProgress(root) {
   });
 }
 
-// Settings is the one view with enough interaction to warrant its own wiring.
+// Settings has enough interaction to warrant its own wiring, like the accounts page.
 function wireSettings(root, ctx) {
   let scanTimer = null;
   // The number beside the heading is written at render time, so it has to be

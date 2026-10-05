@@ -63,6 +63,7 @@ import {
   listAuthors as listEbookAuthors,
   getAuthor as getEbookAuthor,
   getBook as getEbook,
+  progressOf as ebookProgress,
   continueBooks as continueEbooks,
   setProgress as setEbookProgress,
   ebookStats,
@@ -135,6 +136,8 @@ const router = express.Router();
 
 // Everything below the /api prefix needs a logged-in account.
 router.use(requireAuthApi);
+// Behind the login check, so nobody anonymous makes the server parse 12 MB. The CSV import needs that much.
+router.use(express.json({ limit: '12mb' }));
 
 router.use(videoRouter);
 
@@ -147,9 +150,7 @@ const id = (value) => Number.parseInt(value, 10);
 
 // --- Bootstrap --------------------------------------------------------------
 
-// Everything the client needs to draw the shell on first load: the sidebar
-// tree, the counts next to the star playlists, the notice badge and the saved
-// player preferences.
+// Everything the client needs to draw the shell on first load.
 router.get('/bootstrap', (req, res) => {
   res.json({
     ok: true,
@@ -165,9 +166,7 @@ router.get('/bootstrap', (req, res) => {
     playlists: playlistTree(req.user.id),
     stars: starCounts(req.user.id),
     issues: countIssues(req.user.id),
-    // Counted apart from the import notices and added up only where the badge
-    // is drawn: the two are different kinds of thing and the settings page says
-    // so, but a number on the cog is what makes either one findable at all.
+    // Kept apart from the import notices; the client adds both up only for the badge.
     missing: countMissing(req.user.id),
     prefs: userPrefs(req.user),
     scan: scanState(),
@@ -177,12 +176,8 @@ router.get('/bootstrap', (req, res) => {
 
 // --- Library ----------------------------------------------------------------
 
-// No cap on the page size, deliberately. There used to be one of 5000, and what
-// it produced was a library that lied: the header counted every song, the list
-// held the first few thousand, and "Abspielen", "Mischen" and the phone's
-// download button all quietly meant that slice - 2026-09-22, "obwohl es sich um
-// 8168 Songs handelt". A caller that wants a page asks for one; a caller that
-// asks for everything is asking for the library it can already see the count of.
+// No page-size cap on purpose: a capped list made play, shuffle and download
+// silently act on a slice while the header counted the whole library.
 router.get('/tracks', (req, res) => {
   const limit = Math.max(Number(req.query.limit) || 0, 0);
   res.json({
@@ -209,21 +204,16 @@ router.get('/tracks/:id', (req, res) => {
   res.json({ ok: true, track });
 });
 
-// The words of one song, asked for separately: a text block has no business in
-// the track projection every list in the app selects. `lines` carries a second
-// per entry when the file said when each one is sung, and is empty otherwise -
-// which is what tells a lyric that can follow the song from one that cannot.
+// Separate from the track projection every list selects, so no list carries the text.
+// `lines` is filled only for timed lyrics, which is how a client tells synced from plain.
 router.get('/tracks/:id/lyrics', (req, res) => {
   const lyrics = getLyrics(id(req.params.id));
   if (!lyrics) return fail(res, 'not_found', 'lyrics');
   res.json({ ok: true, lyrics });
 });
 
-// How far this song's text sits against the music. Not part of the PATCH above:
-// that one is about what the file failed to say, this is about the file being
-// wrong about *when* - and it is written from a slider that moves while the
-// song plays, so it wants an endpoint that does one thing and answers with the
-// value that was really stored.
+// Not part of PATCH /tracks/:id below: a slider writes it while the song plays,
+// so it does one thing and answers with the value really stored.
 router.put('/tracks/:id/lyrics-offset', (req, res) => {
   const offset = setLyricsOffset(id(req.params.id), req.body.offset);
   if (offset === null) return fail(res, 'not_found', 'track');
@@ -283,10 +273,8 @@ router.get('/albums/:id', (req, res) => {
   res.json({ ok: true, album });
 });
 
-// Hand edits to what the file cannot be asked about: release date, genres,
-// cover. The music folder is read-only, so this only changes what Sonorus
-// shows. Like the scan and the CSV import, this touches the shared library and
-// needs a login, not an admin - see the account model in the README.
+// The music folder is read-only, so this only changes what Sonorus shows. Like the
+// scan, it edits the shared library and needs a login, not an admin.
 router.patch('/albums/:id', async (req, res) => {
   const patch = {};
   if ('date' in req.body) patch.date = req.body.date;
@@ -345,14 +333,9 @@ router.put('/progress/:id', (req, res) => {
 
 // --- Audiobooks -------------------------------------------------------------
 
-// A book is one thing: the parts it is made of never leave this file except
-// inside `getBook`, where the player needs them to know what to queue.
-//
-// Audiobooks and radio plays are the same endpoints twice, told apart by the
-// path and nothing else - `/api/audiobooks/...` and `/api/audiodramas/...` are
-// wired from one set of handlers below. They are two libraries to the listener
-// and one table underneath, which is the whole reason a play costs a mount and
-// a route rather than a second half of this file.
+// Audiobooks and radio plays are one table underneath and two libraries to the
+// listener, so one set of handlers serves both paths. A book's parts only leave
+// inside `getBook`, where the player needs them to queue.
 function spokenRoutes(base, kind) {
   router.get(`/${base}`, (req, res) => {
     res.json({
@@ -370,8 +353,7 @@ function spokenRoutes(base, kind) {
     res.json({ ok: true, author });
   });
 
-  // The picture, and nothing else - the same rule an interpret follows, for the
-  // same reason: the name is the folder name.
+  // The picture only, as for an artist: the name is the folder name.
   router.patch(`/${base}/authors/:id`, async (req, res) => {
     if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
 
@@ -388,10 +370,8 @@ function spokenRoutes(base, kind) {
     res.json({ ok: true, book });
   });
 
-  // The narrator and the release date. Both are read from the file already;
-  // this is for the day the file is wrong or, in the case of the date, not
-  // precise enough - an m4b carries the year and nothing finer. A radio play
-  // has no narrator field at all, so it only ever sends the date.
+  // Overrides for a file that is wrong or too coarse (an m4b carries only the year).
+  // A radio play has no narrator, so it only ever sends the date.
   router.patch(`/${base}/books/:id`, (req, res) => {
     if (!('narrator' in req.body) && !('date' in req.body)) return fail(res, 'nothing_to_edit');
 
@@ -419,10 +399,8 @@ spokenRoutes('audiodramas', DRAMA);
 
 // --- eBooks -----------------------------------------------------------------
 //
-// The shelf reads like the spoken word's - authors, their books, one book - and
-// then it stops: an ebook is read rather than played, so there is no queue, no
-// rating and no download. What is new is the last two routes, which hand the
-// pieces of the EPUB itself to the reading view.
+// Read, not played: no queue and no rating. `/file` is the whole EPUB for offline
+// clients, `/read/*` hands its pieces to the reading view.
 
 router.get('/ebooks', (req, res) => {
   res.json({
@@ -445,10 +423,8 @@ router.get('/ebooks/books/:id', (req, res) => {
   res.json({ ok: true, book });
 });
 
-// The picture, and nothing else - an author's name is the folder's name. The
-// same rule and the same call the spoken word's authors follow: they share the
-// `authors` table, so somebody Florian both hears and reads is one author with
-// one picture.
+// The picture only: the name is the folder's. The `authors` table is shared with
+// the spoken word, so someone both heard and read has one picture.
 router.patch('/ebooks/authors/:id', async (req, res) => {
   if (!('cover' in req.body)) return fail(res, 'nothing_to_edit');
   const result = await updateAuthorCover(id(req.params.id), req.body.cover);
@@ -468,14 +444,10 @@ router.patch('/ebooks/books/:id', (req, res) => {
 router.put('/ebooks/books/:id/progress', (req, res) => {
   const result = setEbookProgress(req.user.id, id(req.params.id), req.body || {});
   if (result.error) return fail(res, result.error, 'ebook');
-  res.json({ ok: true, progress: getEbook(id(req.params.id), req.user.id).progress });
+  res.json({ ok: true, progress: ebookProgress(id(req.params.id), req.user.id) });
 });
 
-// The whole book, as the EPUB it is.
-//
-// For a client that wants to read it with the server out of reach. `sendFile`
-// sets `acceptRanges`, so a download that broke off is resumed rather than
-// started again - the same deal every downloaded song gets.
+// The whole EPUB, for reading offline. `sendFile` accepts ranges, so a broken download resumes.
 router.get('/ebooks/books/:id/file', (req, res) => {
   const book = ebookFile(id(req.params.id));
   if (!book) return fail(res, 'not_found', 'ebookFile');
@@ -485,12 +457,8 @@ router.get('/ebooks/books/:id/file', (req, res) => {
   });
 });
 
-// One file out of the book, under the path it has inside the zip.
-//
-// The path is mirrored on purpose: a chapter loads its pictures and its
-// stylesheet with the relative links the book was written with, and those
-// resolve against this URL. Rewriting them would mean parsing every document
-// and getting CSS `url()` right as well.
+// Mirrors the path inside the zip, so the book's own relative links (images, CSS
+// `url()`) resolve against this URL without rewriting every document.
 router.get('/ebooks/books/:id/read/*name', (req, res) => {
   const name = Array.isArray(req.params.name) ? req.params.name.join('/') : req.params.name;
   let piece;
@@ -501,8 +469,7 @@ router.get('/ebooks/books/:id/read/*name', (req, res) => {
   }
   if (!piece) return fail(res, 'not_found', 'ebookPage');
 
-  // The book's own CSP: it may style itself, which an EPUB does inline, and it
-  // may load nothing from anywhere else.
+  // The book's own CSP: it may style itself, which an EPUB does inline, and load nothing from elsewhere.
   res.set('Content-Security-Policy', READER_CSP);
   if (piece.document >= 0) {
     res.type('text/html; charset=utf-8');
@@ -545,11 +512,8 @@ router.get('/shuffle', (req, res) => {
   res.json({ ok: true, unrated, tracks: randomTracks(req.user.id, limit, { unrated }) });
 });
 
-// One query, five answers. Episodes are their own section rather than part of
-// the songs: they are not in the music library, and a search that mixed 691
-// episodes into the song results would bury it. Radio plays are their own
-// section for the same reason they are their own tab - they are a library of
-// their own to the listener, even where they are one table underneath.
+// One query, eight lists. Episodes, books and plays stay apart from the songs:
+// they are separate libraries to the listener, and 691 episodes would bury the songs.
 router.get('/search', (req, res) => {
   const q = String(req.query.q || '').trim();
   res.json({
@@ -571,9 +535,8 @@ router.put('/tracks/:id/rating', (req, res) => {
   res.json({ ok: true, stars: result.stars, counts: starCounts(req.user.id) });
 });
 
-// `playedAt` is optional and only a client that could not report the play when
-// it happened sends one - see recordPlay. A play that arrives with the request
-// carries no timestamp and is stamped on arrival, as it always was.
+// `playedAt` only comes with a play queued offline (see recordPlay); otherwise the
+// play is stamped on arrival.
 router.post('/plays', (req, res) => {
   const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds, req.body.playedAt);
   if (result.error) return fail(res, result.error, 'track');
@@ -822,9 +785,7 @@ router.put('/prefs', (req, res) => {
 
 // --- Accounts ---------------------------------------------------------------
 
-// Admin-only, like creating and deleting: account management moved out of the
-// settings page into the account menu, and who else has an account is nothing a
-// normal user is shown any more.
+// Admin-only like creating and deleting: who else has an account is not shown to normal users.
 router.get('/users', adminOnly, (req, res) => {
   res.json({ ok: true, users: listUsers() });
 });
@@ -847,8 +808,6 @@ router.delete('/users/:id', adminOnly, (req, res) => {
 });
 
 router.put('/profile', (req, res) => {
-  updateProfile(req.user.id, { display_name: req.body.displayName, avatar: req.body.avatar });
-
   const newPassword = String(req.body.newPassword || '');
   if (newPassword) {
     if (!verifyPassword(getUserById(req.user.id), req.body.currentPassword)) {
@@ -860,6 +819,7 @@ router.put('/profile', (req, res) => {
     // user is not logged out of the tab they are sitting in.
     setSessionCookie(res, req, getUserById(req.user.id));
   }
+  updateProfile(req.user.id, { display_name: req.body.displayName, avatar: req.body.avatar });
 
   const user = getUserById(req.user.id);
   res.json({
@@ -894,17 +854,9 @@ const AUDIO_MIME = {
   '.dff': 'audio/x-dff',
 };
 
-// `?q=` picks the quality. Absent, unknown or `original` all mean the file
-// itself; a profile name means the smaller copy - if there is one to be made.
-//
-// Deliberately the same route rather than a second endpoint: the app already
-// downloads through this one, so a new one would have to be taught to every
-// client and to the resume logic all over again.
-//
-// Two headers ride along, and they are what the clients draw: `X-Sonorus-Quality`
-// says what is really being served, which is not always what was asked for (see
-// `willTranscode`), and `X-Sonorus-Format` names the container so the format
-// under the transport is the format coming out of the speaker.
+// `?q=` picks the quality on the same route, so downloads and their resume logic need
+// no second endpoint. `X-Sonorus-Quality` says what is really served, which is not
+// always what was asked for (see `willTranscode`); `X-Sonorus-Format` names the container.
 router.get('/stream/:id', async (req, res) => {
   const track = streamTrack(id(req.params.id));
   if (!track || !track.path) return fail(res, 'not_found', 'track');

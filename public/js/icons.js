@@ -46,8 +46,7 @@ const STROKE = {
   maximize: '<path d="M8 3H4a1 1 0 0 0-1 1v4"/><path d="M16 3h4a1 1 0 0 1 1 1v4"/><path d="M16 21h4a1 1 0 0 0 1-1v-4"/><path d="M8 21H4a1 1 0 0 1-1-1v-4"/>',
   minimize: '<path d="M4 9h4a1 1 0 0 0 1-1V4"/><path d="M20 9h-4a1 1 0 0 1-1-1V4"/><path d="M20 15h-4a1 1 0 0 0-1 1v4"/><path d="M4 15h4a1 1 0 0 1 1 1v4"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.3l3.2 1.9"/>',
-  // Spoken word: a microphone. The sidebar entry for the podcasts, and later
-  // for the audiobooks and radio plays that go in the same group.
+  // Spoken word: a microphone, for Podcasts and Hörspiele.
   mic: '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/><path d="M8.5 21h7"/>',
   // Audiobooks: an open book. The sidebar entry under Podcasts.
   book: '<path d="M3 5.5A2 2 0 0 1 5 4h5v15H5a2 2 0 0 0-2 1.5z"/><path d="M21 5.5A2 2 0 0 0 19 4h-5v15h5a2 2 0 0 1 2 1.5z"/><path d="M12 5.6V19"/>',
@@ -90,19 +89,9 @@ const FILL = {
     '<text x="12" y="15.2" text-anchor="middle" font-size="9" font-weight="700">10</text>',
   'skip-back': '<path d="M18.5 5.4v13.2L9 12z"/><rect x="5" y="5" width="2.6" height="14" rx="1.2"/>',
   'skip-forward': '<path d="M5.5 5.4v13.2L15 12z"/><rect x="16.4" y="5" width="2.6" height="14" rx="1.2"/>',
-  // The two skips spoken word gets instead. The circular arrow carries the
-  // number rather than wearing it in the glyph: fifteen is exactly the step no
-  // ready-made icon set draws, and an arrow that says 10 while the button jumps
-  // 15 is a control that lies about what it does.
-  //
-  // The ring is drawn rather than taken from Material's Replay, and that is the
-  // whole point: Replay's circle is small enough inside its box that a
-  // two-digit number at a readable size runs onto the stroke (measured, not
-  // guessed - 8.02 units of text in a 12-unit opening). This one is a stroked
-  // arc at r=8.5 with the top-left quarter left open for the arrowhead, so the
-  // opening is 14.8 units wide and the number sits in it with room to spare.
-  // Forward is the same arc and head mirrored, with the number left the right
-  // way round.
+  // Spoken word's skips. No icon set draws a 15, so it is text in a drawn ring: Material's
+  // Replay opening (12 units) is too narrow for two digits, this arc leaves 14.8.
+  // Forward mirrors the arc but not the number.
   'skip-back-15':
     '<path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>' +
     '<path d="M12 0.4v6.2L7.8 3.5z"/>' +

@@ -1,9 +1,5 @@
-/* ============================================================================
-   Sonorus - films and series.
-
-   The same chassis as the rest of the app. Two places are always dark whatever
-   the theme, because they are screens: the hero banner and the player.
-   ========================================================================== */
+/* Sonorus - films and series. The hero banner and the player stay dark in every
+   theme, because they are screens. */
 
 :root {
   --screen: #100e14;

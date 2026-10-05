@@ -1,9 +1,5 @@
-// Turning a parsed CSV into playlists.
-//
-// One CSV may describe several playlists (a "playlist" column), or a single
-// one (no such column - then the file name is used). Every row is matched
-// against the library; what matches goes into the playlist, what does not
-// becomes an import notice the user can act on later.
+// One CSV holds several playlists (a "playlist" column) or one named after the file.
+// Unmatched rows become import notices the user can act on later.
 
 import db from '../db.js';
 import { findTrackForImport } from './library.js';

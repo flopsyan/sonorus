@@ -1,12 +1,6 @@
-// Authentication for Sonorus. Every page and every API call requires a
-// logged-in account - there is no anonymous access. All accounts have equal
-// rights; only admins can manage accounts.
-//
-// The first account is created either through the one-time /setup page (when no
-// account exists yet) or bootstrapped from AUTH_USER/AUTH_PASSWORD. Sessions are
-// stateless, signed cookies (HMAC-SHA256) - no server-side store. The signature
-// binds the account's password hash, so changing a password invalidates that
-// account's existing sessions.
+// Every page and API call needs a login; only admins manage accounts.
+// Sessions are stateless HMAC-SHA256 cookies whose signature binds the password
+// hash, so changing a password ends that account's sessions.
 
 import crypto from 'node:crypto';
 import { getMeta, setMeta } from '../db.js';
@@ -56,9 +50,9 @@ function userFromToken(token) {
   const user = getUserById(Number(idStr));
   if (!user) return null;
 
-  const expected = sign(`${idStr}.${issued}.${user.pass_hash.slice(0, 16)}`);
-  if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  const given = Buffer.from(sig);
+  const expected = Buffer.from(sign(`${idStr}.${issued}.${user.pass_hash.slice(0, 16)}`));
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
   return user;
 }
 
@@ -69,17 +63,18 @@ function readCookie(req, name) {
     const idx = part.indexOf('=');
     if (idx === -1) continue;
     if (part.slice(0, idx).trim() === name) {
-      return decodeURIComponent(part.slice(idx + 1).trim());
+      try {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      } catch {
+        return null; // a garbled cookie must not turn every request into a 500
+      }
     }
   }
   return null;
 }
 
-// Failed-login throttling: after MAX_FAILS failed attempts from one client
-// within FAIL_WINDOW_MS, further attempts are rejected until the window ends.
-// In-memory (single process). req.ip honours X-Forwarded-For according to
-// TRUST_PROXY (default: one reverse proxy hop), so clients behind the proxy
-// are told apart correctly.
+// In-memory per-IP login throttle (single process). req.ip honours X-Forwarded-For
+// per TRUST_PROXY, so clients behind the proxy are told apart.
 const MAX_FAILS = 10;
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 const loginFails = new Map(); // ip -> { count, start }
@@ -107,10 +102,6 @@ export function recordLoginFailure(ip) {
   } else {
     w.count += 1;
   }
-}
-
-export function resetLoginFailures(ip) {
-  loginFails.delete(ip);
 }
 
 // True while no account exists yet -> the one-time setup page must run first.
@@ -149,7 +140,7 @@ export function clearSessionCookie(res, req) {
   res.append('Set-Cookie', `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax;${secure}`);
 }
 
-// Middleware: expose the auth state to every view.
+// Sets req.user for the guards; no view reads the res.locals copies today.
 export function attachAuth(req, res, next) {
   const user = currentUser(req);
   req.user = user;
@@ -173,8 +164,7 @@ export function requireAuthApi(req, res, next) {
   return res.status(401).json({ ok: false, error: 'auth_required', message: 'Bitte neu anmelden.' });
 }
 
-// Middleware: guard an admin-only page route (user management). Logged-in
-// non-admins get a 403; logged-out visitors are sent to the login page first.
+// Admin-only page guard. Unused today: the account API checks is_admin itself.
 export function requireAdmin(req, res, next) {
   const user = currentUser(req);
   if (!user) {

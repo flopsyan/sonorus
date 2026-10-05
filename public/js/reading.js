@@ -1,15 +1,6 @@
-// The browser's half of the reading view.
-//
-// The page inside the frame is the same one the Android app hosts - it is
-// served with the book (`public/reader/`), it does the pagination, and it talks
-// to whoever hosts it through two objects: `window.Reader` going in and
-// `window.SonorusReader` coming back. The frame is same-origin, so the host
-// simply hangs its own object on the frame's window after the load.
-//
-// What differs from the app is the furniture, and deliberately: a phone hides
-// its bars until the reader taps the middle of the page, because the screen is
-// the book. A browser window has room, and a bar that has to be summoned with a
-// click nobody would guess at is worse here than one that is simply there.
+// The browser host of public/reader/, the page the Android app hosts too. The frame is
+// same-origin, so `SonorusReader` is hung on its window after load. Unlike the phone the
+// bars always show: a browser has room, and a bar summoned by a hidden click goes unfound.
 
 import { api } from './api.js';
 import { esc } from './ui.js';
@@ -48,15 +39,7 @@ function saveStyle(style) {
   }
 }
 
-/**
- * The widest a line of text may get, in pixels.
- *
- * A browser window is a metre wide and a book is not: a column that filled it
- * would be a hundred characters to the line, which nobody reads twice. The
- * margin grows with the window instead, so the text stays a column and sits in
- * the middle - and the page keeps the book's own page count honest, because the
- * column is what the pagination measures.
- */
+/** The widest line of text in px; beyond it the margin grows, so lines stay readable. */
 const MEASURE = 760;
 
 /** The shape `Reader.style()` in the frame expects. */
@@ -73,14 +56,8 @@ function cssOf(style, width = 0) {
 }
 
 /**
- * How many pages a book has, and which one is on screen.
- *
- * The same problem the app has and the same answer: there is no page count
- * until every chapter has been laid out at this size in this window, so it is
- * measured once in a frame nobody sees and kept. Until that is done the count
- * is estimated from the character counts the server sends, calibrated against
- * whatever has been laid out already - so a book opens with a number rather
- * than with a wait.
+ * Book pages are exact only once every chapter is laid out in a hidden frame. Until then
+ * they are estimated from the server's character counts, calibrated on what is measured.
  */
 class Paging {
   constructor(book) {
@@ -211,10 +188,8 @@ function storePages(key, pages) {
 }
 
 /**
- * Hangs the reading view into [root] and answers the cleanup for it.
- *
- * The whole view is one function on purpose: everything here is about one book
- * in one window, and half of it is state the other half reads on every turn.
+ * Mounts the view into [root] and returns its cleanup. One function on purpose: half of it
+ * is state the other half reads on every turn.
  */
 export function mountReader(root, book) {
   const frame = root.querySelector('.reader-frame');
@@ -284,8 +259,9 @@ export function mountReader(root, book) {
     }, 30000);
   }
 
-  function open(next, { at = 0, fromEnd = false, remember = false } = {}) {
-    const target = Math.min(lastDoc, Math.max(0, next));
+  function open(target, { at = 0, fromEnd = false, remember = false } = {}) {
+    // Turning past the last page would otherwise land on the start of the last chapter.
+    if (target < 0 || target > lastDoc) return;
     if (remember) rememberJump();
     send();
     if (target === doc) {
@@ -317,9 +293,12 @@ export function mountReader(root, book) {
       else open(doc - 1, { fromEnd: true });
     },
     onLink(link) {
-      const clean = String(link).split('#')[0];
-      const target = book.spine.findIndex((h) => h.endsWith(clean));
-      if (target >= 0) open(target, { at: 0, remember: true });
+      // Resolved against the chapter, so "#fn1" stays put and "../Text/x.xhtml" finds its document.
+      const base = `/api/ebooks/books/${book.id}/read/`;
+      const url = new URL(String(link), frame.contentWindow.location.href);
+      if (!url.pathname.startsWith(base)) return;
+      const target = book.spine.indexOf(decodeURIComponent(url.pathname.slice(base.length)));
+      if (target >= 0 && target !== doc) open(target, { at: 0, remember: true });
     },
   };
 
@@ -384,6 +363,7 @@ export function mountReader(root, book) {
       if (!alive || run !== measuring) return;
       if (paging.seen(i) !== null) continue;
       const pages = await measureChapter(i);
+      if (!alive || run !== measuring) return;
       if (!pages) failed = true;
       paging.saw(i, pages || 1);
       draw();

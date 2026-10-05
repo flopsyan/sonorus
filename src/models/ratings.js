@@ -28,15 +28,9 @@ export function setRating(userId, trackId, stars) {
   return { ok: true, stars: value };
 }
 
-// Records that a track was listened to. The client calls this after the first
-// second; whether the row counts as a play is decided when reading it, from its
-// seconds (`PLAY_COUNTED` in stats.js). The id comes back so the player can keep
-// reporting how long it really played.
-//
-// `playedAt` is for a play the client could not report when it happened: the
-// Android app queues what is heard offline and sends it on the next connection,
-// and without a timestamp every holiday would land on the day it came home.
-// Left out - which is what every online play does - the row timestamps itself.
+// Called after the first second; whether a row counts as a play is decided on reading
+// (`PLAY_COUNTED` in stats.js). `playedAt` only comes with plays queued offline, so they
+// do not all land on the day the phone reconnects.
 export function recordPlay(userId, trackId, seconds = 0, playedAt = '') {
   const track = db.prepare('SELECT id FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
@@ -51,24 +45,12 @@ export function recordPlay(userId, trackId, seconds = 0, playedAt = '') {
   return { ok: true, id: Number(info.lastInsertRowid) };
 }
 
-// A play backdated by the client is worth having, its timestamp is not worth
-// trusting blind - a phone whose clock is wrong would otherwise push a play
-// into next year and stretch every chart to reach it. So: parseable, not ahead
-// of us by more than a minute of clock skew, and not older than a year. What
-// fails any of those is not rejected - the play still counts, it is simply
-// filed under now, which is the honest answer to "when, then?".
+// A backdated play counts, but its timestamp is not trusted blind: a wrong phone clock would
+// stretch every chart. Unparseable, over a minute ahead or over a year old is filed under now.
 const BACKDATE_LIMIT_MS = 365 * 24 * 3600 * 1000;
 
-// A timestamp that names no zone is UTC, not the server's local time.
-//
-// `new Date('2026-08-30 23:54:37')` reads local, so on a CEST server
-// `toISOString()` moved it two hours back and a play late in the evening could
-// be filed on the day before - visible in the statistics, where a day boundary
-// is a day boundary. The clients all send ISO-8601 with a `Z`, so nothing in
-// the wild depended on the old reading; this is the half that makes the column
-// and the comment below true for anything else that ever posts here.
-//
-// A date without a time is left alone: JavaScript already reads those as UTC.
+// A timestamp without a zone is UTC: `new Date()` would read it as server-local time and
+// file a late-evening play on the day before. A date without a time is already read as UTC.
 const ZONELESS = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)$/;
 
 function plausibleTime(value) {

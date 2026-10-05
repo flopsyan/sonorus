@@ -1,15 +1,6 @@
-/*
- * The reading view, laid over whatever stylesheet the book brought with it.
- *
- * Pagination is CSS multicol: the document flows into columns one screen wide
- * and the body is slid sideways by a whole column per page. That is why `html`
- * clips and nothing here scrolls - a scrollbar would be a second way to move
- * through the text, and it would not agree with the page count.
- *
- * The `!important` is not laziness. A book's own stylesheet sets colours and
- * faces for a white page, and every one of them has to lose against the
- * reader's - otherwise a dark theme shows black text on black.
- */
+/* Pagination is CSS multicol: the body slides one column per page, so `html` clips
+   and nothing scrolls - a scrollbar would disagree with the page count. `!important`:
+   the book's colours are set for a white page, so a dark theme gets black on black. */
 
 /* Ubuntu comes from the server, so the phone does not have to have it. Four
    faces and no more: a reading view needs upright, italic and their bold. */
@@ -94,12 +85,9 @@ body {
   will-change: transform;
 }
 
-/* Which page of the book this is, in the bottom margin the way a printed book
-   carries it. Written by the client through `Reader.footer()`: this document is
-   one chapter and cannot count the ones around it.
-
-   It sits outside <body> - see reader.js - so none of the `body *` rules above
-   reach it, and every property it needs is set here. */
+/* The page number comes from `Reader.footer()`: this document is one chapter and
+   cannot count the others. It sits outside <body> (see reader.js), so no `body *`
+   rule reaches it and it sets every property itself. */
 #sonorus-foot {
   position: fixed;
   left: 0;
@@ -164,12 +152,9 @@ img, svg {
   object-fit: contain;
 }
 
-/* Only a real link is coloured, and the `[href]` is the whole point. An `<a>`
-   without one is an anchor target, and EPUBs are full of them written as
-   `<a id="x"/>`. In a document served as text/html - which this one is, so a
-   book with one bad tag still displays - the parser reads that as an anchor
-   that is never closed and hands it the rest of the chapter. `a *` then paints
-   the entire chapter in the link colour. */
+/* `[href]` is essential: EPUBs write anchor targets as `<a id="x"/>`, which the
+   text/html parser (used so one bad tag still displays) leaves open for the rest
+   of the chapter - `a *` would then paint all of it in the link colour. */
 a[href], a[href] * {
   color: var(--reader-accent) !important;
   text-decoration: none !important;

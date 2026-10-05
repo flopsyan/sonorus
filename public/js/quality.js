@@ -1,13 +1,5 @@
-// Which quality this browser streams in.
-//
-// A fact about **the device**, not about the account, and that is the point of
-// keeping it in `localStorage` rather than in `users.prefs`: the desktop on the
-// LAN wants the original file and the laptop on a hotel connection does not, and
-// they are the same account. The app on the phone keeps its own copy of the same
-// decision in its own SharedPreferences for exactly the same reason.
-//
-// There are two answers and no ladder in between: the file as it lies in the
-// music folder, or one small enough for a mobile connection.
+// Stream quality per device, so localStorage and not `users.prefs`: the desktop on the
+// LAN wants the original, the laptop on hotel wifi does not, on the same account.
 
 const KEY = 'sonorus-quality';
 
@@ -42,11 +34,8 @@ export function set(value) {
 }
 
 /**
- * The query the stream URL carries, empty for the original.
- *
- * Empty and not `?q=original` on purpose: the URL of a stream is what the
- * browser caches and what a `Range` request is made against, so the plain URL
- * has to stay the plain URL.
+ * Empty for the original, not `?q=original`: the stream URL is what the browser caches and
+ * makes `Range` requests against, so the plain URL has to stay plain.
  */
 export function streamQuery() {
   const value = current();

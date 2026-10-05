@@ -1,8 +1,5 @@
-// Read access to the shared library (artists, albums, genres, tracks).
-//
-// Every track projection carries the star rating of the account that asked for
-// it, so a track list can render its stars without a second round trip. The
-// library rows themselves are shared by all accounts.
+// Read access to the shared library (artists, albums, genres, tracks). Every track projection
+// carries the asking account's rating, so a list renders its stars without a second round trip.
 
 import db from '../db.js';
 import { PLAY_COUNTED } from './stats.js';
@@ -11,10 +8,8 @@ import { normalize, loosen, primaryArtist, isVarious } from '../lib/normalize.js
 // only import what is served, so this is the one module both sides run.
 import { spreadByArtist } from '../../public/js/shuffle.js';
 
-// Who made this one song. Normally the artist folder it lies in - but a track
-// on a compilation ("Various") carries its own interpret, read off the file
-// name by the scanner, and then that one is the answer. Empty everywhere else,
-// so the expression costs nothing for an ordinary library.
+// A compilation track ("Various") names its own artist in track_artist; it is empty everywhere
+// else, so the artist folder answers for an ordinary library.
 export const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.name, au.name)";
 
 // The same question without the podcast fallback, for the one query that brings
@@ -22,10 +17,8 @@ export const TRACK_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name, pc.na
 // pc.name could not answer anything there anyway.
 const MUSIC_ARTIST = "COALESCE(NULLIF(t.track_artist, ''), ar.name)";
 
-// One shared projection so every endpoint returns tracks in the same shape.
-// The genre subquery uses the (track_id, genre_id) primary key, the rating
-// subquery the (user_id, track_id) one. Exported because playlists.js selects
-// the same columns plus its own playlist_items.id.
+// One projection so every endpoint returns the same track shape; the genre and rating subqueries
+// hit their tables' primary keys. Exported because playlists.js adds its own playlist_items.id.
 export const TRACK_FIELDS = `
   t.id, t.title, t.track_no AS trackNo, t.disc_no AS discNo, t.year,
   t.release_date AS releaseDate,
@@ -64,43 +57,22 @@ export const TRACK_FROM = `
 // this; the star playlists and playlists deliberately do not.
 export const PRESENT = "t.missing_at = ''";
 
-// Podcast episodes live in the same table as the songs - so the player, the
-// streaming endpoint and the queue are the same code for both - but they are
-// not part of the music library and must not turn up anywhere in it. 691
-// episodes would be two thirds of "Nicht bewertet", the loudest entries in
-// every statistic, and a Zufallsmix that drops a 70-minute true-crime episode
-// between two songs.
-//
-// So NULL means music, and this is the condition every music query carries.
-// The only ones that deliberately do not are those that look a track up by id -
-// streaming, the queue after a reload - where the caller already knows what it
-// asked for.
+// Episodes and book parts share the tracks table but must never show up in the music
+// library. Every music query carries this; only lookups by id (streaming, queue restore) do not.
 export const MUSIC = 't.podcast_id IS NULL AND t.audiobook_id IS NULL';
 // The other halves of the same rule, for the two spoken-word models.
 export const EPISODE = 't.podcast_id IS NOT NULL';
 export const BOOK_PART = 't.audiobook_id IS NOT NULL';
 export const PRESENT_MUSIC = `${PRESENT} AND ${MUSIC}`;
 
-// What "sort by year" actually sorts by: the release date, as exactly as it is
-// known. The year column alone puts two records of the same year in an
-// arbitrary order; the date string does not, because 'YYYY', 'YYYY-MM' and
-// 'YYYY-MM-DD' compare as text exactly the way they run in time - a bare year
-// first, then the dated releases of that year in order.
-//
-// A row from a library that has not been rescanned since the column was added
-// has no date, so the year stands in for it. NULL only when neither is known,
-// which keeps the NULLS LAST trick of the queries below working.
+// 'YYYY', 'YYYY-MM' and 'YYYY-MM-DD' sort as text the way they run in time, so same-year records
+// keep their order. The year stands in for unscanned rows; NULL only when neither is known,
+// which the NULLS LAST ordering below relies on.
 const ALBUM_DATE = "COALESCE(NULLIF(al.release_date, ''), CAST(al.year AS TEXT))";
 const TRACK_DATE = "COALESCE(NULLIF(t.release_date, ''), CAST(t.year AS TEXT))";
 
-// How much a song was really listened to - the measure "am meisten gehört"
-// goes by, here and in the statistics. Not the number of times it was started:
-// a twenty-minute piece heard twice is more listening than a three-minute song
-// heard five times, and counting starts says the opposite.
-//
-// Plays written before the player reported its seconds carry 0; for those the
-// track length is the only estimate there is, and a counted play did run most
-// of the way through. Same expression as in stats.js, for the same reason.
+// Time listened, not times started - what "am meisten gehört" ranks by, as in stats.js. Plays
+// from before the player reported seconds carry 0; the track length stands in for them.
 const LISTENED = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duration, 0) END';
 
 // The same, per track of the account asking - as a correlated subquery, so it
@@ -108,11 +80,8 @@ const LISTENED = 'CASE WHEN p.seconds > 0 THEN p.seconds ELSE COALESCE(t.duratio
 const TRACK_LISTENED = `(SELECT COALESCE(SUM(${LISTENED}), 0)
     FROM plays p WHERE p.track_id = t.id AND p.user_id = @userId)`;
 
-// Turns a raw row into the shape the client expects: a cover URL instead of a
-// file name, genres as an array, numbers as numbers.
-//
-// The file path is the one thing that never leaves the server - except for a
-// track whose file is gone, where it is the only useful thing left to show.
+// The file path never leaves the server - except for a track whose file is gone, where it is
+// the only useful thing left to show.
 export function shapeTrack(row) {
   if (!row) return null;
   const missing = !!row.missingAt;
@@ -122,10 +91,7 @@ export function shapeTrack(row) {
     id: row.id,
     title: row.title,
     artist: row.artist || 'Unbekannter Interpret',
-    // A song on a compilation names an interpret that has no page of its own:
-    // the folder it lies in is "Various", and a link under the name would lead
-    // there rather than to the interpret it reads as. So it stays plain text,
-    // and the album is the way back to where the song belongs.
+    // A compilation song's artist has no page of its own (the folder is "Various"), so no link.
     artistId: row.trackArtist ? null : row.artistId,
     album: row.album || '',
     albumId: row.albumId,
@@ -168,14 +134,8 @@ export function shapeTrack(row) {
 
 // --- Searching --------------------------------------------------------------
 //
-// Sonorus searches one thing, not three. "Fame Bowie Americans" is a perfectly
-// ordinary way to name one song, and it used to find nothing at all: every word
-// had to hit the same field, so a query could say a title *or* an interpret
-// *or* an album and never a combination of them.
-//
-// So a query is cut into words and **every word has to match somewhere**. Which
-// field a word lands in is free, and that is the whole trick - the words spread
-// themselves over title, interpret and album by themselves.
+// Every word of a query has to match some field, not the same one, so "Fame Bowie Americans"
+// can name one song by title, artist and album together.
 
 // A query longer than this is a mistake, and every word costs one LIKE per row.
 const MAX_WORDS = 8;
@@ -203,14 +163,9 @@ export function allWordsIn(fields, list) {
   return { where, params };
 }
 
-// What decides the order of the results, and the reason there is a score at
-// all: searching "Fame" has to put the songs *called* Fame above the ones that
-// only sit on an album called "The Fame Monster".
-//
-// The whole query matching the main field beats its words matching it one by
-// one, and a word in the main field beats the same word beside it. `others` is
-// a list of [fields, weight] - a set of fields because the interpret of a song
-// lives in two columns.
+// Puts songs called "Fame" above those on "The Fame Monster": the whole query in the main field
+// beats its words there, which beat the same words elsewhere. `others` is a list of
+// [fields, weight] - several fields because a song's artist lives in two columns.
 export function scoreOf(main, others, list) {
   const parts = [
     `CASE WHEN ${main} LIKE @qExact THEN 1000
@@ -323,12 +278,8 @@ export function getLyrics(id) {
   };
 }
 
-// How far this song's text is pushed against the music. Seconds, positive for
-// later. Clamped rather than rejected: the control cannot produce anything
-// outside the range, so a value that is has come from somewhere else and the
-// nearest sane number is a better answer than an error. Rounded to a tenth,
-// which is the step the control offers - storing 0.30000000000000004 would come
-// back as a slider that sits between two notches.
+// Seconds, positive for later. Clamped rather than rejected, since the slider cannot go further;
+// rounded to its tenth step so 0.30000000000000004 does not sit between two notches.
 export function setLyricsOffset(id, seconds) {
   const row = db.prepare('SELECT id FROM tracks WHERE id = ?').get(id);
   if (!row) return null;
@@ -340,18 +291,14 @@ export function setLyricsOffset(id, seconds) {
   return offset;
 }
 
-// Path on disk, for streaming. Kept separate from the projection so a file
-// path is never part of an API response.
+// Path on disk, for streaming. API responses carry a path only for a missing track (shapeTrack).
 export function trackPath(id) {
   const row = db.prepare('SELECT path FROM tracks WHERE id = ?').get(id);
   return row ? row.path : null;
 }
 
-// Everything the transcode cache has to know about a song, and nothing a
-// response may carry. `size` and `mtime` are what makes a cache entry invalid
-// by itself when the file behind it changes, and `lossless` is the whole of the
-// re-encode decision (see `willTranscode` in lib/transcode.js) - `bitrate` and
-// `duration` were part of it until 2026-08-30 and are deliberately gone.
+// What the transcode cache needs, and nothing a response may carry: size and mtime invalidate an
+// entry, lossless alone decides the re-encode (willTranscode in lib/transcode.js).
 const STREAM_FIELDS = 'id, path, size, mtime, lossless';
 
 export function streamTrack(id) {
@@ -404,19 +351,9 @@ const shapeArtistRow = ({ ownCover, ...a }) => ({
   cover: a.cover ? `/covers/${a.cover}` : null,
 });
 
-// Up to four covers for the one interpret that is not a person: "Various" is
-// the compilation folder, so a single cover there is the artwork of whichever
-// compilation happens to be newest and says nothing about the rest. Its albums
-// are what it is made of, and the clients draw them as a 2x2 mosaic - the same
-// picture a genre or a playlist without artwork of its own gets.
-//
-// Deliberately for that one name and no other: every other interpret has a face
-// of their own, and their newest record standing for them is exactly right.
-//
-// The order is the one the artist page lists its albums in - newest first - so
-// the mosaic and the album grid below it read the same way, and a single is
-// taken too (`t.cover`) once the albums run out. `COALESCE(t.album_id, -t.id)`
-// buckets by record and not by song, the same trick GENRE_COVERS uses.
+// Only "Various" gets a mosaic: its newest compilation's cover says nothing about the rest, while
+// any other artist's newest record stands for them fine. Same order as the artist page;
+// `COALESCE(t.album_id, -t.id)` buckets by record, as in GENRE_COVERS.
 const VARIOUS_COVERS = `
   SELECT COALESCE(NULLIF(al.cover, ''), t.cover) AS cover
     FROM tracks t
@@ -428,11 +365,8 @@ const VARIOUS_COVERS = `
    LIMIT 4
 `;
 
-// The mosaic covers of an artist, which is an empty list for all but Various.
-// Empty for it as well when a picture was picked for it by hand - that answers
-// the question the mosaic exists to answer - and when it holds fewer than four
-// records with artwork: the clients fall back to the single cover then, and
-// four half-filled tiles would only look broken.
+// Empty also with a hand-picked picture or fewer than four covers: the clients then fall back to
+// the single cover, and half-filled tiles would look broken.
 function mosaicCovers({ id, name, ownCover }) {
   if (!isVarious(name) || ownCover) return [];
   const covers = db.prepare(VARIOUS_COVERS).all({ id });
@@ -471,11 +405,8 @@ export function getArtist(id, userId) {
     .all({ id })
     .map(shapeAlbum);
 
-  // The songs of an artist, most listened to first: opening an interpret is
-  // asking "what do I actually play by them", and the answer is time spent, not
-  // times started. Everything never played has nothing to rank by and keeps the
-  // order it had - newest album first, then disc and track number - so the tail
-  // of the list still reads like a discography.
+  // Most listened first: opening an artist asks what you actually play by them. Unplayed songs
+  // keep the discography order, so the tail still reads like one.
   const tracks = db
     .prepare(
       `SELECT ${TRACK_FIELDS}, ${TRACK_LISTENED} AS listened ${TRACK_FROM}
@@ -487,13 +418,8 @@ export function getArtist(id, userId) {
     .all({ id, userId })
     .map(shapeTrack);
 
-  // Files lying directly in the artist folder belong to no album. They get
-  // their own section instead of being counted as one.
-  //
-  // Sorted by title, which is the order they had before the list above started
-  // ranking by listening time: a single has no album date, no disc and no track
-  // number, so every tiebreaker of that query fell through to the title. The
-  // Singles page is a collection of its own and keeps reading that way.
+  // Files directly in the artist folder get their own section, by title: a single has no album
+  // date, disc or track number to sort by.
   const singles = tracks
     .filter((t) => !t.albumId)
     .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }));
@@ -598,10 +524,8 @@ export function getAlbum(id, userId) {
     .all({ id, userId })
     .map(shapeTrack);
 
-  // What the edit dialog has to show. Once the album carries a genre list of its
-  // own that list is the answer, empty included - the user emptied it. Before
-  // that there is nothing to show but what the files say, and offering the union
-  // of them is what keeps opening the dialog and saving from wiping them.
+  // The album's own genre list once it has one, empty included. Before that the union of the
+  // files' genres, so opening the edit dialog and saving does not wipe them.
   const genres = album.genresLocked
     ? db
         .prepare(
@@ -617,18 +541,9 @@ export function getAlbum(id, userId) {
 
 // --- Genres -----------------------------------------------------------------
 
-// The artwork of every genre: up to four covers, in the order the genre's own
-// track list has them, so a card in the grid and the head of the page it leads
-// to show the same picture.
-//
-// Two things it does that the single-cover subquery before it did not, and both
-// are the reason a genre could come up blank:
-//   - it takes the cover of a **single** too (`t.cover`), not only an album's.
-//     A genre made of loose files had no album to ask, so it had nothing.
-//   - it counts *records*, not songs: four tracks off one album would fill all
-//     four tiles with the same picture. `COALESCE(t.album_id, -t.id)` is that
-//     bucket - ids are positive on both tables, so the negated track id can
-//     never collide with an album - and a single stands for itself.
+// Up to four covers per genre, singles included, in the order of the genre's track list. One per
+// record, so one album cannot fill all four tiles: ids are positive on both tables, so the
+// negated track id in `COALESCE(t.album_id, -t.id)` never collides with an album.
 const GENRE_COVERS = `
   WITH per_record AS (
     SELECT tg.genre_id AS genreId,
@@ -677,16 +592,10 @@ export function listGenres() {
     });
 }
 
-// One list for a selection of genres, the same idea as the star playlists:
-// "Rock und Jazz" is one list, not two. A track that carries both is in it once
-// - which is why the genres are asked for as a set of track ids instead of
-// joined onto the track, where every extra genre would repeat the row.
-//
-// Returns null when any of the ids is unknown, so a made-up address stays a 404
-// instead of quietly showing a shorter selection.
+// A set of track ids rather than a join, so a track in two of the genres appears once. Null for
+// any unknown id, so a made-up address stays a 404 instead of a shorter selection.
 export function getGenres(ids, userId) {
-  // Validated integers, so inlining them keeps the statement to named
-  // parameters only - better-sqlite3 refuses the two styles mixed.
+  // Validated integers, so they are safe to inline into the IN lists.
   const wanted = [...new Set((Array.isArray(ids) ? ids : [ids]).map(Number))].filter(
     (n) => Number.isInteger(n) && n > 0
   );
@@ -806,9 +715,7 @@ export function recentlyPlayed(userId, limit = 18) {
     .map(shapeTrack);
 }
 
-// "Am häufigsten gehört" on the home page, and it means time listened - the
-// same measure the statistics rank by since they stopped counting starts. The
-// play count still comes along, it just does not decide the order.
+// Ranked by time listened, like the statistics; the play count comes along but does not decide.
 export function mostPlayed(userId, limit = 18) {
   return db
     .prepare(
@@ -843,19 +750,9 @@ export function newestAlbums(limit = 12) {
     .map(shapeAlbum);
 }
 
-// A handful of random tracks, so "Zufallsmix" on the home page always has
-// something to play even on a fresh library with no history.
-//
-// `unrated` narrows it to what has no star yet, which is the other thing a
-// random run is for: rating a library is a job you do by ear, and picking the
-// next unrated song by hand out of a list of a few thousand is the part that
-// makes it stop happening.
-//
-// The draw stays per song - every track equally likely, so a random run sounds
-// like the library actually is. What is *not* left to chance is the order they
-// come in: a uniform permutation puts the same interpret next to itself far more
-// often than it feels like it should, which is what makes a correct random run
-// seem stuck on one name. See `public/js/shuffle.js`.
+// `unrated` narrows the draw to songs without a star, for rating by ear. Every song is equally
+// likely, but the order is spread by artist (public/js/shuffle.js): a uniform permutation puts
+// the same artist side by side more often than feels random.
 export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
   const tracks = db
     .prepare(
@@ -870,14 +767,8 @@ export function randomTracks(userId, limit = 50, { unrated = false } = {}) {
 
 // --- The search page --------------------------------------------------------
 
-// One query, three answers, and each of them ranked - see the notes at
-// `searchWords` for why the words are spread over the fields the way they are.
-//
-// The three sections do not all look in the same places, and that is
-// deliberate: a *song* may be named by its title, its interpret and its album
-// together, an *album* by its title and its artist, an *artist* only by their
-// name. So "Fame Bowie Americans" finds the song and nothing else, which is
-// exactly what was asked - while "Bowie" still fills all three.
+// A song may be named by title, artist and album together, an album by title and artist, an
+// artist only by name - so "Fame Bowie Americans" finds just the song, "Bowie" all three.
 export function searchLibrary({ userId, q = '', limit = 100 } = {}) {
   const list = searchWords(q);
   if (!list.length) return { tracks: [], artists: [], albums: [] };
@@ -956,12 +847,8 @@ export function libraryStats() {
 
 // --- Matching an imported row against the library ---------------------------
 
-// Finds the track a CSV row refers to, from strict to forgiving:
-//   1. exact title + artist
-//   2. loose title (version suffixes dropped) + artist
-//   3. loose title + album
-//   4. loose title alone, but only when it is unique in the library
-// Returns the track id, or null when nothing matches well enough.
+// The track a CSV row refers to, from strict to forgiving (loose = version suffixes dropped).
+// A loose title alone only counts when it is unique in the library.
 export function findTrackForImport({ title, artists, album }) {
   const exact = normalize(title);
   const loose = loosen(title);

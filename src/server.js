@@ -15,11 +15,8 @@ import { unexpected } from './lib/errors.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
-// Express "trust proxy": how many reverse proxies sit in front of the app.
-// Default 1 (the usual single reverse proxy) - req.ip then comes from
-// X-Forwarded-For as set by the proxy. Set TRUST_PROXY=false when the app is
-// exposed directly, otherwise clients could spoof their IP via that header
-// and cycle through the per-IP login limiter.
+// Default 1 reverse proxy, so req.ip comes from X-Forwarded-For. Set TRUST_PROXY=false
+// when exposed directly, or clients spoof their IP and dodge the per-IP login limiter.
 function parseTrustProxy(value) {
   if (value == null || value === '') return 1;
   const s = String(value).trim();
@@ -43,16 +40,8 @@ app.locals.assetVersion = process.env.ASSET_VERSION || String(Date.now());
 // Security response headers (CSP etc.) for everything, including static files
 app.use(securityHeaders);
 
-// Static files (CSS, client JS) and the cover art extracted during the scan.
-// Covers are content-addressed by album id and rewritten on a rescan, so a
-// short cache is safe and keeps the album grid from re-fetching on every view.
-//
-// The JavaScript is the exception and has to revalidate. Only the two files the
-// page links directly carry the `?v=` cache buster; everything they import
-// (views.js, ui.js, player.js, ...) is fetched under its plain name, so with an
-// hour of cache a browser can run a fresh app.js against a stale views.js after
-// a deploy - which looks exactly like the deploy not having happened. A 304 is
-// one round trip and the file is not sent again.
+// Covers are named by album id and overwritten in place on a rescan, so their cache must stay short.
+// JS revalidates: imported modules carry no `?v=` buster, so a cached one would run stale after a deploy.
 app.use(
   '/static',
   express.static(path.join(projectRoot, 'public'), {
@@ -72,20 +61,18 @@ app.get('/healthz', (req, res) => res.json({ ok: true }));
 // Reject state-changing requests that come from a foreign origin (CSRF)
 app.use(rejectCrossSite);
 
-// Body parsers. The CSV import posts the file contents as text, so the JSON
-// limit has to fit a large playlist export.
+// The login and setup forms. The JSON parser sits behind the API's login check.
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
-app.use(express.json({ limit: '12mb' }));
 
-// Per-request view context. Pages and API responses are private and dynamic,
-// so they are never cached; static assets and covers keep their cache headers.
+// Pages and API responses are private and dynamic, so they are never cached;
+// static assets and covers keep their cache headers.
 app.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   res.locals.currentPath = req.path;
   next();
 });
 
-// Auth state for all views and route guards
+// Sets req.user for the route guards
 app.use(attachAuth);
 
 // Routes
@@ -103,12 +90,13 @@ app.use((req, res) => {
 // Error handling. The stack goes to the log under a short reference, and the
 // answer carries that reference - see `unexpected` in lib/errors.js.
 app.use((err, req, res, next) => {
-  // A body over the JSON limit or one that is not JSON never reaches its route:
-  // body-parser hands it straight to this handler.
-  const tooLarge = err && (err.type === 'entity.too.large' || err.status === 413);
+  // A 4xx (an oversized or broken body, a missing cover, an undecodable URL) is
+  // the request's fault, not a crash worth a stack trace.
+  const status = err && err.status >= 400 && err.status < 500 ? err.status : 500;
+  const tooLarge = status === 413;
   const badJson = err && err.type === 'entity.parse.failed';
-  if (tooLarge || badJson) console.warn(`Sonorus: ${req.method} ${req.originalUrl}: ${err.message}`);
-  const failure = tooLarge || badJson ? null : unexpected(err, req);
+  if (status < 500) console.warn(`Sonorus: ${req.method} ${req.originalUrl}: ${err.message}`);
+  const failure = status < 500 ? null : unexpected(err, req);
   if (res.headersSent) return next(err);
   if (req.path.startsWith('/api/')) {
     if (tooLarge) {
@@ -117,9 +105,12 @@ app.use((err, req, res, next) => {
     if (badJson) {
       return res.status(400).json({ ok: false, error: 'bad_json', message: 'Die Anfrage war kein gültiges JSON.' });
     }
+    if (!failure) {
+      return res.status(status).json({ ok: false, error: 'bad_request', message: 'Die Anfrage konnte nicht gelesen werden.' });
+    }
     return res.status(500).json({ ok: false, error: 'server_error', ref: failure.ref, message: failure.message });
   }
-  res.status(tooLarge ? 413 : badJson ? 400 : 500).render('error', {
+  res.status(status).render('error', {
     title: 'Fehler',
     message: failure
       ? process.env.NODE_ENV === 'development'
@@ -144,9 +135,8 @@ app.listen(port, () => {
   } else {
     console.log('Login required. Manage accounts from the account menu (admins only).');
   }
-  // Asked once here rather than on every stream. Without ffmpeg the app is not
-  // broken, it simply has one quality instead of two - and the clients are told
-  // so through GET /api/quality, so nothing offers a setting that cannot work.
+  // Probed once, not per stream. Without ffmpeg only the original quality exists,
+  // and GET /api/quality tells the clients so they offer no setting that cannot work.
   probeFfmpeg().then((ready) => {
     console.log(
       ready

@@ -1,42 +1,6 @@
-// Library scanner: walks the mounted music folder and writes what it finds into
-// the library tables.
-//
-// Who made a track and where it belongs comes from the folder structure, not
-// from the file tags - tags are inconsistent across a collection and put songs
-// under artists and albums nobody asked for. The layout is the contract:
-//
-//   music/<Interpret>/<Album>/01 - Titel.flac   album track
-//   music/<Interpret>/Titel.flac                single, belongs to no album
-//
-// One artist folder is read differently, and only that one: under "Various" an
-// album is a compilation where every song has an interpret of its own, so the
-// file name carries it between the track number and the title:
-//
-//   music/Various/<Album>/01 - Interpret - Titel.flac
-//
-// Only what the folders cannot say is still read from the file: release date,
-// genre, duration, format and the embedded cover art. Of those, release date and
-// genre are read from the file only while nobody has said better: an album that
-// was edited by hand hands its own down to every song in it, the ones it gains
-// later included.
-//
-// Spoken word is scanned from a second root, PODCAST_DIR, and read by a rule of
-// its own:
-//
-//   podcasts/<Show>/#001 Titel.mp3               one episode of one show
-//
-// It is a second root rather than a folder in the music library because the
-// rule above would otherwise turn every show into an interpret and every
-// episode into a single. Episodes land in the same `tracks` table - so the
-// player, the streaming endpoint and the queue need to know nothing about them -
-// but they carry a `podcast_id`, and every music query asks for that to be NULL.
-//
-// The music folder is read-only. Everything the scanner produces (rows, cover
-// art) lives in the data directory, so a rescan can always rebuild the library
-// from the files without touching them.
-//
-// Files whose size and modification time are unchanged since the last scan are
-// skipped, which makes a rescan of a large library cheap.
+// Library scanner: walks the music, podcast, audiobook, audio drama and ebook roots (videos via
+// videoscan.js) into the library tables. Artist, album and title come from the folders, not the
+// tags, which are inconsistent across a collection; the roots themselves are only ever read.
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -249,18 +213,9 @@ function audiobookId(title, aId, kind) {
   return Number(insertBook.run(clean, aId, kind).lastInsertRowid);
 }
 
-// Who reads it and when it came out, taken from the parts.
-//
-// Both live on the *book* rather than on its parts, for the reason an album's
-// date does: the parts are files, and a file that is renamed is a new row that
-// would take the answer back with it. And both are only written where the user
-// has not typed over them - the file knows the year, the listener may know the
-// day, and the day must not be overwritten by the next scan.
-//
-// `composer` is the narrator on every Audible m4b, which is not a convention
-// anybody invented here: it is what Audible writes and what Audiobookshelf
-// reads back as `narrators`. Verified across all 30 books of Florian's library
-// on 2026-08-29 - every one of them matched.
+// Narrator and date live on the book, not the parts, so a renamed part file cannot take them
+// along; a hand edit is never overwritten. `composer` is the narrator on an Audible m4b - what
+// Audible writes and Audiobookshelf reads back as `narrators`.
 const selectBookMeta = db.prepare(
   'SELECT narrator, release_date, narrator_locked, date_locked FROM audiobooks WHERE id = ?'
 );
@@ -271,9 +226,8 @@ function storeBookMeta(bookId, common, kind) {
   const book = selectBookMeta.get(bookId);
   if (!book) return;
 
-  // A radio play has a cast where a book has a narrator, and Florian asked for
-  // "Gesprochen von" to stay away from them - a list of six actors under that
-  // heading reads as one person doing a bad job. The date is read for both.
+  // A radio play has a cast, not a narrator: six actors under "Gesprochen von" read as one
+  // person doing a bad job. The date is read for both.
   if (kind !== 'drama' && !book.narrator_locked) {
     // Several names mean a full cast, which is a radio play read as a book -
     // they are kept as they stand, comma separated, and the interface decides
@@ -312,12 +266,8 @@ const UNKNOWN_ARTIST = 'Unbekannter Interpret';
 // A folder inside an album that only groups one disc of it ("CD1", "Disc 2").
 const DISC_DIR = /^(?:cd|disc|disk)\s*[-_. ]?(\d{1,2})$/i;
 
-// A name starting with a dot is hidden and never walked (see collectFiles), so
-// an album like "...Baby One More Time" would never be scanned. Escaping that
-// dot with a backslash - "\...Baby One More Time" - takes the hiding away on
-// the filesystem; the backslash is not part of the name and is dropped here, so
-// the library shows the title the way it is meant to read. The look-alikes of
-// a character no file name can carry are read back the same way.
+// A leading dot hides a name from the walk, so "...Baby One More Time" is stored with a
+// backslash in front, dropped here. Look-alikes of reserved characters are read back too.
 function nameOf(name) {
   return restoreReserved(name.startsWith('\\.') ? name.slice(1) : name);
 }
@@ -325,10 +275,8 @@ function nameOf(name) {
 // "01 - Titel", "01 Titel", "1-01 Titel". Only used inside an album folder, so
 // a single called "1979.flac" keeps its name.
 function splitTrackNumber(base) {
-  // A disc prefix is written tight ("1-01 Titel"), and that is the only thing
-  // that tells it apart from a track number followed by a title that starts
-  // with a number: "02 - 400 Lux" is track 2 of "400 Lux", not disc 2 of
-  // track 400. So no space is allowed around the separator here.
+  // No space around the disc separator ("1-01 Titel"): that alone keeps "02 - 400 Lux" track 2
+  // of "400 Lux" rather than disc 2, track 400.
   const withDisc = base.match(/^(\d{1,2})[-_.](\d{1,3})\s*[-._)]?\s+(.+)$/);
   if (withDisc) {
     return { discNo: Number(withDisc[1]), trackNo: Number(withDisc[2]), title: withDisc[3].trim() };
@@ -338,23 +286,16 @@ function splitTrackNumber(base) {
   return { discNo: null, trackNo: Number(m[1]), title: m[2].trim() || base };
 }
 
-// What is left of a track name on a compilation once the number is gone:
-// "Lovejoy - Privately Owned Spiral Galaxy". The *first* separator splits it,
-// so the interpret is one segment and the title keeps every dash it has of its
-// own - which is the way round that matters, because a title with a dash in it
-// is ordinary and an interpret with one is not.
-//
-// The separator has to be a dash with space on both sides. A hyphenated name
-// ("Jay-Z") would otherwise be cut in half, and a file that says nothing about
-// an interpret simply keeps its whole title.
+// "Lovejoy - Privately Owned Spiral Galaxy": split at the first " - ", since a dash in a title
+// is ordinary and one in an artist name is not. Spaces on both sides keep "Jay-Z" whole.
 function splitTrackArtist(title) {
   const m = title.match(/^(.+?)\s+-\s+(.+)$/);
   if (!m) return { trackArtist: '', title };
   return { trackArtist: m[1].trim(), title: m[2].trim() };
 }
 
-// Reads artist, album, track number and title off the path. Everything below
-// the artist folder that is not an album folder is a single.
+// music/<Artist>/<Album>/01 - Title.flac is an album track, music/<Artist>/Title.flac a single;
+// under "Various" the file name is "01 - Artist - Title".
 function describeFile(filePath) {
   const parts = path.relative(musicDir, filePath).split(path.sep);
   const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
@@ -388,10 +329,8 @@ function describeFile(filePath) {
 // silently disappears from the library.
 const UNKNOWN_SHOW = 'Unbekannter Podcast';
 
-// "#100 Titel", "100 - Titel", "100. Titel". A bare number followed by a space
-// is deliberately *not* read as an episode number: "2020 Jahresrueckblick" is a
-// title, and a show that numbers its episodes at all writes the number tightly
-// or with a separator. Both shows in Florian's library use the "#NNN " form.
+// "#100 Titel", "100 - Titel", "100. Titel". A bare number plus space is not an episode
+// number: "2020 Jahresrueckblick" is a title.
 function splitEpisodeNumber(base) {
   const m = base.match(/^#\s*(\d{1,5})\s+(.+)$/) || base.match(/^(\d{1,5})\s*[-._)]\s*(.+)$/);
   if (!m) return { episodeNo: null, title: base };
@@ -413,12 +352,8 @@ function describeEpisode(filePath) {
 // book folder to name it; these keep it in the library rather than dropping it.
 const UNKNOWN_AUTHOR = 'Unbekannter Autor';
 
-// Where a file sits in audiobooks/<Author>/<Book>/<part>.mp3.
-//
-// The part is the one thing the listener never sees: a book is one thing to
-// them, and the files it is made of only decide the order it plays in. So
-// nothing here tries to make a nice title out of the file name - only the
-// number in front of it matters, and even that only for sorting.
+// audiobooks/<Author>/<Book>/<part>.mp3. Parts are never shown, so only the leading number of
+// the file name matters, and only for the play order.
 function describeAudiobookPart(filePath, root) {
   const parts = path.relative(root, filePath).split(path.sep);
   const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
@@ -433,11 +368,8 @@ function describeAudiobookPart(filePath, root) {
 
 // --- The release date -------------------------------------------------------
 
-// The most precise date the tags of one file agree on. `date` is the primary
-// tag, the other two only refine it: a source that says the same year with a
-// month or a day on it wins, one that says another year does not - it is a
-// different release then, and the primary tag decides which one this file is.
-// Without any usable date the bare year tag is still a date.
+// `date` is the primary tag; the others only refine it with a month or day of the same year.
+// Another year means another release, and the primary tag decides which one this file is.
 function releaseDate(common) {
   let best = '';
   for (const raw of [common.date, common.releasedate, common.originaldate]) {
@@ -454,10 +386,8 @@ function releaseDate(common) {
 const setAlbumCover = db.prepare('UPDATE albums SET cover = ? WHERE id = ?');
 const setTrackCover = db.prepare('UPDATE tracks SET cover = ? WHERE id = ?');
 
-// Writes one artwork file into the covers directory and returns its name, or
-// an empty string when the file carries none. `fromFolder` allows a cover image
-// lying next to the audio: right for an album folder, wrong for a single, where
-// the image next to it belongs to the artist and not to that one song.
+// `fromFolder` allows a cover image next to the audio: right for an album folder, wrong for a
+// single, where that image belongs to the artist.
 async function storeCoverFile(meta, filePath, baseName, fromFolder) {
   const picture = meta.common.picture && meta.common.picture[0];
   if (picture && picture.data && picture.data.length) {
@@ -493,12 +423,8 @@ async function storeAlbumCover(albumId_, meta, filePath) {
   if (name) setAlbumCover.run(name, album.id);
 }
 
-// The show wears the artwork of its newest episode, and only the show does.
-// Measured on the real library: 361 Brainpain episodes carry 37 different
-// pictures and 330 Serienkiller episodes carry 10 - a show rebrands, it does not
-// draw one cover per episode. Storing one file per episode would write those 47
-// pictures 691 times for nothing, so the show keeps one and every episode of it
-// shows that. The date is what decides "newest" without reading anything twice.
+// One cover per show, from its newest episode: shows rebrand rarely (361 episodes measured with
+// 37 pictures), so a file per episode would be waste. The date decides "newest" without re-reading.
 async function storePodcastCover(id, meta, filePath, date) {
   const show = db.prepare('SELECT id, cover, cover_date FROM podcasts WHERE id = ?').get(id);
   if (!show) return;
@@ -507,10 +433,7 @@ async function storePodcastCover(id, meta, filePath, date) {
   if (name) setPodcastCover.run(name, date || '', show.id);
 }
 
-// The book keeps the first artwork any of its parts turns up, and a cover.jpg
-// lying in the book folder counts - that is the usual way an audiobook carries
-// its picture. The author has none of their own; the query borrows one of their
-// books' covers, the same way an artist borrows an album's.
+// A cover.jpg in the book folder counts: that is how an audiobook usually carries its picture.
 async function storeBookCover(id, meta, filePath) {
   const book = db.prepare('SELECT id, cover FROM audiobooks WHERE id = ?').get(id);
   if (!book || book.cover) return;
@@ -520,7 +443,11 @@ async function storeBookCover(id, meta, filePath) {
 
 // --- Walking the folder -----------------------------------------------------
 
-// Collects every audio file under the music folder. Symlinked directories are
+// Folders the last walk could not open. Nothing below them counts as deleted:
+// a mount with the wrong owner would otherwise cost every rating-less track its row.
+let unreadable = [];
+
+// Collects the files with the given extensions under one root. Symlinked directories are
 // followed but remembered, so a loop cannot make the walk run forever.
 async function collectFiles(root, extensions = AUDIO_EXT) {
   const files = [];
@@ -531,6 +458,7 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
     try {
       real = await fsp.realpath(dir);
     } catch {
+      unreadable.push(path.join(dir, path.sep));
       return;
     }
     if (seenDirs.has(real)) return;
@@ -544,6 +472,7 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
       // folder, and the scan reports success over a library it just emptied.
       console.warn(`Sonorus: could not open ${dir}:`, err && err.message ? err.message : err);
       noteProblem(dir, err);
+      unreadable.push(path.join(dir, path.sep));
       return;
     }
     for (const entry of entries) {
@@ -657,11 +586,8 @@ async function indexFile(filePath, stat, force) {
   // otherwise win it back on the next scan.
   const yearLocked = !!(existing && existing.year_locked);
 
-  // An album that was edited by hand decides the date and the genres of every
-  // song in it, this one included - whether it has been in the album all along
-  // or is arriving now under a new name. The lock is the condition and not the
-  // value behind it: a date or a genre list the user deliberately emptied has to
-  // clear the song too, and would otherwise fall back to the file.
+  // A hand-edited album decides date and genres of every song in it, new ones included. The lock
+  // is the condition, not the value: an emptied date or genre list must clear the song too.
   const albumDate = !!(album && album.year_locked);
   const albumGenres = album && album.genres_locked
     ? albumGenreNames.all(album.id).map((row) => row.name)
@@ -730,10 +656,7 @@ async function indexFile(filePath, stat, force) {
   }
 }
 
-// One episode of one show. Far shorter than indexFile because almost everything
-// that makes a music track complicated has no counterpart here: an episode
-// belongs to no artist and no album, carries no genre worth browsing by, and
-// nobody hand-edits it - so there is nothing to lock and nothing to inherit.
+// An episode has no artist, album, browsable genre or hand edits: nothing to lock or inherit.
 async function indexEpisode(filePath, stat, force) {
   const existing = selectTrackByPath.get(filePath);
   if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
@@ -801,13 +724,8 @@ async function indexEpisode(filePath, stat, force) {
   if (pId) await storePodcastCover(pId, meta, filePath, date);
 }
 
-// One part of one book. Shorter still than an episode: a part has no title
-// worth showing, no date, no genre and nothing anybody edits - it exists only
-// so the book has something to play, in the right order.
-//
-// What it does carry, and what the *book* takes off it, is the narrator, the
-// release date and the chapter marks. All three are facts about the book, so
-// they end up on the book row; the part is only where they are read from.
+// A part only gives the book something to play, in order. Narrator, release date and chapter
+// marks are read from it but are facts about the book, so they go on the book row.
 async function indexAudiobookPart(filePath, stat, force, root, kind) {
   const existing = selectTrackByPath.get(filePath);
   if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
@@ -871,19 +789,15 @@ async function indexAudiobookPart(filePath, stat, force, root, kind) {
     storeBookMeta(bId, common, kind);
   }
 
-  // Last, because it is the one thing here that costs a process: an Audible m4b
-  // keeps its marks in the file rather than in a tag, so nothing short of
-  // ffprobe finds them. Only ever on a file that was actually re-read - the
-  // size/mtime shortcut above has already returned for everything else.
+  // Last, because it costs an ffprobe process: an Audible m4b keeps its marks in the file, not
+  // in a tag. Only re-read files get here; the size/mtime shortcut returned for the rest.
   if (trackId) writeChapters(trackId, await readChapters(filePath));
 }
 
 // --- Pruning ----------------------------------------------------------------
 
-// A star rating outlives its file: deleting the row would cascade the rating
-// away, so a track someone has rated, put in a playlist or listened to is only
-// marked as missing and stays visible - greyed out, with its path. Everything
-// else nobody would miss is deleted as before.
+// Deleting a row would cascade its ratings, playlist entries and plays away, so a referenced
+// track is only marked missing and stays visible, greyed out with its path.
 const isReferenced = db.prepare(`
   SELECT 1 FROM ratings        WHERE track_id = @id
    UNION ALL
@@ -926,10 +840,8 @@ const retireTracks = db.transaction((ids) => {
 
 // --- Writing one ebook ------------------------------------------------------
 
-// Where a file sits in ebooks/<Autor>/<Titel>/<datei>.epub. The folder names
-// win over the metadata inside the file: a shelf full of Calibre exports has
-// titles like "Collins, Suzanne - The Ballad of Songbirds and Snakes", and the
-// folder is what Florian named.
+// ebooks/<Author>/<Title>/<file>.epub. The folders win over the EPUB metadata, which on Calibre
+// exports reads like "Collins, Suzanne - The Ballad of Songbirds and Snakes".
 function describeEbook(filePath) {
   const parts = path.relative(ebookDir, filePath).split(path.sep);
   const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
@@ -989,12 +901,11 @@ async function indexEbook(filePath, stat, force) {
     size,
     mtime,
   };
-  // The date is left out of the call entirely rather than written back the same:
-  // better-sqlite3 refuses a parameter its statement does not name.
   if (known && known.date_locked) {
     updateEbookKeepingDate.run(fields);
   } else {
-    updateEbook.run({ ...fields, release_date: book.date, year: yearOf(book.date) });
+    const date = parseReleaseDate(book.date) || '';
+    updateEbook.run({ ...fields, release_date: date, year: yearOf(date) });
   }
 
   const row = db.prepare('SELECT cover FROM ebooks WHERE id = ?').get(id);
@@ -1009,12 +920,8 @@ async function indexEbook(filePath, stat, force) {
   return id;
 }
 
-// Removes the artists, albums and genres that no track references any more.
-// Playlist entries and ratings pointing at a deleted track cascade away with it.
-//
-// The albums go first, so an album that is gone takes its own genre list with it
-// (album_genres cascades) before the genres are counted - and a list that is
-// still standing keeps its genres, which the songs of that album carry anyway.
+// Removes the parent rows nothing references any more. Albums go first, so a gone album takes
+// its album_genres along (cascade) before the genres are counted.
 const prune = db.transaction(() => {
   db.exec(`
     DELETE FROM albums
@@ -1058,6 +965,7 @@ export async function runScan() {
     finishedAt: null,
     error: '',
   });
+  unreadable = [];
 
   try {
     if (!fs.existsSync(musicDir)) {
@@ -1065,16 +973,12 @@ export async function runScan() {
     }
 
     const files = await collectFiles(musicDir);
-    // A second root, and it is allowed to be missing: an instance without
-    // spoken word simply has nothing there. Only the music folder is required.
-    const episodes = fs.existsSync(podcastDir) ? await collectFiles(podcastDir) : [];
-    // And a third, on the same terms: missing is fine.
-    const bookParts = fs.existsSync(audiobookDir) ? await collectFiles(audiobookDir) : [];
-    // And a fourth. Same layout, same terms - a play is a book with a cast.
-    const dramaParts = fs.existsSync(audiodramaDir) ? await collectFiles(audiodramaDir) : [];
-    // And a fifth, which is read rather than played and therefore lands in a
-    // table of its own.
-    const ebooks = fs.existsSync(ebookDir) ? await collectFiles(ebookDir, EBOOK_EXT) : [];
+    // The other roots may be missing; a missing one is walked as unreadable, so a
+    // dropped mount keeps its rows instead of deleting them.
+    const episodes = await collectFiles(podcastDir);
+    const bookParts = await collectFiles(audiobookDir);
+    const dramaParts = await collectFiles(audiodramaDir);
+    const ebooks = await collectFiles(ebookDir, EBOOK_EXT);
     const videoWork = await collectVideoWork();
     state.total =
       files.length + episodes.length + bookParts.length + dramaParts.length + ebooks.length +
@@ -1118,12 +1022,14 @@ export async function runScan() {
 
     state.phase = 'pruning';
     const known = db.prepare('SELECT id, path FROM tracks').all();
-    const gone = known.filter((t) => !seen.has(t.path)).map((t) => t.id);
+    const unseen = (file) => !seen.has(file) && !unreadable.some((dir) => file.startsWith(dir));
+    const gone = known.filter((t) => unseen(t.path)).map((t) => t.id);
     if (gone.length) Object.assign(state, retireTracks(gone));
     // A book whose file is gone is gone: nothing refers to it but the place it
     // was read to, and that is worth less than a shelf full of dead rows.
-    for (const row of db.prepare('SELECT id FROM ebooks').all()) {
-      if (!seenBooks.has(row.id)) {
+    // `unseen` also spares a book whose file is there but failed to read this time.
+    for (const row of db.prepare('SELECT id, path FROM ebooks').all()) {
+      if (!seenBooks.has(row.id) && unseen(row.path)) {
         db.prepare('DELETE FROM ebooks WHERE id = ?').run(row.id);
         state.removed += 1;
       }
@@ -1140,12 +1046,8 @@ export async function runScan() {
     await refreshDueMetadata(state);
     sweepVideoArt();
 
-    // The smaller copies, made in one batch rather than one at a time on the
-    // first play of every song. This is the last phase of the scan on purpose:
-    // it is the moment the library is known to be current, so it is also the
-    // moment a file that has just appeared can be encoded without asking again
-    // what is there. It is by far the longest phase, which is why it reports
-    // through the same progress the walk does.
+    // Last on purpose: only now is the library known to be current. Batched here rather than
+    // encoded on each song's first play.
     await transcodeBatch();
 
     state.phase = 'done';
@@ -1161,11 +1063,8 @@ export async function runScan() {
   return scanState();
 }
 
-// Encodes what the smaller quality needs, and reports through the scan's own
-// progress so the settings page draws one bar for the whole job.
-//
-// Skipped without ffmpeg rather than failing: an instance without it serves the
-// original and nothing else, which is a smaller instance and not a broken one.
+// Reports through the scan's own progress, so the settings page draws one bar for the whole job.
+// Skipped without ffmpeg rather than failing: such an instance serves only the originals.
 async function transcodeBatch() {
   if (!isFfmpegReady()) return;
   // Read straight from the database rather than through the library model: the

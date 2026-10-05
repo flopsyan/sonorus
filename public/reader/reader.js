@@ -1,13 +1,6 @@
-// The reading view's own half: pagination, taps, and what it reports back.
-//
-// It lives inside the book's document rather than in the client around it,
-// because everything it does needs the laid-out text: how many pages this
-// chapter is at this font size is a question only the engine that broke it into
-// columns can answer.
-//
-// The client talks to it through `window.Reader` and hears back through
-// `window.SonorusReader`, an interface the Android app adds. Without that
-// object the calls are simply skipped, so the same file works in a browser.
+// Pagination and taps, inside the book's document because only it knows the laid-out text.
+// The client calls `window.Reader` and hears back through `window.SonorusReader`, added by
+// the Android app or by public/js/reading.js; without it the callbacks are skipped.
 
 (function () {
   'use strict';
@@ -16,20 +9,14 @@
   var page = 0;
   var pages = 1;
 
-  // Whether the text has been broken into columns at least once. Before that
-  // `pages` is 1 whatever the chapter holds, and everything that turns a share
-  // into a page number has to wait rather than compute with it.
+  // Until the first layout `pages` is 1, so turning a share into a page has to wait.
   var measured = false;
 
-  // A share of the chapter still to be landed on. It outlives the relayouts on
-  // the way there, and that is the whole reason it exists: the client asks for
-  // the stored place while the text is still one column wide, and the answer
-  // would be page 0 for every book ever reopened.
+  // A share still to be landed on. It outlives relayouts because the client asks for the
+  // stored place while the text is one column wide, which would always give page 0.
   var pending = null;
 
-  // Whether the faces the book is set in have arrived. A page counted against
-  // the fallback font is a count of a book nobody will see: Ubuntu is served
-  // from Sonorus and turns up a moment after the text does.
+  // A page count against the fallback font is wrong: Ubuntu arrives after the text does.
   var fontsReady = false;
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(function () {
@@ -40,8 +27,7 @@
   }
 
   function step() {
-    // One page is the viewport, gap included - which is what the column rule
-    // above adds up to.
+    // One page is the viewport, gap included - what the column rule in reader.css adds up to.
     return window.innerWidth;
   }
 
@@ -84,11 +70,8 @@
   }
 
   /**
-   * Re-measures and puts the reader back where they were.
-   *
-   * A pending share wins over the place on screen: it is a place the client
-   * asked for and has not been granted yet, while the place on screen is only
-   * where the previous layout happened to leave things.
+   * A pending share wins over the place on screen: the client asked for it, while the
+   * place on screen is only where the previous layout left things.
    */
   function settle(reason) {
     var was = ratio();
@@ -120,18 +103,11 @@
       return true;
     },
 
-    /**
-     * Where the reader was, as a share of the chapter.
-     *
-     * Before the text has been broken this is remembered rather than acted on.
-     * Asking twice is allowed; the last share wins.
-     */
+    /** Before the first layout this is only remembered; the last share wins. */
     goToRatio: function (value) {
       var at = Math.max(0, Math.min(1, Number(value) || 0));
-      // Remembered even when it can be granted at once, because a relayout may
-      // already be on its way - the client applies the stored place and the
-      // reader's font in the same breath - and a relayout that does not know
-      // about this would put the old page back.
+      // Remembered even when granted at once: the client sets place and font together, and
+      // a relayout already on its way would otherwise put the old page back.
       pending = at;
       if (!measured) return;
       page = pageOf(at);
@@ -164,25 +140,17 @@
       Object.keys(values || {}).forEach(function (key) {
         if (names[key]) root.style.setProperty(names[key], values[key]);
       });
-      // The text is re-broken, so where the reader was is kept as a share and
-      // put back afterwards rather than as a page number.
+      // The text is re-broken, so the place is kept as a share, not a page number.
       settle('style');
     },
 
-    /**
-     * The line in the bottom margin: which page of the whole book this is.
-     *
-     * The text comes from the client, because only the client knows the book.
-     * This document is one chapter and cannot count the ones around it.
-     */
+    /** The page of the whole book, which only the client can count: this is one chapter. */
     footer: function (text) {
       var el = document.getElementById('sonorus-foot');
       if (!el) {
         el = document.createElement('div');
         el.id = 'sonorus-foot';
-        // Appended to <html> rather than to <body> on purpose: the body carries
-        // the transform that slides the pages sideways, and a fixed child of a
-        // transformed element travels with it instead of staying put.
+        // Not in <body>: a fixed child of the transformed body would slide with the pages.
         document.documentElement.appendChild(el);
       }
       el.textContent = text == null ? '' : String(text);
@@ -193,16 +161,8 @@
     },
 
     /**
-     * Measures this instant instead of on the next frame.
-     *
-     * Everything else here waits for `requestAnimationFrame`, which is right
-     * for a page somebody is looking at and useless for one nobody is: a view
-     * that is not being drawn is given no frames, so the measurement would
-     * never happen. Reading `scrollWidth` forces the layout synchronously, and
-     * that is exactly what a background count needs.
-     *
-     * `fonts` says whether the answer is worth keeping. Counted before the
-     * book's faces have loaded, it is a count of the wrong typeface.
+     * Synchronous, because a view that is not drawn gets no animation frames. `fonts` false
+     * means the count used the fallback typeface and is not worth keeping.
      */
     measureNow: function () {
       measure();
@@ -220,8 +180,7 @@
     },
   };
 
-  // Left third back, right third on, the middle for the controls. The same
-  // division every reader uses, and the only one that needs no explaining.
+  // Left third back, right third on, the middle for the controls.
   document.addEventListener(
     'click',
     function (event) {
@@ -249,12 +208,8 @@
     true
   );
 
-  // A swipe does the same as a tap on the side. Vertical movement is left
-  // alone: there is nothing to scroll, so it can only be a scroll that was
-  // meant for something else.
-  //
-  // The host has to keep its own hands off the horizontal drag while a book is
-  // open, or the gesture is spent opening a navigation drawer instead.
+  // A vertical drag is ignored: nothing here scrolls. The host must not claim horizontal
+  // drags while a book is open, or they open its navigation drawer instead.
   var startX = 0;
   var startY = 0;
   document.addEventListener('touchstart', function (e) {

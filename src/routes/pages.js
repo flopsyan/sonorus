@@ -5,7 +5,6 @@ import {
   setupRequired,
   loginBlocked,
   recordLoginFailure,
-  resetLoginFailures,
   authenticate,
   setSessionCookie,
   clearSessionCookie,
@@ -63,8 +62,8 @@ router.post('/login', (req, res) => {
       .render('login', { title: 'Anmelden', error: 'Zu viele Fehlversuche. Bitte kurz warten.', next });
   }
   const user = authenticate(req.body.username, req.body.password);
+  // No reset on success: one account's login must not wipe the guesses made against another.
   if (user) {
-    resetLoginFailures(req.ip);
     setSessionCookie(res, req, user);
     return res.redirect(next);
   }
@@ -78,10 +77,8 @@ router.post('/logout', (req, res) => {
 });
 
 // --- The app ---------------------------------------------------------------
-// Sonorus is one page: navigating between artists, albums and playlists must
-// never interrupt playback, so the server hands out the same shell for every
-// library route and the client renders the view. Listing the routes explicitly
-// (instead of a catch-all) keeps unknown URLs a real 404.
+// One page, so navigating never interrupts playback: every library route gets the
+// same shell. Listing the routes instead of a catch-all keeps unknown URLs a real 404.
 const APP_ROUTES = [
   '/',
   '/tracks',

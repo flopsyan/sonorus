@@ -1,41 +1,10 @@
-// The shuffle, and the one module both halves of Sonorus run.
-//
-// It lives under `public/` rather than under `src/lib/` because the browser can
-// only import what is served, and the server can import anything: the player in
-// the browser and `/api/shuffle` on the server have to deal the same way, and a
-// second copy of this file is a copy that would drift.
-//
-// ## Why a correct shuffle needed fixing at all
-//
-// Nothing here was broken in the maths. `ORDER BY RANDOM()` draws a uniform
-// sample and Fisher-Yates produces a uniform permutation - both were right all
-// along. What they are not is what "shuffled" is expected to *sound* like, and
-// for one concrete reason:
-//
-// **A fair permutation clumps.** Songs by the same interpret land next to each
-// other far more often than anyone expects - the same effect that makes people
-// call true random "not random". On a pool of 300 songs, half of them by one
-// interpret, a plain Fisher-Yates leaves about 76 places where that name follows
-// itself, with runs of a dozen in a row. Nothing is wrong with it; it simply
-// sounds like the shuffle is stuck.
-//
-// The draw itself is deliberately left alone: every *song* stays equally likely,
-// so a random run keeps sounding like the library actually is. Only the order
-// changes, and the idea is the one Spotify described in 2014 - do not order the
-// songs, order the *interprets*, each one laid out evenly across the whole list
-// so two songs by the same name are always about a list-length divided by their
-// count apart.
-//
-// For a list with one interpret in it - an album, a single artist's page - every
-// song is in the same group and the result is a plain shuffle again. The spread
-// costs nothing where there is nothing to spread.
+// Shared by the player and `/api/shuffle`, so it lives under public/: the browser imports only
+// what is served. A fair permutation clumps (half the songs by one interpret: ~76 repeats in
+// 300), so the draw stays uniform and only the order spreads each interpret over the list.
 
 /**
- * How far [separate] looks for a song to trade places with.
- *
- * A repeat that cannot be settled inside fifty songs is one where that interpret
- * owns most of the list, and then no order avoids it - so the search stops
- * rather than walking the whole tail for nothing.
+ * How far [separate] looks for a swap. A repeat not settled within fifty songs belongs to an
+ * interpret owning most of the list, which no order can avoid.
  */
 const REACH = 50;
 
@@ -54,22 +23,9 @@ export function shuffleInPlace(list, random = Math.random) {
 }
 
 /**
- * Lays every interpret out over the whole list, biggest first.
- *
- * Biggest first is the whole trick, and it is what an earlier attempt at this
- * got wrong. Giving each interpret an even spacing but an *independent* random
- * starting point spreads each of them correctly and still lets two of them land
- * on the same spot: with one name owning half the list, about a third of its
- * slots collide with something and the repeats only fall from 76 to 54.
- *
- * Handing out the slots instead settles that by construction. The interpret with
- * the most songs picks while every slot is still free, so it takes every second
- * one and can no longer follow itself at all; everyone else fills in around it.
- * A song whose slot is taken moves to the next free one along, which is close
- * enough that the even spread survives.
- *
- * The starting point stays random, so the same library deals a different order
- * every time.
+ * Hands out slots biggest interpret first: it picks while every slot is free, so it can never
+ * follow itself. Even spacing with independent phases alone lets interprets collide and only
+ * cut the repeats from 76 to 54.
  */
 function dealIntoSlots(groups, total, random) {
   const slots = new Array(total).fill(null);
@@ -90,12 +46,7 @@ function dealIntoSlots(groups, total, random) {
   return slots;
 }
 
-/**
- * How many of the two joins around position [i] are a repeat.
- *
- * The measure [separate] works on: a swap is worth making when it leaves fewer
- * of these behind than it found.
- */
+/** How many of the two joins around position [i] are a repeat. */
 function joinCost(keys, i) {
   let cost = 0;
   if (i > 0 && keys[i] === keys[i - 1]) cost += 1;
@@ -104,20 +55,15 @@ function joinCost(keys, i) {
 }
 
 /**
- * Trades the last neighbouring repeats away, one pass, in place.
- *
- * The slot deal leaves few of them - they are what the "next free slot along"
- * rule produces when two interprets want the same place. This settles those: a
- * song sitting next to its own name trades places with the nearest later song
- * that is happier there. Only swaps that really lower the count are kept, so the
- * pass can never make the list worse.
+ * Trades away the few repeats the slot deal leaves (two interprets wanting one slot), in one
+ * pass: only swaps that lower the repeat count are kept, so it never makes the list worse.
  */
 function separate(order, keys) {
   for (let i = 1; i < order.length; i += 1) {
     if (keys[i] !== keys[i - 1]) continue;
     const until = Math.min(order.length, i + 1 + REACH);
-    // From i + 2, so the two positions never share a neighbour and the cost of
-    // each can be read on its own.
+    // From i + 2, so the two positions never share a join and the cost of each can
+    // be read on its own.
     for (let j = i + 2; j < until; j += 1) {
       const before = joinCost(keys, i) + joinCost(keys, j);
       [keys[i], keys[j]] = [keys[j], keys[i]];
@@ -132,16 +78,9 @@ function separate(order, keys) {
 }
 
 /**
- * A shuffle that spreads each interpret over the whole list instead of only
- * permuting it. See the note at the top of this file for what that buys.
- *
- * [keyOf] says what an item's interpret is - the items themselves may be tracks
- * or positions into a queue, which is why this never reaches into them.
- *
- * `avoid` is the interpret the list must not *open* with. The one repeat the
- * spread cannot see is the song already in front of the list: the track that was
- * clicked stays first, and its own name coming straight after it is exactly what
- * this is here to prevent.
+ * Spreads each interpret over the list instead of only permuting it. [keyOf] gives an item's
+ * interpret (items may be tracks or queue positions). `avoid` is the interpret the list must not
+ * open with: the clicked track stays in front, and its own name straight after it is a repeat.
  */
 export function spreadByArtist(items, keyOf, { random = Math.random, avoid = null } = {}) {
   const list = [...items];

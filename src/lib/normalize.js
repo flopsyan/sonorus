@@ -1,15 +1,6 @@
-// Text normalisation shared by the library scanner and the CSV import.
-//
-// A CSV exported from a streaming service almost never spells a track exactly
-// the way the local file does: different case, accents, punctuation, and
-// suffixes like " - 2011 Remaster" or "(Live)". Two levels of normalisation
-// give the import a strict and a forgiving pass:
-//
-//   normalize()  - case, accents, punctuation and whitespace only
-//   loosen()     - additionally drops bracketed and trailing-dash suffixes
-//
-// Both are computed once per track during the scan and stored on the row, so
-// matching an import is an indexed lookup instead of a table walk.
+// A streaming export rarely spells a track like the file: normalize() gives the import
+// a strict key, loosen() a forgiving one without version suffixes. Both are stored per
+// track at scan time, so matching an import is an indexed lookup, not a table walk.
 
 // Drops accents, lowercases, and reduces punctuation to single spaces. Keeps
 // letters and digits from every alphabet (\p{L}/\p{N}), so non-latin titles
@@ -34,8 +25,11 @@ const VERSION_WORDS =
 
 // Loose key: normalize(), plus bracketed additions and a trailing " - ..." tail
 // when that tail looks like a version marker rather than part of the title.
+// Both cut their input: the regexes are quadratic, and a CSV cell can be megabytes long.
+const MAX_FIELD = 500;
+
 export function loosen(value) {
-  let s = String(value ?? '')
+  let s = String(value ?? '').slice(0, MAX_FIELD)
     // "(Remastered 2011)", "[Live at Wembley]"
     .replace(/\s*[([][^)\]]*[)\]]\s*/g, ' ');
 
@@ -48,12 +42,10 @@ export function loosen(value) {
   return normalize(s);
 }
 
-// The first artist of a multi-artist field. Streaming exports write them as one
-// comma-separated string ("The Piano Guys, Julie Ann Nelson"); local files use
-// commas, "feat.", "&" or "/". The first name is the one that identifies the
-// track, so that is what both sides match on.
+// Exports join artists with commas, local files also with "feat.", "&" or "/".
+// The first name identifies the track, so both sides match on that.
 export function primaryArtist(value) {
-  const first = String(value ?? '')
+  const first = String(value ?? '').slice(0, MAX_FIELD)
     .split(/\s*(?:,|;|\/|\bfeat\.?\b|\bft\.?\b|\bwith\b|&)\s*/i)[0];
   return normalize(stripLeadingArticle(first || ''));
 }
@@ -63,10 +55,8 @@ function stripLeadingArticle(value) {
   return String(value).replace(/^\s*(the|der|die|das|le|la|les|el|los)\s+/i, '');
 }
 
-// The one artist folder that is read differently: its albums are compilations,
-// so the interpret is per song and not per folder, and the artist itself has no
-// face of its own to show. Compared in lower case, because artists.name is
-// UNIQUE COLLATE NOCASE and "various" is that folder.
+// The one folder of compilations, whose artist is per song. Compared in lower case,
+// because artists.name is UNIQUE COLLATE NOCASE.
 export const VARIOUS = 'various';
 
 export function isVarious(name) {

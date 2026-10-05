@@ -24,11 +24,9 @@ export function securityHeaders(req, res, next) {
   next();
 }
 
-// Rejects state-changing requests that provably come from a different site.
-// SameSite=Lax session cookies already keep such requests unauthenticated in
-// modern browsers; this is an explicit second layer (CSRF defense in depth).
-// Requests without Origin/Sec-Fetch-Site headers (curl, scripts) are
-// unaffected - CSRF is strictly a browser problem.
+// CSRF defence in depth on top of SameSite=Lax cookies: rejects state-changing requests
+// that provably come from another site. Requests without Origin/Sec-Fetch-Site (curl,
+// scripts) pass, as CSRF is strictly a browser problem.
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export function rejectCrossSite(req, res, next) {

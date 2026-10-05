@@ -1,13 +1,6 @@
-// Getting a video file into a browser. Three ways, cheapest first:
-//
-//   direct   the file as it lies, with Range, when the browser plays it as is
-//   remux    ffmpeg copies the picture into fragmented MP4 and converts only
-//            the sound (E-AC-3, DTS) or picks one of several audio tracks
-//   encode   ffmpeg re-encodes the picture too (MPEG-2, or HEVC for a
-//            browser without HEVC) - the only one that costs real CPU
-//
-// A piped stream cannot seek, so the player asks for a new one starting at the
-// position it wants and adds that offset to its own clock.
+// Cheapest first: direct (the file with Range), remux (picture copied into fragmented MP4,
+// sound converted or picked), encode (picture re-encoded, the only real CPU cost). A piped
+// stream cannot seek, so the player asks for a new one at its position and adds the offset.
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -42,10 +35,8 @@ export function pickAudio(audio, { index, langs = [] } = {}) {
   return audio.find((a) => a.default) || audio[0];
 }
 
-// `caps` beyond hevc/av1/vp9 comes from the phone, which reports its own
-// decoders: `video` and `audio` list further codecs, `hevcMkv` says HEVC plays
-// out of Matroska, `tracks` that it can pick one of several audio tracks itself.
-// A browser sends none of them and keeps the browser rules.
+// Beyond hevc/av1/vp9, `caps` comes from the phone: extra `video`/`audio` codecs, `hevcMkv`
+// (HEVC out of Matroska), `tracks` (picks among audio tracks itself). A browser sends none.
 export function videoPlayable(v, caps) {
   if (!v) return true;
   const eightBit = !v.pixFmt || /^yuvj?420p$/.test(v.pixFmt);
@@ -120,7 +111,7 @@ const streamDir = path.join(transcodeDir, 'streams');
 fs.rmSync(streamDir, { recursive: true, force: true });
 fs.mkdirSync(streamDir, { recursive: true });
 
-// The stream files share a disk with the database; production stops short of filling it.
+// The stream files share a disk with the database, so ffmpeg is held before it fills it.
 const MIN_FREE = 2 * 1024 ** 3;
 const CHECK_EVERY = 32 * 1024 ** 2;
 const IDLE_MS = 30 * 60_000;
@@ -185,7 +176,7 @@ function streamArgs(video, absPath, { start, vc, audio, ac }) {
   if (a) args.push('-map', `0:${a.index}`);
 
   if (!v) {
-    // nothing to map
+    // Audio only.
   } else if (vc === 'copy') {
     args.push('-c:v', 'copy');
     if (v.codec === 'hevc') args.push('-tag:v', 'hvc1');
@@ -326,6 +317,8 @@ sweeper.unref();
 
 const drained = (res) =>
   new Promise((resolve) => {
+    // Gone before the write: neither 'drain' nor 'close' will come again.
+    if (res.destroyed) return resolve();
     const done = () => {
       res.off('drain', done);
       res.off('close', done);
@@ -377,12 +370,17 @@ async function tail(job, res) {
 export function serveStream(req, res, video, absPath, { start, vc, audio, ac, userId }) {
   const key = [video.id, start, vc, audio, ac].join('|');
   let job = jobs.get(userId);
-  if (!job || job.key !== key) job = startJob(userId, key, video, streamArgs(video, absPath, { start, vc, audio, ac }));
+  if (!job || job.key !== key || job.failed) job = startJob(userId, key, video, streamArgs(video, absPath, { start, vc, audio, ac }));
   job.lastSeen = Date.now();
   // Without it nginx spools the stream into its own temp files, up to 1 GB a request.
   const headers = { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' };
 
   if (job.done && !job.failed) {
+    job.readers += 1;
+    res.on('close', () => {
+      job.readers -= 1;
+      job.lastSeen = Date.now();
+    });
     res.sendFile(job.file, { headers, acceptRanges: true, cacheControl: false }, (err) => {
       if (err && !res.headersSent) res.status(404).end();
     });

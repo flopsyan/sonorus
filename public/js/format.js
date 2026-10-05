@@ -11,10 +11,8 @@ export function duration(seconds) {
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
-// Long form for headers: "3 Std. 14 Min.". Always rounded down, like the
-// compact readout below, so the same total never reads differently in two
-// places - and so 1:59:45 cannot come out as "1 Std. 60 Min.". Under a minute
-// it counts seconds instead of claiming zero.
+// "3 Std. 14 Min.", rounded down like durationRack so one total never reads two ways
+// and 1:59:45 cannot come out as "1 Std. 60 Min.".
 export function durationLong(seconds) {
   const total = Math.max(0, Math.round(Number(seconds) || 0));
   const h = Math.floor(total / 3600);
@@ -25,10 +23,8 @@ export function durationLong(seconds) {
   return `${total} Sek.`;
 }
 
-// Compact playtime for the front-panel readout, where the value has to stay on
-// one line however big the library gets: "1:45 Std.", "312:04 Std.". Under a
-// minute it counts seconds - an average that rounds down to "0 Min." says less
-// than the truth does.
+// The front-panel readout has to stay on one line however big the library: "312:04 Std.".
+// Under a minute it shows seconds, as "0 Min." would understate an average.
 export function durationRack(seconds) {
   const total = Math.max(0, Math.round(Number(seconds) || 0));
   const h = Math.floor(total / 3600);
@@ -70,11 +66,8 @@ export function date(value) {
   return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-// A release date is stored as exactly as it is known: '2015', '2015-05' or
-// '2015-05-17'. Printed in full only on the album page - "17. Mai 2015", "Mai
-// 2015", "2015"; everywhere else the plain year is what a list has room for.
-// Built from the parts instead of a Date, which would shift the day by one in
-// any timezone west of UTC.
+// A release date is stored as precisely as known: '2015', '2015-05' or '2015-05-17'.
+// Built from the parts, not a Date, which would shift the day in any timezone west of UTC.
 const MONTHS = [
   'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
   'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',

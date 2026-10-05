@@ -1,17 +1,6 @@
-// The chapter marks inside one audio file.
-//
-// This is the one thing in Sonorus that `music-metadata` cannot answer. It does
-// expose `format.chapters`, and the note in the vault once said that would be
-// enough - measured on 2026-08-29 against the real library it returns an empty
-// list for every Audible m4b here, while the marks are plainly in the files
-// (ffprobe finds 59 in "Das Paket", 391 in "Der Anschlag"). So ffprobe reads
-// them, which costs one short process per book part and only on a scan that
-// actually re-reads the file.
-//
-// ffprobe ships with ffmpeg, which the image already installs for the smaller
-// streaming quality, so this adds no dependency. Without it the books simply
-// have no chapters - the same shape of degradation as a missing ffmpeg, and the
-// player is built to do without them.
+// Chapter marks via ffprobe: music-metadata's `format.chapters` is empty for every
+// Audible m4b in the real library although the marks are there. ffprobe ships with
+// ffmpeg; without it books simply have no chapters, which the player handles.
 
 import { spawn } from 'node:child_process';
 
@@ -23,10 +12,8 @@ const MAX_OUTPUT = 4 * 1024 * 1024;
 const TIMEOUT_MS = 20_000;
 
 /**
- * The chapters of one file, in the order they play, as `{ title, start }` with
- * `start` in seconds. An empty list means the file has none - which is the
- * ordinary answer for a song, an episode and a book that was ripped per chapter
- * into separate files.
+ * The chapters in play order as `{ title, start }`, `start` in seconds. An empty list
+ * is the normal answer for a song, an episode or a book ripped per chapter.
  */
 export async function readChapters(filePath) {
   const raw = await runProbe(filePath);
@@ -76,6 +63,7 @@ function runProbe(filePath) {
       child.kill('SIGKILL');
     }, TIMEOUT_MS);
 
+    child.stdout.setEncoding('utf8'); // a chunk boundary can split a UTF-8 character
     child.stdout.on('data', (chunk) => {
       if (out.length > MAX_OUTPUT) return;
       out += chunk;

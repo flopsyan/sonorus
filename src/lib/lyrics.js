@@ -1,24 +1,14 @@
-// Lyrics as they come out of an audio file.
-//
-// Two shapes have to be told apart, and only one of them can follow the song:
-// a plain block of text, and lines that each carry a timestamp. Which one a
-// file has is not a question of the tag it used - LRC is a *text* format, so a
-// perfectly timed lyric can arrive as one long string in a field that promises
-// nothing. Reading the timestamps back out of that string is what this module
-// is for.
-//
-// Nothing is fetched from anywhere: what the file does not carry does not
-// exist for Sonorus.
+// Lyrics from an audio file: plain text, or timed lines that can follow the song.
+// LRC is a text format, so a timed lyric can arrive as one plain string in any tag;
+// this module reads the timestamps back out. Nothing is fetched from elsewhere.
 
 // ID3v2's SYLT frame can count in MPEG frames instead of milliseconds, and a
 // frame number cannot be turned into a position without the file. Only this
 // format is usable; anything else is treated as unsynchronised text.
 const MILLISECONDS = 2;
 
-// One LRC timestamp: `[01:23.45]`, `[01:23.456]`, `[1:23]`. The fraction is
-// read by its length, so both hundredths and milliseconds land on seconds.
-// `[ar:Bowie]` and the other metadata tags never match - they have no digits
-// where the minutes belong.
+// `[01:23.45]`, `[01:23.456]`, `[1:23]`: the fraction is read by its length. Metadata
+// tags like `[ar:Bowie]` never match - they have no digits where the minutes belong.
 const LRC_TIME = /\[(\d{1,3}):([0-5]?\d)(?:[.:](\d{1,3}))?\]/g;
 
 function seconds(minutes, secs, fraction) {
@@ -26,13 +16,8 @@ function seconds(minutes, secs, fraction) {
   return Number(minutes) * 60 + Number(secs) + frac;
 }
 
-// Reads LRC out of a block of text. One line may carry several timestamps - a
-// refrain is written once and stamped for every time it comes round - so each
-// of them becomes a line of its own.
-//
-// Lines without a timestamp are dropped rather than kept in place: they are the
-// `[ti:]` / `[ar:]` header, and a lyric that mixes timed and untimed lines has
-// no position to show the untimed ones at.
+// A refrain is written once with several stamps, so each stamp becomes its own line.
+// Untimed lines are dropped: they are the `[ti:]`/`[ar:]` header, or have no position.
 export function parseLrc(text) {
   const lines = [];
   for (const raw of String(text || '').split(/\r?\n/)) {
@@ -53,12 +38,8 @@ export function looksTimed(text) {
   return LRC_TIME.test(String(text || ''));
 }
 
-// The lyrics of one file: `{ text, lines }`, where `lines` is empty unless the
-// file knows when each line is sung.
-//
-// `common.lyrics` is an array because a file may carry several - different
-// languages, or an unsynchronised USLT next to a synchronised SYLT. The first
-// timed one wins; without any, the first that has words at all.
+// `{ text, lines }`, `lines` empty unless the file is timed. A file may carry several
+// lyrics (languages, USLT next to SYLT): the first timed one wins, else the first with words.
 export function extractLyrics(common) {
   const tags = Array.isArray(common && common.lyrics) ? common.lyrics : [];
   let text = '';

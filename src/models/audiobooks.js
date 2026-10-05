@@ -1,23 +1,6 @@
-// Audiobooks and radio plays: authors, their books, and where in one the
-// listener is.
-//
-// **Both live in this one module and in one table**, told apart by
-// `audiobooks.kind` ('book' or 'drama'). A radio play is a book with a cast
-// instead of a narrator: same folders, same parts, same position, same
-// chapters. Every exported function therefore takes the kind and passes it into
-// the query, which is what keeps the two libraries apart everywhere the
-// listener looks without any of this existing twice.
-//
-// The one idea that shapes everything here: **a book is one thing, and its
-// files are not shown.** A book folder holds however many parts the ripper
-// happened to produce - forty, or one - and the listener is never told. So no
-// list of parts, no part titles, no per-part progress in the interface: the
-// book has a length and a position in it, and the parts only decide the order
-// it plays in.
-//
-// That means the numbers here are sums across files. Where `episode_progress`
-// says "part 7 at 320 s", this module says "hour 4 of 11" - which is the only
-// form the question is ever asked in.
+// Audiobooks and radio plays share one table, told apart by `kind`, which every export
+// passes into its query. A book is one thing and its files are never shown, so lengths
+// and positions are sums across parts ("hour 4 of 11", not "part 7 at 320 s").
 
 import db from '../db.js';
 import {
@@ -80,39 +63,27 @@ const shapeBook = (row) =>
         author: row.author || 'Unbekannter Autor',
         authorId: row.authorId,
         cover: row.cover ? `/covers/${row.cover}` : null,
-        // Empty rather than absent: "Gesprochen von" is a line the book page
-        // either prints or leaves out, and '' is the answer to both questions
-        // ("who reads it" and "is there a line") in one value.
         kind: row.kind || BOOK,
-        // A radio play has a cast, not a narrator, and Florian asked for the
-        // line to stay away from them: several names under "Gesprochen von"
-        // would read as one person reading badly.
+        // '' rather than absent: one value tells the page whether to print "Gesprochen von".
+        // A radio play's cast there would read as one person reading badly.
         narrator: row.kind === DRAMA ? '' : row.narrator || '',
         releaseDate: row.releaseDate || '',
         year: row.year || null,
         duration: row.duration || 0,
-        // Deliberately not called partCount anywhere the client can see it:
-        // how many files a book is made of is nobody's business but the
-        // player's. It is here so a book with no playable file can be dropped.
+        // Not for display: it lets a book with no playable file be dropped.
         parts: row.partCount || 0,
       }
     : null;
 
-// Where the listener stands in one book, as one number.
-//
-// The current part is the one whose progress row was touched last - "where I
-// am", not "the furthest I ever got", because jumping back has to move the
-// position back with it. Everything before that part counts as heard in full,
-// which is what makes a sum across files honest: you cannot reach part seven
-// without playing past part six.
+// The current part is the one touched last, not the furthest, so jumping back moves the
+// position back. Every part before it counts as heard in full: part seven cannot be
+// reached without playing past part six.
 function placeInBook(parts) {
   const total = parts.reduce((sum, p) => sum + (p.duration || 0), 0);
   const touched = parts.filter((p) => p.touchedAt);
 
-  // Every part done means the book is done, and that has to be asked before
-  // anything reads a timestamp: marking a whole book heard writes all of its
-  // parts in one transaction, so they carry the *same* second and there is no
-  // "last" one to find.
+  // Asked before any timestamp is read: marking a book heard writes all parts in one
+  // transaction, so they share the same second and there is no "last" one.
   if (parts.length && parts.every((p) => p.completed)) {
     return { total, elapsed: total, started: true, finished: true, index: parts.length - 1, offset: 0 };
   }
@@ -165,17 +136,9 @@ function partsOf(bookId, userId) {
 
 // --- Chapters ---------------------------------------------------------------
 
-// The chapters of a whole book, as one list with one clock.
-//
-// The rows are per file and each file's marks start at zero again, so a book of
-// several parts needs every chapter shifted by the length of everything before
-// it. For the ordinary Audible book - one m4b, forty hours, the marks inside -
-// that sum is zero and this is a straight read; the arithmetic exists so a book
-// ripped per chapter into forty files behaves the same way.
-//
-// `end` is filled in here rather than stored: a chapter runs until the next one
-// begins, and the last one until the book does. The player needs both ends to
-// draw a mark and to answer "which chapter is this second in".
+// One clock for the whole book: each file's marks restart at zero, so they are shifted
+// by everything before. `end` is derived (next start, or the book's end) because the
+// player needs both ends to draw a mark and find the chapter of a second.
 const selectChapters = db.prepare(
   'SELECT idx, title, start FROM chapters WHERE track_id = ? ORDER BY idx'
 );
@@ -210,17 +173,14 @@ function chaptersOf(parts) {
 
 // --- Authors ----------------------------------------------------------------
 
-// An author has no picture of their own; they borrow one of their books', the
-// same way an interpret borrows an album's.
+// An author without a picture borrows one of their books', as an artist borrows an album's.
 const AUTHOR_COVER = `COALESCE(NULLIF(a.cover, ''),
     (SELECT b2.cover FROM audiobooks b2
       WHERE b2.author_id = a.id AND b2.kind = @kind AND b2.cover <> ''
       ORDER BY b2.title LIMIT 1))`;
 
-// One author can write both a book and a radio play - Sebastian Fitzek does -
-// and then stands in both lists with the works of that library only. The join
-// carries the kind, so an author with nothing of this kind is counted at zero
-// and dropped by the HAVING.
+// An author of both books and plays stands in each list with that library's works only;
+// the join carries the kind, so one with nothing of it counts zero and the HAVING drops them.
 export function listAuthors(kind) {
   return db
     .prepare(
@@ -249,9 +209,8 @@ export function getAuthor(id, userId, kind) {
     .filter((b) => b && b.parts > 0)
     .map((b) => ({ ...b, ...listened(b.id, userId) }));
 
-  // The author's own picture wins; without one they borrow a book's, the way an
-  // interpret borrows an album's. `hasOwnCover` is what lets the edit dialog
-  // offer "Entfernen" only where there is something of their own to remove.
+  // The author's own picture wins over a borrowed one. `hasOwnCover` lets the edit
+  // dialog offer "Entfernen" only where there is something of their own to remove.
   const borrowed = (books.find((b) => b.cover) || {}).cover || null;
   return {
     id: author.id,
@@ -301,9 +260,7 @@ export function getBook(id, userId) {
     // Which file to start with and how far into it. The player takes these two
     // and the listener sees a book carrying on where it stopped.
     resume: { index: place.index, offset: place.offset },
-    // Empty for a book whose files carry no marks, and the page and the player
-    // both fall back to the book's own title and one long bar - which is what
-    // they did before chapters existed at all.
+    // Empty when the files carry no marks; page and player then show the title and one long bar.
     chapters: chaptersOf(parts),
     parts,
   };
@@ -320,10 +277,9 @@ export function continueBooks(userId, limit = 12, kind) {
          JOIN episode_progress ep ON ep.track_id = t.id AND ep.user_id = @userId
         WHERE ${PRESENT_PART}
         GROUP BY t.audiobook_id
-        ORDER BY touchedAt DESC
-        LIMIT @limit`
+        ORDER BY touchedAt DESC`
     )
-    .all({ userId, limit, kind: kindOf(kind) });
+    .all({ userId, kind: kindOf(kind) });
 
   return rows
     .map((r) => {
@@ -337,7 +293,8 @@ export function continueBooks(userId, limit = 12, kind) {
         ? null
         : { ...shaped, elapsed: place.elapsed, remaining: Math.max(0, place.total - place.elapsed), started: true, finished: false };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 // --- Marking a whole book ---------------------------------------------------

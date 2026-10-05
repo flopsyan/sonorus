@@ -1,8 +1,5 @@
-// CSV parsing for the playlist import.
-//
-// Small RFC 4180 reader: quoted fields, doubled quotes inside them, and line
-// breaks within a quoted field. The delimiter is detected per file, because
-// exports made on a German system use semicolons.
+// Small RFC 4180 reader for the playlist import. The delimiter is detected per
+// file, because exports made on a German system use semicolons.
 
 const DELIMITERS = [',', ';', '\t'];
 

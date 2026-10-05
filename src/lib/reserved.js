@@ -1,7 +1,5 @@
-// Characters a file name cannot carry, and the look-alikes written in their
-// place: a folder cannot be called "AC/DC", so it is called "AC∕DC". The
-// library shows the name that was meant. Escapes on purpose - nobody can tell
-// these apart from the real thing in an editor.
+// Look-alikes written for characters a file name cannot carry ("AC∕DC" for "AC/DC"),
+// mapped back to the meant name. Escapes on purpose: an editor shows no difference.
 const LOOKALIKES = {
   '/': '\u2215\u2044\u29f8\u2571\u27cb',
   '\\': '\u2216\u29f5\u29f9\ufe68\u2572\u27cd',

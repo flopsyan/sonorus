@@ -1,29 +1,8 @@
-// Searching inside the list that is already on screen.
-//
-// Ctrl+F on an album, a playlist, a genre or "Alle Songs" opens a field over
-// the page and narrows that list to what matches. It is not the search in the
-// top bar: that one asks the server about the whole library and takes you to a
-// different page, and on a record of twelve songs it is the wrong instrument
-// entirely. Florian, 2026-09-22, naming the model: "ähnlich wie Spotify es hat,
-// dass, wenn man Strg+F drückt, ein Suchfeld erscheint (das davor nie zu sehen
-// ist)".
-//
-// **Song title first, then interpret, then album.** A word that is in a title
-// is almost always the one that was meant, so matches are grouped by where they
-// hit and the groups are re-appended in that order. Nothing is rewritten while
-// it moves: a row carries its own `data-play-index` into the unfiltered list, so
-// playing one from a narrowed list still starts the list it belongs to at the
-// right song.
-//
-// With no list on the page this does nothing at all and says so to its caller,
-// which then leaves the key to the browser - on a settings page Ctrl+F should
-// still find text the ordinary way.
+// Ctrl+F narrows the list already on screen (the top-bar search asks the server instead).
+// Title hits rank first, a title word being almost always the one meant; each row keeps its
+// `data-play-index`, so playing from a narrowed list still starts the full list at that song.
 
 import { icon } from './icons.js';
-
-// Rows are hidden with the `hidden` attribute, and a `.track-row` is a grid, so
-// the attribute alone would lose to the class. The rule that fixes that lives in
-// the stylesheet next to the bar; this is only here to say why it is needed.
 
 let bar = null;
 let input = null;
@@ -140,6 +119,11 @@ function build() {
  * is none, so the caller can leave the key alone.
  */
 export function open() {
+  if (isOpen()) {
+    input.focus();
+    input.select();
+    return true;
+  }
   const found = collect();
   if (!found.length) return false;
   if (!bar) build();

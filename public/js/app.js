@@ -1,10 +1,8 @@
 // Boot, routing, sidebar, and the wiring between the DOM and the player.
-//
-// Sonorus is one page on purpose: navigating between artists, albums and
-// playlists must never interrupt playback, so the router swaps the contents of
-// <main> and leaves the <audio> element alone.
+// One page on purpose: the router swaps <main> and leaves the <audio> element
+// alone, so navigating never interrupts playback.
 
-import { api, errorText } from './api.js';
+import { api, errorText, ApiError } from './api.js';
 import { icon, paintIcons } from './icons.js';
 import * as fmt from './format.js';
 import {
@@ -48,10 +46,8 @@ const collapsedFolders = new Set(
   JSON.parse(localStorage.getItem('sonorus-folders-collapsed') || '[]')
 );
 
-// Two questions the whole app asks, and they are not the same one: `compact` is
-// the phone-shaped layout (drawer, fullscreen player, system back button),
-// `touch` is a finger driving it (no hover to reveal anything, no keyboard to
-// open unasked). A small window on a desktop is compact but not touch.
+// `compact` is the phone-shaped layout, `touch` is a finger driving it (no hover,
+// no keyboard to open unasked). A small desktop window is compact but not touch.
 const compact = window.matchMedia('(max-width: 900px)');
 const touch = window.matchMedia('(hover: none)');
 
@@ -131,6 +127,7 @@ const ctx = {
   // A view that swaps its own list (a dynamic playlist after a filter change)
   // hands the new songs over, so the play buttons mean what is on screen.
   setTracks(tracks) {
+    find.reset();
     view.tracks = tracks;
     paintIcons(content);
     markPlayingRow();
@@ -141,10 +138,8 @@ const ctx = {
   },
 };
 
-// The browser never says whether going back or forward would lead anywhere, so
-// the app counts its own position in the history stack: every push is one step
-// further and throws away whatever was ahead of it. That is what lets the two
-// arrows in the topbar grey out when they would do nothing.
+// The browser never says whether back or forward leads anywhere, so the app
+// counts its own position in the history stack to grey out the topbar arrows.
 let historyIndex = 0;
 let historyDepth = 0;
 // Every entry the app writes carries a serial as well. It is the only way to
@@ -191,27 +186,13 @@ function navigate(url, { replace = false } = {}) {
 }
 
 // --- Overlays and the phone's back button -----------------------------------
-// On a phone "zurück" is a system button and it means "close what is on top of
-// the screen" long before it means "leave the app". So everything that lies
-// over the page - the fullscreen player, the sidebar drawer, the queue, a
-// dialog, a menu, the lightbox, the visualizer - pushes one history entry when
-// it opens, and a back press pops it.
-//
-// Two decisions worth knowing:
-//   - The entry carries the same `idx` as the page underneath it, so the topbar
-//     arrows (which count pages, not overlays) never notice it.
-//   - Closing an overlay from the UI deliberately leaves its entry behind
-//     instead of calling history.go(): that call is asynchronous and would race
-//     with a navigation happening in the same click - the track menu closes
-//     itself and then navigates. Those left-over entries do nothing visible, so
-//     `popstate` steps over them, which is what the serial is for.
+// On a phone "zurück" closes what lies over the page before it leaves the app,
+// so every overlay pushes a history entry. It carries the page's `idx`, so the
+// topbar arrows (which count pages) never notice it.
 const overlays = [];
 
-// `onDesktop` is for the one overlay that takes the whole content area: a mouse
-// has a back button too, and while the big view is up "zurück" means close it,
-// exactly the way it does on a phone. Everything else keeps the old rule - a
-// desktop closes a dialog or a menu with Escape or a click next to it, and its
-// history stays a list of pages.
+// `onDesktop` is for the big view: a mouse back button closes it too. Elsewhere a
+// desktop closes overlays with Escape or a click, and its history stays pages.
 function pushOverlay(name, close, { onDesktop = false } = {}) {
   if (!compact.matches && !onDesktop) return;
   overlays.push({ name, close });
@@ -219,8 +200,8 @@ function pushOverlay(name, close, { onDesktop = false } = {}) {
   window.history.pushState({ idx: historyIndex, seq: entrySeq, ov: overlays.length }, '');
 }
 
-// The overlay was closed by its own button, a backdrop or a swipe: only the
-// bookkeeping is dropped here, the history entry stays (see above).
+// The history entry stays: history.go() is async and would race a navigation in
+// the same click (the track menu closes, then navigates). `popstate` skips it.
 function forgetOverlay(name) {
   const at = overlays.map((o) => o.name).lastIndexOf(name);
   if (at >= 0) overlays.splice(at, 1);
@@ -236,17 +217,13 @@ function closeOverlays(depth = 0) {
 // history - this is where they are hung into it.
 setOverlayHooks({ push: pushOverlay, drop: forgetOverlay });
 
-// Counts the renders so a slow answer cannot overwrite a newer list. Only
-// reachable since a `keep` render leaves the list clickable while it loads:
-// rating song 500, then 501 before the first answer is back, starts two.
+// Counts the renders so a slow answer cannot overwrite a newer list: two quick
+// navigations overlap, and so do two ratings during a `keep` render.
 let renderSeq = 0;
 
-// `keep` marks a re-render that is not a navigation: the list changed under the
-// user (a rating moved a track out of the star playlist they are looking at),
-// so the scroll position has to survive it - at song 500 of "Nicht bewertet",
-// being thrown back to the top after every star makes the list unusable. It
-// also skips the loading placeholder, which collapses the content to nothing
-// and would take the position with it.
+// `keep` re-renders a list that changed under the user (a rating moved a track
+// out of it), so the scroll position survives. It skips the loading placeholder,
+// which would collapse the content and lose the position.
 async function render({ keep = false } = {}) {
   if (view.cleanup) {
     view.cleanup();
@@ -321,9 +298,7 @@ window.addEventListener('popstate', (e) => {
   if (backwards && !closed) window.history.back();
 });
 
-// Any anchor marked data-link navigates without a page load. navigate() closes
-// the overlays, so following the interpret out of the fullscreen player takes
-// the fullscreen player with it.
+// Any anchor marked data-link navigates without a page load.
 document.addEventListener('click', (e) => {
   // The play button on a film poster sits inside the poster's link.
   const watch = e.target.closest('[data-watch]');
@@ -381,10 +356,8 @@ function renderSidebar() {
     .map((item) => navItem({ ...item, active: path === item.href }))
     .join('');
 
-  // Spoken word, between the music and the ratings. Its own group because it is
-  // its own library: nothing in it is browsed by interpret, album or genre, and
-  // nothing in it is rated. Hörbücher und Hörspiele join it later, which is why
-  // the heading is not "Podcasts".
+  // Spoken word is its own group because it is its own library: nothing in it is
+  // browsed by interpret, album or genre, and nothing in it is rated.
   const spoken = [
     { href: '/podcasts', label: 'Podcasts', iconName: 'mic' },
     { href: '/audiobooks', label: 'Hörbücher', iconName: 'book' },
@@ -431,10 +404,8 @@ function renderSidebar() {
     )
     .join('');
 
-  // Draggable, so the order in the sidebar is the user's: within its list, into
-  // another folder, or out to the top level. A pinned list wears the pin
-  // instead of the list icon - it is already where the pin puts it, on top.
-  // A temporary dynamic list wears the ring of its remaining day instead.
+  // A pinned list wears the pin instead of the list icon (it already sits on
+  // top), a temporary dynamic list the ring of its remaining day.
   const playlistIcon = (p) => {
     if (p.expiresAt) return `<span class="mini-ring" data-expires="${esc(p.expiresAt)}" aria-hidden="true"></span>`;
     return icon(p.pinned ? 'pin' : p.dynamic ? 'filter' : 'list', 17);
@@ -472,12 +443,8 @@ function renderSidebar() {
       ${library}
     </nav>
 
-    <!-- Deliberately without a title: "Gesprochenes" named nothing that Podcasts
-         and Hörbücher underneath it do not already say. And without a stand-in
-         for it either - .nav-group's own margin is the gap between two groups,
-         so this one sits below Genres exactly the way Bewertung sits below
-         Hörbücher. A blank head used to hold the missing title's room open,
-         which made this one gap twice as tall as every other. -->
+    <!-- No title and no blank head: the entries name themselves, and .nav-group's
+         margin alone keeps this gap the same as every other. -->
     <nav class="nav-group">
       ${spoken}
     </nav>
@@ -528,10 +495,8 @@ function paintRings() {
 }
 setInterval(paintRings, 30_000);
 
-// Statistik and Einstellungen live in the topbar next to the avatar - they are
-// about the app, not about the library the rest of the sidebar lists. Drawn
-// from here because both the active state and the notice count change while the
-// app runs. Below 560 px the links give way and the account menu carries them.
+// Statistik and Einstellungen sit in the topbar because they are about the app,
+// not the library. Below 560 px the account menu carries them.
 const topStats = document.getElementById('top-stats');
 const topSettings = document.getElementById('top-settings');
 
@@ -749,10 +714,8 @@ function promptFolderTarget(playlistId) {
 }
 
 // --- Dragging playlists in the sidebar --------------------------------------
-// The order in the sidebar is the user's: drag a playlist up or down inside its
-// list, onto a folder row to move it in, or into the top level to move it out
-// again. What gets sent is the new order of the whole target list, which is why
-// dropping into another folder is the same operation as reordering.
+// What gets sent is the new order of the whole target list, so dropping into
+// another folder is the same operation as reordering.
 
 let playlistDrag = null;
 
@@ -851,9 +814,8 @@ sidebarNav.addEventListener('drop', async (e) => {
 // The music folder is read-only, so every edit here changes the library and not
 // the files - which the dialogs say out loud, because it is not obvious.
 
-// Not a word about the aspect ratio any more: a picture that is not square is
-// dragged into place in the frame, and the hint for that appears the moment one
-// is picked (see wireCoverField).
+// No word about the aspect ratio: a non-square picture is dragged into place,
+// with its own hint (see wireCoverField).
 const COVER_HINT = 'JPG, PNG oder WebP. Große Bilder werden automatisch verkleinert.';
 // As exact as it is known: a day, a month or a bare year are all valid, because
 // that is all some files say. Everywhere but the album page it is the year that
@@ -879,14 +841,9 @@ function coverField(name, { label, cover, title, hint = COVER_HINT }) {
     </div>`;
 }
 
-// A cover is never shown larger than a few hundred pixels, so the picture is
-// scaled down here before it goes anywhere. A photo from a phone or from the
-// web is several megabytes and base64 adds a third on top - big enough for the
-// reverse proxy in front of the app to refuse the request (nginx allows 1 MB by
-// default) before Express ever sees it, which is exactly the "Unerwartete
-// Antwort vom Server" that made this feature unusable in the deployment.
-// Re-encoding as JPEG also means the server always gets a type it accepts,
-// whatever the file dialog handed us.
+// Scaled down before upload: a phone photo plus base64 overhead exceeds the
+// reverse proxy's body limit (nginx defaults to 1 MB) before Express sees it.
+// Re-encoding as JPEG also gives the server a type it always accepts.
 const MAX_COVER_EDGE = 1000;
 const COVER_QUALITY = 0.85;
 
@@ -910,14 +867,9 @@ async function loadCover(file) {
   return canvas;
 }
 
-// Cuts out the square Sonorus actually shows. `fx`/`fy` say where that square
-// sits on the picture: 0 is its left/top edge, 1 the right/bottom one. Only the
-// longer side has room to move, the other fraction has nowhere to go.
-//
-// The crop is baked into the stored file on purpose: a cover is shown square in
-// every grid, on the detail page and in the Android notification, and the
-// notification's artwork cannot take a CSS offset. So what is saved is what the
-// dialog showed.
+// `fx`/`fy` place the square on the picture (0 = left/top, 1 = right/bottom).
+// The crop is baked into the stored file because the Android notification's
+// artwork cannot take a CSS offset.
 function cropCover(source, fx, fy) {
   const edge = Math.min(source.width, source.height);
   const canvas = document.createElement('canvas');
@@ -940,8 +892,7 @@ function wireCoverField(root, name, title, onPick) {
   const preview = root.querySelector(`#${name}-preview`);
   const moveHint = root.querySelector(`#${name}-move`);
 
-  // The picked picture, downscaled once, plus where its square sits. Centred to
-  // start with, which is what the frame showed before it could be moved at all.
+  // The picked picture, downscaled once, plus where its square sits.
   let source = null;
   let fx = 0.5;
   let fy = 0.5;
@@ -994,10 +945,8 @@ function wireCoverField(root, name, title, onPick) {
     }
   });
 
-  // Dragging the picture inside the frame is how the square is placed. Pointer
-  // events with capture keep every listener on the frame itself, so the modal
-  // takes them with it when it closes - a window listener opened by a dialog
-  // would outlive it.
+  // Pointer capture keeps every listener on the frame itself, so the modal takes
+  // them with it when it closes - a window listener would outlive the dialog.
   let from = null;
 
   preview.addEventListener('dragstart', (e) => e.preventDefault());
@@ -1093,14 +1042,9 @@ async function editAlbumDialog(albumId) {
   });
 }
 
-// "Autor bearbeiten": the picture, and nothing else - the artist dialog word
-// for word, because an author stands in exactly the artist's position. Kept as
-// its own function rather than a shared one with a table name passed in: the
-// two are alike today and an author is not an interpret, so the moment one of
-// them grows a field the shared version would have to be pulled apart again.
-// The same author, whichever shelf asked. Books that are heard and books that
-// are read share the `authors` table, so an author Florian both hears and reads
-// has one picture - only the endpoint differs.
+// "Autor bearbeiten": the picture only. Not shared with the artist dialog: an
+// author is not an interpret, and the two would split once one grows a field.
+// Heard and read books share the `authors` table; only the endpoint differs.
 async function editAuthorDialog(authorId, base = 'audiobooks') {
   const isEbook = base === 'ebooks';
   let author;
@@ -1152,12 +1096,8 @@ async function editAuthorDialog(authorId, base = 'audiobooks') {
 }
 
 /**
- * "E-Book bearbeiten": the year, and nothing else.
- *
- * Everything else on that page is already the truth from somewhere better - the
- * title and the author are the folder names, the cover and the blurb come out
- * of the EPUB. The year is the one an EPUB regularly has wrong, and the one a
- * shelf sorts by.
+ * "E-Book bearbeiten": the year only. The rest comes from the folder names and
+ * the EPUB; the year is what an EPUB often has wrong and what a shelf sorts by.
  */
 async function editEbookDialog(bookId) {
   let book;
@@ -1198,12 +1138,8 @@ async function editEbookDialog(bookId) {
   });
 }
 
-// "Hörbuch bearbeiten": who reads it and when it came out.
-//
-// Both are read from the file already - `composer` and `date` on an Audible
-// m4b - so this is not where the answer comes from, it is where it is corrected.
-// The date is the one that usually needs it: the tag holds a bare year, the
-// listener may know the day, and Sonorus asks nothing on the internet.
+// "Hörbuch bearbeiten": corrects narrator and date, which are read from the file
+// (`composer`, `date`). The date tag often holds only a bare year.
 async function editBookDialog(bookId, base = 'audiobooks') {
   let book;
   try {
@@ -1212,8 +1148,7 @@ async function editBookDialog(bookId, base = 'audiobooks') {
     return toast(errorText(err), 'err');
   }
 
-  // A radio play has a cast, not a narrator, and Florian asked for the line to
-  // stay away from them - so the field is not there rather than there and empty.
+  // A radio play has a cast, not a narrator, so the field is left out entirely.
   const isDrama = base === 'audiodramas';
 
   modal({
@@ -1464,10 +1399,7 @@ function promptPlaylist(trackIds) {
 }
 
 // "Zu Playlist hinzufügen": pick an existing list, or create one on the spot.
-//
-// `create` is what the plus in the player switches off. There the dialog is
-// meant to be one decision - which list - and an entry that opens a second
-// dialog on top of it is one step more than that button promises.
+// The player's plus switches `create` off: there the dialog is one decision.
 function addToPlaylistDialog(trackIds, { create = true } = {}) {
   // A dynamic list is made of its filters, so a song cannot be put into one.
   const all = [
@@ -1529,7 +1461,6 @@ function addToPlaylistDialog(trackIds, { create = true } = {}) {
 // Content interactions
 // ============================================================================
 
-// Loads the track list behind a "play this collection" button.
 // The identity of the list on screen, handed to the player when something is
 // put on from here: it is what tells a row later whether the song it shows is
 // playing *from this list* or from another one that happens to hold it too.
@@ -1537,6 +1468,7 @@ function currentSourceKey() {
   return window.location.pathname;
 }
 
+// Loads the track list behind a "play this collection" button.
 async function tracksFor(el) {
   // The search page holds songs and podcast episodes in one list; the button
   // under "Songs" means the songs, so it says how far its own section reaches.
@@ -1551,7 +1483,7 @@ async function tracksFor(el) {
   if (el.dataset.playGenre) return (await api.genre(el.dataset.playGenre)).genre.tracks;
   if (el.dataset.playTrack) {
     const found = view.tracks.find((t) => String(t.id) === el.dataset.playTrack);
-    return found ? [found] : [(await api.tracks({ q: '' })).tracks.find((t) => String(t.id) === el.dataset.playTrack)];
+    return found ? [found] : (await api.tracksByIds([Number(el.dataset.playTrack)])).tracks;
   }
   return view.tracks;
 }
@@ -1619,10 +1551,8 @@ content.addEventListener('click', async (e) => {
         tile
           ? tile.querySelector('.card-title, .list-title')?.textContent || ''
           : pageName(),
-        // The card's own link: what was put on is the album or the interpret it
-        // points at, not the shelf it was picked off. A button in the page head
-        // has no card, and then the list is the page - without its key every
-        // row on it would read as playing from somewhere else.
+        // A card's link: what was put on is the album or interpret it points at,
+        // not the shelf. Without a card the page is the list, so its rows light up.
         tile ? tile.getAttribute('href') || '' : currentSourceKey()
       );
     } catch (err) {
@@ -1667,9 +1597,7 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
-  // The two random runs off the home page. Same thing, except that the second
-  // one draws only from what has no star yet - which is how a library actually
-  // gets rated.
+  // The two random runs off the home page; the second draws only unrated songs.
   const shuffleLibrary = e.target.closest('[data-shuffle-library], [data-shuffle-unrated]');
   if (shuffleLibrary) {
     const unrated = 'shuffleUnrated' in shuffleLibrary.dataset;
@@ -1694,11 +1622,8 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
-  // Combining star playlists or genres: each chip carries the selection it
-  // leads to. Replacing rather than pushing - a filter is not a place. The row
-  // says which list is being filtered ("/stars", or the ratings of one artist),
-  // and coming from outside that list is a real navigation, so it pushes: from
-  // an artist page the back button has to lead back to it.
+  // Star chips replace the history entry - a filter is not a place. Coming from
+  // outside the filtered list (an artist page) pushes, so back leads there again.
   const starChip = e.target.closest('[data-stars]');
   if (starChip) {
     const row = starChip.closest('[data-star-base]');
@@ -1875,10 +1800,8 @@ content.addEventListener('contextmenu', (e) => {
   openTrackMenu(e.clientX, e.clientY, Number(row.dataset.trackId), row.dataset.itemId);
 });
 
-// A finger has no right mouse button, so holding a row is what opens its menu.
-// Done here rather than left to the browser's own long press: what that fires
-// depends on whether it thinks there is text to select, and the menu carries
-// everything a track can do - the rating among it.
+// Holding a row opens its menu. Done here rather than by the browser's own long
+// press, whose behaviour depends on whether it thinks there is text to select.
 const LONG_PRESS = 480;
 const PRESS_SLOP = 12;
 let pressTimer = null;
@@ -1924,12 +1847,8 @@ function openTrackMenu(x, y, trackId, itemId) {
   if (!track) return;
   const index = view.tracks.indexOf(track);
 
-  // An episode answers to a different set of questions than a song: it has no
-  // rating, it belongs in no playlist and it has no interpret to visit - what it
-  // has instead is a "heard" flag, which is the only thing worth toggling by
-  // hand once the player stops setting it for you.
-  // A part of a book is never a row on a page - but it can be reached from the
-  // queue panel, and there the only sensible answer is the book it belongs to.
+  // A part of a book is never a row on a page, but the queue panel reaches it,
+  // and there the only sensible answer is the book it belongs to.
   if (track.audiobookId) {
     contextMenu(x, y, [
       { label: 'Jetzt abspielen', icon: 'play', onSelect: () => player.playTracks(view.tracks, index, pageName(), currentSourceKey()) },
@@ -1942,6 +1861,7 @@ function openTrackMenu(x, y, trackId, itemId) {
     return;
   }
 
+  // An episode has no rating, playlist or interpret - only a "heard" flag.
   if (track.podcastId) {
     const items = track.missing
       ? []
@@ -1997,7 +1917,7 @@ function openTrackMenu(x, y, trackId, itemId) {
       onSelect: async () => {
         await api.removeFromPlaylist(view.playlistId, itemId);
         await refreshShell();
-        render();
+        render({ keep: true });
       },
     });
   }
@@ -2019,21 +1939,14 @@ async function markEpisode(track, completed) {
   }
 }
 
-// A rating is written down where the user can see it and sent afterwards.
-//
-// It used to be the other way round, and a request that failed left nothing but
-// a toast behind: on a connection that drops for a second the rating was gone,
-// and the song turned up unrated again days later in the middle of a random
-// run. Now it goes into a queue that outlives the page, the stars show pale
-// until the server has it, and [flushRatings] sends what is left on the next
-// connection.
+// A rating is queued before it is sent, so a dropped connection cannot lose it:
+// the queue outlives the page, the stars show pale until the server has it, and
+// flushRatings sends what is left on the next connection.
 async function rate(trackId, value) {
   const track = view.tracks.find((t) => t.id === trackId) || player.currentTrack();
   const onScreen = track && track.id === trackId ? track.stars : 0;
-  // Clicking the star a track already has clears the rating - the usual way to
-  // undo one without a separate control. What counts as "already has" is the
-  // queue's value where there is one, or a second click would be measured
-  // against the rating the server still holds.
+  // Clicking the star a track already has clears it. "Already has" is the queue's
+  // value where there is one, or a second click would compare against the server's.
   const current = pendingRatings.currentStars(trackId, onScreen);
   const next = current === value ? 0 : value;
   // Taking a rating away keeps its stars on screen, pale, until the server
@@ -2042,15 +1955,19 @@ async function rate(trackId, value) {
   paintRating(trackId, next);
   try {
     const res = await api.rate(trackId, next);
-    pendingRatings.clear(trackId);
+    pendingRatings.clear(trackId, next);
     shell.starCounts = res.counts;
     paintRating(trackId, res.stars);
     renderSidebar();
-    // The star playlists are generated, so the list you are looking at changes -
-    // but the user did not navigate anywhere, so they stay where they were. The
-    // same goes for the ratings of one artist, which are that list narrowed down.
+    // The star playlists (also narrowed to one artist) are generated, so the list
+    // on screen changes under the user and is redrawn in place.
     if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
-  } catch {
+  } catch (err) {
+    if (err && PERMANENT_RATING_ERRORS.has(err.code)) {
+      pendingRatings.clear(trackId);
+      paintRating(trackId, current);
+      return toast(errorText(err), 'err');
+    }
     // Deliberately not an error: nothing was lost, it is written down. Saying
     // "schiefgelaufen" about a rating that is safely queued is exactly what
     // makes someone give it a second time.
@@ -2071,10 +1988,8 @@ function paintRating(trackId, value) {
   });
 }
 
-// Errors that will read exactly the same way tomorrow. Everything else - a
-// proxy, a server mid-restart, no network at all - is a "not now" and the
-// rating stays queued. Dropping one over a hiccup is the bug this queue exists
-// for, so the benefit of the doubt goes to keeping it.
+// Errors that will read the same tomorrow. Anything else (a proxy, a restart, no
+// network) keeps the rating queued: dropping one over a hiccup is the bug the queue exists for.
 const PERMANENT_RATING_ERRORS = new Set(['not_found', 'invalid_stars']);
 
 // What the queue still holds. Runs when the page comes up and whenever the
@@ -2085,7 +2000,7 @@ async function flushRatings() {
   for (const [trackId, value] of pendingRatings.entries()) {
     try {
       const res = await api.rate(trackId, value);
-      pendingRatings.clear(trackId);
+      pendingRatings.clear(trackId, value);
       shell.starCounts = res.counts;
       paintRating(trackId, res.stars);
       sent += 1;
@@ -2108,10 +2023,8 @@ window.addEventListener('online', flushRatings);
 
 // --- Scrollbars that keep out of the way ------------------------------------
 
-// The half of the Chromium scrollbar in styles.css that CSS cannot do: shown
-// while the pointer moves or anything scrolls, gone after a second of rest,
-// full width under the pointer. 1000 ms and a 400 ms fade are Firefox's own
-// timings on GTK. Firefox draws its own bar and skips all of this.
+// The half of the Chromium scrollbar in styles.css that CSS cannot do. 1000 ms of
+// rest and a 400 ms fade copy Firefox on GTK, which draws its own bar and skips this.
 if (!touch.matches && CSS.supports('selector(::-webkit-scrollbar)')) {
   const REST_MS = 1000;
   const FADE_STEP_MS = 100;
@@ -2172,17 +2085,9 @@ if (!touch.matches && CSS.supports('selector(::-webkit-scrollbar)')) {
 
 // --- Names that had to be cut off -------------------------------------------
 
-// A title too long for its column ends in an ellipsis, and hovering it says
-// what it really is. Only then, though: a tooltip on a name that is fully
-// readable is noise, and every row would carry one.
-//
-// Whether it was cut off can only be measured, and the measurement is done on
-// the way in rather than while rendering. Two reasons, both load-bearing: a
-// `.track-row.item` is `content-visibility: auto`, so most rows of a long list
-// have no layout at all until they come near the viewport and asking for their
-// width would throw that whole optimisation away - and the answer changes with
-// every resize, so anything decided once would be wrong by the next drag of the
-// window edge. Under the pointer a row is laid out by definition.
+// A cut-off title gets its full text as a tooltip, and only a cut-off one. Measured
+// on hover, not while rendering: rows are `content-visibility: auto`, so most have
+// no layout yet, and the answer changes with every resize.
 document.addEventListener('pointerover', (e) => {
   const clip = e.target.closest && e.target.closest('[data-clip]');
   // A missing file explains itself on the row already, and a title on the span
@@ -2240,7 +2145,7 @@ content.addEventListener('drop', async (e) => {
 
   try {
     await api.reorderPlaylist(view.playlistId, list.map((t) => t.itemId));
-    render();
+    render({ keep: true });
   } catch (err) {
     toast(errorText(err), 'err');
   }
@@ -2310,10 +2215,8 @@ el.repeatBtn.addEventListener('click', () => player.cycleRepeat());
 el.muteBtn.addEventListener('click', () => player.toggleMute());
 el.volume.addEventListener('input', () => player.setVolume(Number(el.volume.value) / 100));
 
-// The slider is only left alone while it is actually being dragged. It used to
-// be skipped whenever it had the focus, which is what made the control feel
-// like two: a click focuses it, so every wheel step after that changed the
-// sound while the thumb stayed where the click had put it.
+// The slider is left alone while dragged, not while focused: a click focuses it,
+// and wheel steps would then change the sound without moving the thumb.
 let volumeDragging = false;
 el.volume.addEventListener('pointerdown', () => { volumeDragging = true; });
 el.volume.addEventListener('pointerup', () => { volumeDragging = false; });
@@ -2457,8 +2360,7 @@ function loadChapters(track) {
       paintChapterMarks();
     })
     .catch(() => {
-      // A book without its chapters is the book as it was before they existed:
-      // one long bar and its own title. Nothing here is worth an error message.
+      // Without chapters a book is one long bar under its own title - no error.
       if (seq !== chapterSeq) return;
       renderChapters();
     });
@@ -2512,8 +2414,7 @@ function scrollToRunningChapter() {
 }
 
 // Where the chapters begin, drawn on the rail. Placed from JS on purpose: the
-// app sends `style-src 'self'`, so a style attribute in the markup is dropped
-// without a word - the same trap the podcast progress bar fell into.
+// app sends `style-src 'self'`, so a style attribute in the markup is dropped silently.
 function paintChapterMarks() {
   const track = player.currentTrack();
   const marks = track ? player.chaptersHere() : [];
@@ -2537,17 +2438,9 @@ function paintChapterMarks() {
 el.visualBtn.addEventListener('click', () => toggleBigView());
 
 // --- The player as a screen of its own (phones) -----------------------------
-// A phone gets the transport as a strip along the bottom; tapping it opens the
-// same element full screen (.player.expanded in the stylesheet). Nothing is
-// duplicated - it is the bar with another layout - so every control in it keeps
-// the wiring it already has, and the app is still there once it is closed.
-//
-// It arrives and leaves as a sheet: `.sheet-out` is the closed position just
-// under the screen, and the transition between the two is the whole animation.
-// A finger on the artwork writes the offset straight onto the element instead
-// (through the CSSOM - the CSP forbids style attributes, not CSSOM writes), so
-// the sheet follows the drag; letting go clears it and the class takes over
-// again from wherever it was left.
+// Tapping the strip opens the same element full screen (.player.expanded), so every
+// control keeps its wiring. It moves as a sheet: `.sheet-out` is the closed position,
+// and a drag writes the offset through the CSSOM (the CSP forbids style attributes).
 const SHEET_MS = 320;
 
 function expanded() {
@@ -2566,11 +2459,8 @@ function openPlayer() {
   if (expanded() || !compact.matches || !player.currentTrack()) return;
   clearTimeout(sheetTimer);
   el.playerBar.style.transform = '';
-  // `sheet-moving` has to come along for the first step: it switches the
-  // transition off, so the sheet is *placed* below the screen instead of
-  // starting to travel there. Without it the browser is already animating
-  // towards the closed position when the second step asks for the open one, and
-  // reversing a transition that has just started is a transition of nothing.
+  // `sheet-moving` switches the transition off for the first step, so the sheet is
+  // *placed* below the screen; reversing a just-started transition animates nothing.
   el.playerBar.classList.add('expanded', 'sheet-out', 'sheet-moving');
   reflow(el.playerBar);
   el.playerBar.classList.remove('sheet-out', 'sheet-moving');
@@ -2654,16 +2544,9 @@ el.nowStars.addEventListener('click', (e) => {
 });
 
 // --- Seeking ----------------------------------------------------------------
-// One set of handlers for the mouse and the finger: pointer events with capture
-// keep the drag alive wherever it wanders off to, which a mouse solved with
-// listeners on `window` and a finger could not solve at all - a touchmove is
-// delivered to the element the touch started on, but the rail is 12 px tall and
-// the browser took the gesture for a scroll before it ever got there. The rail
-// says `touch-action: none` for exactly that reason.
-//
-// While the rail is held, the position is only drawn, not played: writing
-// audio.currentTime on every move makes the browser re-request the file over
-// and over and the drag stutters to a halt. The playhead follows on release.
+// Pointer capture keeps the drag alive for mouse and finger; the 12 px rail sets
+// `touch-action: none` or a finger's drag is taken for a scroll. While held, the
+// position is only drawn: seeking on every move re-requests the file and stutters.
 let scrub = null;
 
 function seekFraction(e) {
@@ -2726,11 +2609,8 @@ el.seek.addEventListener('keydown', (e) => {
 
 const REPEAT_LABEL = { off: 'Wiederholen: aus', all: 'Wiederholen: alle', one: 'Wiederholen: aktueller Titel' };
 
-// The player emits on every timeupdate, several times a second. Only the
-// counter and the seek rail may be touched that often; rebuilding the track
-// info, the star buttons or the queue at that rate would destroy hover, focus
-// and drag state under the user's pointer. Everything else is redrawn only
-// when the value behind it actually changed.
+// The player emits several times a second. Only the counter and the rail may be
+// touched that often; rebuilding the rest would destroy hover, focus and drag state.
 let lastPlayerKey = '';
 
 function renderPlayer(s) {
@@ -2763,9 +2643,7 @@ function renderPlayer(s) {
   const key = [
     track ? track.id : 0,
     track ? track.stars : 0,
-    // The server confirming a rating changes no number above, only whether the
-    // stars are still pale - so without this they stayed pale until something
-    // else in the bar changed.
+    // A confirmed rating changes no number above, only whether the stars are pale.
     track ? !!pendingRatings.draft(track.id) : false,
     s.playing,
     s.shuffle,
@@ -2773,10 +2651,8 @@ function renderPlayer(s) {
     s.muted,
     Math.round(s.volume * 100),
     s.pos,
-    // The whole order, not just its length: the queue panel draws this list, so
-    // a reorder has to reach it - and a reorder changes neither the length nor
-    // `pos` (that one follows the running track). The panel therefore stayed
-    // exactly as it was while the queue behind it had already moved.
+    // The whole order, not just its length: a reorder changes neither the length
+    // nor `pos`, and the queue panel has to redraw for it.
     s.order.join(','),
     s.source,
     // A book stays on one file for fifty hours, so nothing above ever changes
@@ -2825,12 +2701,9 @@ function renderPlayer(s) {
     closeChapters();
   }
 
-  // Spoken word gets a transport of its own: the two fifteen-second skips in
-  // place of prev/next, and no shuffle or repeat with them. Stepping to the
-  // next *file* is not what "weiter" means in the middle of a three-hour play,
-  // and a book is one thing played in one order - so both modes mean as little
-  // here as the rating the stars already stop offering below. With nothing
-  // playing the bar keeps the music transport rather than emptying out.
+  // Spoken word gets the 15-second skips instead of prev/next, shuffle and repeat:
+  // the next *file* is not what "weiter" means mid-play, and a book plays in one
+  // order. With nothing playing the bar keeps the music transport.
   const spoken = player.isSpoken(track);
   el.shuffleBtn.hidden = spoken;
   el.repeatBtn.hidden = spoken;
@@ -2842,22 +2715,15 @@ function renderPlayer(s) {
   if (track) {
     el.nowArt.innerHTML = art(track.cover, track.album || track.title);
 
-    // A book reads differently from a song in all three lines, because the
-    // three things worth naming are different ones: the chapter is what moves,
-    // the book is what is being listened to, and the author is what it belongs
-    // to. So chapter / book / author take the places of title / interpret /
-    // album - and without chapter marks the book itself moves up into the
-    // title, with the album line left empty rather than filled with a repeat.
+    // A book names chapter / book / author where a song names title / interpret /
+    // album. Without chapter marks the book moves up and the album line stays empty.
     const chapter = isBook ? player.currentChapter() : null;
     el.nowTitle.textContent = chapter
       ? chapter.title || `Kapitel ${chapter.index + 1}`
       : track.title;
 
-    // The album is its own span: the strip along the bottom of a phone has room
-    // for the interpret and nothing else, and half an album title behind an
-    // ellipsis says less than leaving it out.
-    // An episode names its show where a song names its interpret, and the show
-    // is a page like an artist is.
+    // The album is its own span: the phone strip has room for the interpret only,
+    // and half an album title says less than none. An episode links its show.
     const base = `/${spokenBase(track)}`;
     const bookLink = `<a href="${base}/books/${track.audiobookId}" data-link>${esc(track.book || track.title)}</a>`;
     const authorLink = track.bookAuthorId
@@ -2908,12 +2774,8 @@ function starButtons(value, trackId) {
   return wrapper.firstElementChild.innerHTML;
 }
 
-// The same song can sit in an album, on its interpret's page, in three
-// playlists and in the search at once, and marking every one of them as "this
-// is playing" says less than marking none. So the list it is really playing
-// from keeps the full amber, and everywhere else the song is marked too - in
-// the same lamp colour turned down, which reads as "yes, that one, but it is
-// running somewhere else".
+// The list a song really plays from gets the full amber; the same song in other
+// lists is marked turned down, reading "that one, but running elsewhere".
 function markPlayingRow() {
   const track = player.currentTrack();
   const fromHere = player.state.sourceKey === currentSourceKey();
@@ -2959,10 +2821,8 @@ function renderQueue(s) {
     return;
   }
 
-  // The panel starts at the track that is running. What was played before it is
-  // behind you and there is nothing left to do with it - it could not be moved
-  // (a queue only moves forwards) and removing it would change nothing that is
-  // still going to be heard.
+  // The panel starts at the running track: what was played before can be neither
+  // moved nor usefully removed.
   const start = Math.max(0, s.pos);
   const nextIndex = s.pos + 1;
   const header = (text) => `<div class="queue-section rack-label">${text}</div>`;
@@ -3017,11 +2877,8 @@ el.queueList.addEventListener('click', (e) => {
 });
 
 // --- Moving an entry --------------------------------------------------------
-// Pointer events off a handle, not HTML5 drag-and-drop on the whole row. Two
-// reasons: drag-and-drop does not exist on a touch screen at all, so on a phone
-// the queue could not be sorted; and a drag that may start anywhere on the row
-// is the same gesture as scrolling the list, which on a phone can only be told
-// apart by a handle. One code path now covers mouse, pen and finger.
+// Pointer events off a handle, not HTML5 drag-and-drop: that does not exist on a
+// touch screen, and a drag from anywhere on the row is the same gesture as scrolling.
 
 // The lowest position an entry may be dropped on: everything before the running
 // track has already been played.
@@ -3050,10 +2907,8 @@ function queueTargetIndex(from, drop) {
   return Math.max(firstMovable(), target);
 }
 
-// The line showing where the entry will land, drawn from the index it would
-// really get rather than from the row the pointer happens to be over - so a
-// drop that the clamp turns into something else cannot promise otherwise, and a
-// drop that changes nothing promises nothing.
+// Drawn from the index the entry would really get, not the row under the pointer,
+// so a clamped drop cannot promise otherwise and a no-op drop promises nothing.
 function markDrop(from, drop) {
   el.queueList.querySelectorAll('.drop-above, .drop-below')
     .forEach((r) => r.classList.remove('drop-above', 'drop-below'));
@@ -3071,10 +2926,8 @@ const EDGE_SCROLL_STEP = 6;
 
 let queueDrag = null;
 
-// Dragging against the edge of a long queue has to bring the rest of it into
-// view, or an entry could only ever be moved within the visible window. Driven
-// by a frame loop rather than by pointermove, so a finger held still at the
-// edge keeps scrolling.
+// Driven by a frame loop rather than by pointermove, so a finger held still at
+// the edge keeps scrolling a long queue.
 function edgeScroll() {
   if (!queueDrag || !queueDrag.speed) return;
   el.queueList.scrollTop += queueDrag.speed;
@@ -3124,10 +2977,8 @@ function endQueueDrag() {
   el.queueList.querySelectorAll('.dragging').forEach((r) => r.classList.remove('dragging'));
 }
 
-// The handle is a button, so it answers the keyboard too - and "one step up,
-// one step down" is what a keyboard can express about a list. The row is
-// redrawn under the press, so the focus has to be put back by hand or every
-// second step would go nowhere.
+// Arrow keys on the handle move the entry one step. The row is redrawn under the
+// press, so the focus is put back by hand or every second step would go nowhere.
 el.queueList.addEventListener('keydown', (e) => {
   const handle = e.target.closest('[data-queue-drag]');
   if (!handle || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
@@ -3142,54 +2993,33 @@ el.queueList.addEventListener('keydown', (e) => {
 // ============================================================================
 // Lyrics
 // ============================================================================
-// The words come out of the audio file itself - Sonorus looks nothing up
-// anywhere - so a song either carries them or it does not. `hasLyrics` on the
-// track says which, and the text is fetched one song at a time: a projection
-// that every list in the app selects has no business carrying a text block.
-//
-// Whether the lyric can follow the song is a second question, and the file
-// answers that too: `lines` comes back with a second per entry when it knows
-// when each one is sung, and empty when it only knows the words.
+// The words come only from the audio file. The text is fetched per song, so the
+// track projections every list selects stay small; `lines` carries a time per
+// entry when the file knows it, and is empty when it only knows the words.
 
-// How far ahead of the singing a line is shown. A karaoke lead-in: by the time
-// the word is sung you have already read it, which is the whole point of a
-// lyric running along. The Android client has had this for a second since
-// 2026-08-06 and the web app did not, so the same song ran differently on the
-// phone and on the desktop - one product, one number.
-//
-// The trade, which is real: lines written closer together than a second show
-// the next one while the current is still being sung.
+// How far ahead of the singing a line is shown, so it is read before it is sung;
+// the same number as the Android client. Lines under a second apart show early.
 const LYRICS_LEAD = 1;
 
-// What is known about the track that is playing. `lines` empty with `text` set
-// means "there, but not timed"; `loading` is the gap between asking and knowing.
-//
-// `offset` is this song's own correction, in seconds and positive for later,
-// stored on the server: files disagree wildly about where a line belongs, and
-// no single lead can be right for all of them. It moves the text *against*
-// LYRICS_LEAD, so an offset of zero is the lead and nothing more - which is why
-// the control shows 0,0 rather than 1,0.
+// `lines` empty with `text` set means "there, but not timed". `offset` is the
+// song's own correction (positive = later), applied against LYRICS_LEAD, so zero
+// means the lead alone - which is why the control shows 0,0 rather than 1,0.
 const lyricState = { trackId: null, text: '', lines: [], loading: false, error: '', at: -1, offset: 0 };
 
 // Counts the fetches, so a slow answer for the previous track cannot land on
 // top of the current one - the same guard the router uses.
 let lyricSeq = 0;
 
-// Reading ahead has to win over following along, or the panel drags the text
-// back under the finger every second. `autoScrollUntil` is what tells the two
-// apart: a smooth scroll fires `scroll` for a few hundred ms after it was
-// asked for, and those events are the app's own, not the user's.
+// Reading ahead wins over following along. A smooth scroll fires `scroll` for a
+// few hundred ms, so `autoScrollUntil` marks those events as the app's own.
 const SCROLL_PAUSE = 5000;
 const AUTO_SCROLL_MS = 900;
 let scrolledAt = 0;
 let autoScrollUntil = 0;
 
-// How far past its own timestamp a tapped line is jumped to. Setting
-// `currentTime` does not land where it is told: the browser goes to the nearest
-// decodable frame, which for an mp3 can be some 25 ms short of the second that
-// was asked for - and short is the one direction that hurts, because it hands
-// the light to the line above the one that was tapped. Inaudible, and it can
-// never overshoot into the next line: no lyric holds two of them 50 ms apart.
+// Setting `currentTime` lands on the nearest decodable frame, some 25 ms short for
+// an mp3, which lights the line above the tapped one. No lyric holds two lines
+// 50 ms apart, so this nudge never overshoots.
 const SEEK_NUDGE = 0.05;
 
 function lyricsOpen() {
@@ -3260,11 +3090,8 @@ function renderLyrics() {
   } else if (lyricState.error) {
     setLyricsHtml(note(`Songtext nicht geladen: ${lyricState.error}`));
   } else if (lyricState.lines.length) {
-    // Timed: every line is its own element, because one of them is highlighted
-    // and scrolled to on every step of the playhead - and because a timed line
-    // is somewhere to jump to, which makes it a button rather than a paragraph.
-    // An instrumental gap keeps its paragraph: it carries a timestamp like the
-    // rest, but it is eight pixels tall and nothing anybody aims at.
+    // A timed line is a button because it is somewhere to jump to. An instrumental
+    // gap stays a paragraph: eight pixels tall, nothing anybody aims at.
     setLyricsHtml(`<div class="lyric-lines">${lyricState.lines
       .map((line, i) =>
         line.text
@@ -3289,10 +3116,8 @@ function renderLyrics() {
   renderOffsetToggles();
 }
 
-// The playhead as the text sees it: a second ahead of the music, less whatever
-// this song was corrected by. One function, so the line under the artwork, the
-// side panel and the big view can never disagree about which line is current -
-// and so the seek below can invert exactly this and nothing else.
+// The playhead as the text sees it. One function, so every view agrees on the
+// current line and the seek below can invert exactly this.
 function lyricTime(time) {
   return time + LYRICS_LEAD - lyricState.offset;
 }
@@ -3360,25 +3185,18 @@ lyricBoxes().forEach((box) => {
     scrolledAt = Date.now();
   }, { passive: true });
 
-  // Clicking a line jumps the song to it. Only a timed lyric offers it - an
-  // untimed one has nowhere to jump to, and those lines are paragraphs with no
-  // `data-at`, so they never match here.
+  // Clicking a timed line jumps to it; untimed lines carry no `data-at`.
   box.addEventListener('click', (event) => {
     const line = event.target.closest('.lyric-line[data-at]');
     if (!line) return;
-    // The playhead that puts *this* line on, which is not its own timestamp:
-    // the text runs LYRICS_LEAD ahead, so landing on the stamp itself hands the
-    // light straight to the next line on a densely sung song - you tap a line
-    // and watch it go dark. This is lyricTime() read backwards, clamped at the
-    // start of the song.
+    // Not the line's own stamp: the text runs LYRICS_LEAD ahead, so the stamp
+    // would light the next line on a dense song. lyricTime() read backwards.
     const at = Math.max(
       0,
       Number(line.dataset.at) - LYRICS_LEAD + lyricState.offset + SEEK_NUDGE
     );
     player.seekToTime(at);
-    // Naming the line to play is the reader saying where they want to be, so
-    // the reading pause their scrolling earned is over: the text centres on the
-    // line again and follows on from there.
+    // A tapped line ends the reading pause, so the text follows along again.
     scrolledAt = 0;
     paintLyricPosition(at, true);
   });
@@ -3419,15 +3237,9 @@ el.nowLine.addEventListener('click', (e) => {
 document.getElementById('lyrics-close').addEventListener('click', closeLyrics);
 
 // --- Moving the text against the song ---------------------------------------
-// Files disagree about where a line belongs: some stamp the first sung letter,
-// some the bar before it, some are a second out for the whole song. One lead
-// cannot be right for all of them, so every song carries its own correction -
-// on the server, so the phone and the desktop agree, and for good, because a
-// file that is out today is out tomorrow.
-//
-// The control is an overlay without a backdrop on purpose. Nothing behind it
-// stops: the lines keep running while the number moves, and watching them
-// against the music is the only way to find the right one.
+// Files disagree about where a line belongs, so every song carries its own
+// correction, on the server so phone and desktop agree. No backdrop on purpose:
+// the lines keep running, and watching them against the music is how to set it.
 
 const OFFSET_STEP = 0.1;
 const OFFSET_MAX = 5;
@@ -3561,10 +3373,8 @@ function drawBars(canvasCtx, width, height, data, barCount, mirrored) {
   canvasCtx.globalAlpha = 1;
 }
 
-// The loop only runs while there is something to draw. Below 760 px the level
-// meter is not on the screen at all (the right-hand controls are dropped), and
-// with nothing playing there are no levels either - so a phone used to spend
-// every frame of its battery clearing a canvas nobody could see.
+// The loop only runs while there is something to draw, to spare a phone's battery:
+// below 900 px the level meter is hidden, and with nothing playing there are no levels.
 let frameHandle = null;
 
 function startFrames() {
@@ -3598,10 +3408,8 @@ startFrames();
 // ============================================================================
 // The big view (desktop): the song, its text, the visualizer
 // ============================================================================
-// Takes the content area and leaves the sidebar and the topbar standing, so the
-// library is one click away and nothing has to be layered over anything. The
-// phone has its own full screen (the transport blown up into a sheet) and does
-// not use this one - there the tabs would compete with the sheet's own gestures.
+// Takes the content area and leaves the sidebar and topbar standing, so the library
+// is one click away. Phones use the sheet instead, whose gestures the tabs would fight.
 
 const BIG_TABS = ['player', 'lyrics', 'visual'];
 let bigTab = 'player';
@@ -3692,12 +3500,8 @@ el.bigview.addEventListener('click', (e) => {
 });
 document.getElementById('bigview-close').addEventListener('click', closeBigView);
 
-// The title in the bar is the way in, the way it is in a streaming client. On a
-// phone the same tap belongs to the sheet that blows the whole transport up, so
-// this one only answers where there is room for both.
-// Closing is deliberately not toggleBigView('player'): from the Songtext or the
-// Visualisierung that call switches tabs instead of closing, and the title in
-// the bar is the way *out* of the big view no matter which of the three is up.
+// The bar's title opens the big view (on a phone that tap belongs to the sheet).
+// Not toggleBigView('player'): from another tab that switches instead of closing.
 function toggleFromBar() {
   if (bigViewOpen()) closeBigView();
   else openBigView('player');
@@ -3759,19 +3563,14 @@ document.getElementById('menu-toggle').addEventListener('click', () => {
 });
 document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
 
-// Folding the sidebar away is a desktop thing - on a phone it is a drawer and
-// already out of the way. The state lives on the account like every other
-// preference, so it follows to another machine. Folded, the sidebar keeps a
-// rail with the brand mark and this one button on it, so there is a single
-// toggle in a single place rather than one button per direction.
+// Folding is desktop only - on a phone the sidebar is a drawer. Folded, it keeps
+// a rail with this one button, so there is a single toggle in a single place.
 const shellEl = document.querySelector('.shell');
 const foldBtn = document.getElementById('sidebar-collapse');
 
-// `animate: false` is for the one application that must not be seen: the saved
-// state arrives with the account's preferences, which is after the first paint,
-// so without it the sidebar folds itself away in front of the user on every
-// single load. Two frames, because one is not enough - the class has to survive
-// the style recalculation that the width change itself causes.
+// `animate: false` because the saved state arrives after the first paint, and the
+// sidebar would visibly fold away on every load. Two frames: the class has to
+// survive the style recalculation the width change itself causes.
 function applySidebarCollapsed(collapsed, { animate = true } = {}) {
   if (!animate) {
     shellEl.classList.add('fold-instant');
@@ -3820,13 +3619,8 @@ document.addEventListener('click', (e) => {
   if (choice) applyTheme(choice.dataset.themeChoice);
 });
 
-// The streaming quality, and delegated for the same reason: the switch belongs
-// to a view that is drawn long after this file runs.
-//
-// The running track is reopened at the new quality instead of waiting for the
-// next one. A setting you have to stop the music to try out is a setting nobody
-// tries out, and the position is carried over so it costs the buffer and
-// nothing else.
+// Delegated for the same reason. The running track reopens at the new quality,
+// position kept, so the setting can be tried without stopping the music.
 document.addEventListener('click', (e) => {
   const button = e.target.closest('[data-quality-choice]');
   if (!button) return;
@@ -3938,6 +3732,11 @@ function showShortcuts() {
   });
 }
 
+// Menu and dialog actions are not awaited by anyone, so a failed request would otherwise fail silently.
+window.addEventListener('unhandledrejection', (e) => {
+  if (e.reason instanceof ApiError) toast(errorText(e.reason), 'err');
+});
+
 document.addEventListener('keydown', (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
   const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -3953,6 +3752,7 @@ document.addEventListener('keydown', (e) => {
     find.close();
     return;
   }
+  if (e.defaultPrevented) return; // the focused element already took it
 
   if (e.key === '/' && !typing) {
     e.preventDefault();
@@ -4000,7 +3800,7 @@ document.addEventListener('keydown', (e) => {
     default: {
       if (/^[0-5]$/.test(e.key)) {
         const track = player.currentTrack();
-        if (track) rate(track.id, Number(e.key));
+        if (track && !player.isSpoken(track)) rate(track.id, Number(e.key));
       }
     }
   }

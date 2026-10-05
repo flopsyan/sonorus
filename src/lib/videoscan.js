@@ -1,12 +1,6 @@
-// Films and series: walks VIDEO_DIR/movies and VIDEO_DIR/shows and writes what
-// it finds into the video tables. The layout is the one Jellyfin and Kodi use:
-//
-//   videos/movies/<Titel (Jahr)>/<Titel (Jahr)>.mkv
-//   videos/shows/<Serie (Jahr)>/Season 01/01 - Titel.mkv     (also S01E01, 1x01)
-//   videos/shows/<Serie (Jahr)>/Specials/...                  season 0
-//
-// Artwork lying next to the files (folder.jpg, backdrop.jpg, logo.png,
-// season01-poster.jpg, <Folge>-thumb.jpg) wins over anything TMDB offers.
+// Walks VIDEO_DIR/movies and VIDEO_DIR/shows in the Jellyfin/Kodi layout: `<Title (Year)>/`,
+// `Season 01/01 - Title.mkv` (also S01E01, 1x01), `Specials/` as season 0. Artwork next
+// to the files (folder.jpg, backdrop.jpg, logo.png, ...) wins over anything TMDB offers.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -155,7 +149,10 @@ export async function collectVideoWork() {
       const files = await videosUnder(full);
       if (!files.length) continue;
       // Several files in one film folder are versions or parts; the largest is the film.
-      const sized = await Promise.all(files.map(async (f) => ({ f, size: (await fsp.stat(f)).size })));
+      // A file gone mid-walk sorts last instead of failing the whole scan.
+      const sized = await Promise.all(
+        files.map(async (f) => ({ f, size: (await fsp.stat(f).catch(() => ({ size: -1 }))).size }))
+      );
       sized.sort((a, b) => b.size - a.size);
       work.movies.push({ folder: entry.name, dir: full, files: [sized[0].f] });
     } else if (isVideo(entry.name)) {
@@ -207,8 +204,7 @@ export async function localArt(source, width) {
     // it; everything else is a photograph and becomes a JPEG.
     const alpha = lower.endsWith('.png') || lower.endsWith('.webp');
     const ext = lower.endsWith('.svg') ? '.svg' : alpha ? '.png' : '.jpg';
-    // `a2` renames every transparent copy once, so the flattened ones made
-    // before the fix are replaced rather than kept under the same name.
+    // `a2` renames transparent copies once, so older flattened copies are not reused.
     const key = crypto
       .createHash('sha1')
       .update(`${source}:${st.size}:${st.mtimeMs}:${width}${alpha ? ':a2' : ''}`)

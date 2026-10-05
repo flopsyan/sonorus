@@ -238,7 +238,7 @@ function featuredHero(t) {
     label: film ? 'Film-Tipp' : 'Serien-Tipp',
     meta: facts([
       t.year,
-      certLabel(t.certification),
+      esc(certLabel(t.certification)),
       film ? (t.duration ? fmt.durationLong(t.duration) : '') : t.seasons ? fmt.plural(t.seasons, 'Staffel', 'Staffeln') : '',
     ]),
     overview: t.overview,
@@ -461,10 +461,11 @@ function wireTitleActions(root, ctx, changed = () => reload(ctx)) {
 
 async function refresh(ctx, id, tmdbId) {
   toast('Metadaten werden geladen …');
+  const here = window.location.pathname;
   try {
     const result = await api.refreshTitle(id, tmdbId);
     toast(result.matched ? 'Metadaten aktualisiert.' : 'Bei TMDB nichts gefunden.');
-    reload(ctx);
+    if (window.location.pathname === here) reload(ctx); // TMDB can take seconds; the page may be a film by now
   } catch (err) {
     toast(errorText(err), 'err');
   }
@@ -515,7 +516,7 @@ export async function movie(params, ctx) {
     ? `<a class="btn btn-primary" href="/watch/${v.id}" data-link>${icon('play', 16)} ${started ? `Fortsetzen (noch ${fmt.durationLong(v.duration - v.progress.position)})` : 'Abspielen'}</a>
        ${started ? `<a class="btn btn-ghost" href="/watch/${v.id}?t=0" data-link>${icon('refresh', 16)} Von vorne</a>` : ''}
        <button type="button" class="btn btn-ghost" data-title-watched="${m.id}" data-done="${v.progress.completed ? '1' : '0'}">
-         ${icon(v.progress.completed ? 'eye-off' : 'check-circle', 16)} ${v.progress.completed ? 'Als ungesehen markieren' : 'Als gesehen markieren'}
+         ${icon(v.progress.completed ? 'refresh' : 'check-circle', 16)} ${v.progress.completed ? 'Als ungesehen markieren' : 'Als gesehen markieren'}
        </button>
        ${metaMenuButton(m)}`
     : '';
@@ -620,7 +621,7 @@ function showActions(s) {
       : ''
   }
     <button type="button" class="btn btn-ghost" data-title-watched="${s.id}" data-done="${allDone ? '1' : '0'}">
-      ${icon(allDone ? 'eye-off' : 'check-circle', 16)} ${allDone ? 'Als ungesehen markieren' : 'Alles als gesehen markieren'}
+      ${icon(allDone ? 'refresh' : 'check-circle', 16)} ${allDone ? 'Als ungesehen markieren' : 'Alles als gesehen markieren'}
     </button>
     ${metaMenuButton(s)}`;
 }
@@ -632,7 +633,7 @@ function seasonFacts(x) {
 function seasonButton(s, x) {
   const done = x.watched >= x.episodes.length;
   return `<button type="button" class="btn btn-ghost btn-sm" data-title-watched="${s.id}" data-season="${x.season}" data-done="${done ? '1' : '0'}">
-      ${icon(done ? 'eye-off' : 'check-circle', 15)} ${done ? 'Staffel als ungesehen markieren' : 'Staffel als gesehen markieren'}
+      ${icon(done ? 'refresh' : 'check-circle', 15)} ${done ? 'Staffel als ungesehen markieren' : 'Staffel als gesehen markieren'}
     </button>`;
 }
 

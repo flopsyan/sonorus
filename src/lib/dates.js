@@ -1,12 +1,6 @@
-// Release dates, as exactly as they are known.
-//
-// A file tag says anything from a bare year to a full day, so a release date is
-// kept as the text 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD' - the length of the string
-// is how precise it is. The album page prints the whole thing, everything else
-// prints the year, which is why the year stays its own column.
-//
-// One parser for both sources: the file tags (ISO-ish) and the edit dialog,
-// where a German date is what a German UI invites ("17.05.2015").
+// A release date is kept as 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD': the length is its precision.
+// Only the album page prints it whole, so the year stays its own column. One parser
+// for the file tags (ISO-ish) and the edit dialog, where German dates get typed.
 
 const DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 

@@ -1,8 +1,6 @@
-// Getting a film or an episode onto the phone. The file as it lies whenever the
-// phone plays it (and, for "small", when it is small already). Anything else is
-// written by ffmpeg into a phone-ready MP4 first - one at a time, at low
-// priority, so a download never stalls the music - and the phone polls until it
-// is there. A piped stream would not do: it cannot resume and cannot seek.
+// Downloads for the phone: the file as it is when the phone plays it, else an MP4 that
+// ffmpeg writes first, one at a time at low priority so the music never stalls. Not a
+// piped stream: that can neither resume nor seek.
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';

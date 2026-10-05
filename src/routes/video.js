@@ -156,6 +156,11 @@ router.post('/video-titles/:id/refresh', async (req, res) => {
     db.prepare('DELETE FROM video_title_genres WHERE title_id = ?').run(titleId);
     db.prepare('DELETE FROM video_credits WHERE title_id = ?').run(titleId);
     db.prepare('UPDATE video_titles SET collection_id = NULL WHERE id = ?').run(titleId);
+    // The wrong match's TMDB art (`t-`) goes too, or the new match only fills empty slots.
+    db.prepare(`UPDATE video_titles SET poster = iif(poster LIKE 't-%', '', poster),
+      backdrop = iif(backdrop LIKE 't-%', '', backdrop), logo = iif(logo LIKE 't-%', '', logo) WHERE id = ?`).run(titleId);
+    db.prepare("UPDATE video_seasons SET poster = '' WHERE title_id = ? AND poster LIKE 't-%'").run(titleId);
+    db.prepare("UPDATE videos SET still = '' WHERE title_id = ? AND still LIKE 't-%'").run(titleId);
   }
   try {
     const ok = await refreshTitle(titleId, { force: true });

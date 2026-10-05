@@ -16,9 +16,8 @@ export function verifyPassword(user, password) {
   return hash.length === stored.length && crypto.timingSafeEqual(hash, stored);
 }
 
-// Avatars are stored as small base64 data URLs (the browser resizes before
-// upload). Anything else (e.g. javascript:/http: URLs) is rejected to keep the
-// value safe to drop straight into an <img src>.
+// Only a small base64 data:image URL is accepted (the web client has no upload), so the
+// value is safe to drop straight into an <img src>; javascript: or http: URLs are rejected.
 const AVATAR_RE = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 const AVATAR_MAX = 700 * 1024;
 export function cleanAvatar(avatar) {
@@ -30,7 +29,7 @@ export function cleanAvatar(avatar) {
 const USERNAME_RE = /^[A-Za-z0-9._-]{2,32}$/;
 const MIN_PASSWORD = 4;
 
-// Public projection (no password material) for sessions and templates.
+// Public projection, without password material.
 export function publicUser(u) {
   if (!u) return null;
   return { id: u.id, username: u.username, display_name: u.display_name, avatar: u.avatar, is_admin: !!u.is_admin };
@@ -109,14 +108,13 @@ export function changePassword(id, newPassword) {
   return { ok: true };
 }
 
-// Removes a user. Refuses to delete the last remaining account (so the app can
-// never lock itself out) and the last admin (so accounts stay manageable). The
-// account's playlists, ratings, history and import notices cascade away with
-// it; the shared library is untouched.
+// Refuses the last account (no lockout) and the last admin (accounts stay manageable).
+// Playlists, ratings, history and notices cascade away; the shared library is untouched.
 export const deleteUser = db.transaction((id) => {
   if (countUsers() <= 1) return { error: 'last_user' };
   const target = getUserById(id);
-  if (target && target.is_admin) {
+  if (!target) return { error: 'not_found' };
+  if (target.is_admin) {
     const admins = db.prepare('SELECT COUNT(*) AS c FROM users WHERE is_admin = 1').get().c;
     if (admins <= 1) return { error: 'last_admin' };
   }

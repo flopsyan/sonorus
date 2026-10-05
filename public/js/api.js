@@ -5,10 +5,8 @@
 export class ApiError extends Error {
   constructor(message, code) {
     super(message);
-    // The server's own word for what went wrong, for the callers that have to
-    // tell "this can never work" from "not right now". The rating queue is the
-    // one that needs it: a track someone deleted must not block everything
-    // queued behind it, and nothing else may be dropped.
+    // Tells "can never work" from "not right now": the rating queue drops a deleted
+    // track so it cannot block the rest, and must drop nothing else.
     this.code = code;
   }
 }
@@ -36,10 +34,9 @@ export function networkMessage() {
 }
 
 /**
- * Why an <audio> element gave up on a URL. The element says "not supported"
- * whether the file is gone, the server is down or the format is foreign, so the
- * URL is asked again for one byte. Null when the server delivers - then it was
- * the browser. `stop` is set when every other track would fail the same way.
+ * Why an <audio> element gave up: it says "not supported" for a missing file, a down
+ * server and a foreign format alike, so one byte is fetched again. Null when the server
+ * delivers (the browser failed); `stop` when every other track would fail the same way.
  */
 export async function mediaFailure(url) {
   let res;
@@ -147,17 +144,15 @@ export const api = {
   albums: (params) => request('GET', `/api/albums${query(params)}`),
   album: (id) => request('GET', `/api/albums/${id}`),
   updateAlbum: (id, patch) => request('PATCH', `/api/albums/${id}`, patch),
-  // Year and cover art of a single - an album track takes both from its album.
+  // Release date, genres and cover of a single - an album track takes them from its album.
   updateTrack: (id, patch) => request('PATCH', `/api/tracks/${id}`, patch),
   genres: () => request('GET', '/api/genres'),
-  // Spoken word. The shows, one show with its episodes, and where listening
-  // stopped - the last one keepalive so the final report survives a closing tab.
+  // Podcasts: the shows, and one show with its episodes.
   podcasts: () => request('GET', '/api/podcasts'),
   podcast: (id, sort) => request('GET', `/api/podcasts/${id}${query({ sort })}`),
-  // Hörbücher. Ein Buch ist eine Einheit - die Teile kommen nur mit, damit der
-  // Player weiß, was er einreihen soll.
-  // `base` is 'audiobooks' or 'audiodramas'. Two libraries to the listener, the
-  // same endpoints on the server - see spokenRoutes in src/routes/api.js.
+  // `base` is 'audiobooks' or 'audiodramas': two libraries, the same endpoints (spokenRoutes in
+  // src/routes/api.js). A book is one unit; its parts only come along so the player knows what
+  // to queue.
   spoken: (base) => request('GET', `/api/${base}`),
   spokenAuthor: (base, id) => request('GET', `/api/${base}/authors/${id}`),
   spokenBook: (base, id) => request('GET', `/api/${base}/books/${id}`),
@@ -172,7 +167,7 @@ export const api = {
     request('PUT', `/api/ebooks/books/${id}/progress`, body, keepalive ? { keepalive: true } : undefined),
   updateEbook: (id, patch) => request('PATCH', `/api/ebooks/books/${id}`, patch),
   updateEbookAuthor: (id, patch) => request('PATCH', `/api/ebooks/authors/${id}`, patch),
-  // Gilt fuer Podcast-Folgen und Hoerbuch-Teile gleichermassen.
+  // Podcast episodes and audiobook parts alike; keepalive so the last report survives a closing tab.
   saveProgress: (id, body, keepalive = false) =>
     request('PUT', `/api/progress/${id}`, body, keepalive ? { keepalive: true } : undefined),
   // One id or a comma list of them - several genres are one combined list.
@@ -188,16 +183,13 @@ export const api = {
   search: (q) => request('GET', `/api/search${query({ q })}`),
 
   rate: (trackId, stars) => request('PUT', `/api/tracks/${trackId}/rating`, { stars }),
-  // The stars on a whole record, which no song of it knows about. No counts come
-  // back: an album rating feeds no star playlist.
   play: (trackId, seconds) => request('POST', '/api/plays', { trackId, seconds }),
   // keepalive lets the last report survive the page being closed.
   playTime: (playId, seconds, keepalive = false) =>
     request('PUT', `/api/plays/${playId}`, { seconds }, keepalive ? { keepalive: true } : undefined),
   clearHistory: () => request('DELETE', '/api/plays'),
-  // The statistics answer for one period; `range` and `period` say which one.
-  // No offset any more: the hour, the day and the year a play belongs to are
-  // the server's, so the same history reads the same from every device.
+  // No offset is sent: the server decides which hour, day and year a play belongs
+  // to, so the same history reads the same on every device.
   stats: (params) =>
     request('GET', `/api/stats${query(params)}`),
 
