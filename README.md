@@ -2,8 +2,9 @@
 
 Selbst gehosteter Mediaplayer für die eigene Sammlung: Musik, Podcasts,
 Hörbücher, Hörspiele, E-Books, Filme und Serien. Läuft im Browser, als
-[Android-App](https://github.com/flopsyan/sonorus-android) und als
-[Linux-Client](https://github.com/flopsyan/sonorus-linux).
+[Android-App](https://github.com/flopsyan/sonorus-android), als
+[Linux-Client](https://github.com/flopsyan/sonorus-linux) und für Filme und
+Serien als [Android-TV-App](https://github.com/flopsyan/sonorus-androidtv).
 
 ![Albumansicht](docs/screenshots/album.png)
 
