@@ -2455,9 +2455,36 @@ function reflow(node) {
 
 let sheetTimer = null;
 
-function openPlayer() {
+// Per tab, so a phone browser that drops the tab in the background and reloads it
+// brings the full screen back with the page.
+const PLAYER_OPEN = 'sonorus-player-open';
+
+function rememberOpen(open) {
+  try {
+    if (open) sessionStorage.setItem(PLAYER_OPEN, '1');
+    else sessionStorage.removeItem(PLAYER_OPEN);
+  } catch {
+    // storage blocked: the sheet simply starts closed after a reload
+  }
+}
+
+function wasOpen() {
+  try {
+    return sessionStorage.getItem(PLAYER_OPEN) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function openPlayer({ instant = false } = {}) {
   if (expanded() || !compact.matches || !player.currentTrack()) return;
   clearTimeout(sheetTimer);
+  rememberOpen(true);
+  if (instant) {
+    el.playerBar.classList.add('expanded');
+    pushOverlay('player', collapsePlayer);
+    return;
+  }
   el.playerBar.style.transform = '';
   // `sheet-moving` switches the transition off for the first step, so the sheet is
   // *placed* below the screen; reversing a just-started transition animates nothing.
@@ -2469,6 +2496,7 @@ function openPlayer() {
 
 function collapsePlayer() {
   if (!expanded()) return;
+  rememberOpen(false);
   forgetOverlay('player');
   // Whatever the finger left behind is where the slide out starts from, so the
   // transition has to be switched back on before the target is set.
@@ -2485,9 +2513,69 @@ function collapsePlayer() {
 el.now.addEventListener('click', (e) => {
   // A link still leads somewhere, and inside the full screen the artwork is
   // just artwork - the chevron is the way out.
-  if (e.target.closest('a[data-link]') || expanded()) return;
+  if (e.target.closest('a[data-link]') || expanded() || Date.now() - wipedAt < 500) return;
   openPlayer();
 });
+
+// Sideways over the title in the bar steps to the next or the previous song, as in
+// the app: left is forward, a third of the width arms it, and a wipe that stops
+// short slides back. Moved through the CSSOM like the sheet, for the same CSP.
+const nowText = document.querySelector('.now-text');
+const WIPE_OUT_MS = 140;
+const WIPE_IN_MS = 240;
+let wipe = null;
+let wipedAt = 0;
+
+function placeTitle(dx, ms = 0) {
+  const fade = 1 - 0.7 * Math.min(1, Math.abs(dx) / (nowText.offsetWidth || 1));
+  for (const node of [el.nowTitle, el.nowArtist]) {
+    node.style.transition = ms ? `transform ${ms}ms ease-out, opacity ${ms}ms ease-out` : 'none';
+    node.style.transform = dx ? `translateX(${dx}px)` : '';
+    node.style.opacity = dx ? String(fade) : '';
+  }
+}
+
+nowText.addEventListener('touchstart', (e) => {
+  wipe = compact.matches && !expanded() && e.touches.length === 1 && player.currentTrack()
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, sideways: null }
+    : null;
+}, { passive: true });
+
+nowText.addEventListener('touchmove', (e) => {
+  if (!wipe) return;
+  const t = e.touches[0];
+  wipe.dx = t.clientX - wipe.x;
+  const dy = t.clientY - wipe.y;
+  if (wipe.sideways === null && Math.max(Math.abs(wipe.dx), Math.abs(dy)) > 10) {
+    wipe.sideways = Math.abs(wipe.dx) > Math.abs(dy);
+  }
+  if (!wipe.sideways) return;
+  e.preventDefault();
+  placeTitle(wipe.dx);
+}, { passive: false });
+
+function endWipe(e) {
+  if (!wipe) return;
+  const { dx, sideways } = wipe;
+  wipe = null;
+  if (!sideways) return;
+  wipedAt = Date.now();
+  const width = nowText.offsetWidth;
+  const step = e.type === 'touchend' ? (dx <= -width / 3 ? 1 : dx >= width / 3 ? -1 : 0) : 0;
+  if (!step) return placeTitle(0, WIPE_IN_MS);
+  // Out the way it was wiped, then the new title comes in from the other side.
+  placeTitle(-step * width, WIPE_OUT_MS);
+  setTimeout(() => {
+    if (step > 0) player.next(true);
+    else player.previous({ restartFirst: false });
+    placeTitle(step * width);
+    reflow(el.nowTitle);
+    placeTitle(0, WIPE_IN_MS);
+  }, WIPE_OUT_MS);
+}
+
+nowText.addEventListener('touchend', endWipe, { passive: true });
+nowText.addEventListener('touchcancel', endWipe, { passive: true });
 
 el.collapseBtn.addEventListener('click', collapsePlayer);
 
@@ -2549,6 +2637,16 @@ el.nowStars.addEventListener('click', (e) => {
 // position is only drawn: seeking on every move re-requests the file and stutters.
 let scrub = null;
 
+// On a phone the bar's rail only shows: a thumb reaching for the bar landed on it
+// and moved the song. Seeking is the full screen's, and a tap on the rail opens it.
+function railReadOnly() {
+  return compact.matches && !expanded();
+}
+
+el.seek.addEventListener('click', () => {
+  if (railReadOnly()) openPlayer();
+});
+
 function seekFraction(e) {
   const rect = el.seek.getBoundingClientRect();
   return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -2563,7 +2661,7 @@ function paintSeek(fraction) {
 }
 
 el.seek.addEventListener('pointerdown', (e) => {
-  if (!player.currentTrack()) return;
+  if (!player.currentTrack() || railReadOnly()) return;
   // Keeps the focus ring off a rail that was grabbed rather than tabbed to, and
   // stops the browser from turning the press into a text selection.
   e.preventDefault();
@@ -2595,6 +2693,7 @@ el.seek.addEventListener('pointercancel', () => {
 
 // Keyboard access for the rail: it is a slider, so arrows should move it.
 el.seek.addEventListener('keydown', (e) => {
+  if (railReadOnly()) return;
   const step = e.shiftKey ? 30 : 5;
   if (e.key === 'ArrowRight') {
     e.preventDefault();
@@ -3848,6 +3947,7 @@ async function boot() {
   player.onChange(renderPlayer);
   await player.restore(data.prefs);
   renderPlayer(player.state);
+  if (wasOpen()) openPlayer({ instant: true });
 
   await render();
 

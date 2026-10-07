@@ -575,7 +575,8 @@ const RESTART_AFTER = 3;
 
 // Shuffled, "before" comes from `history`, as a wrap re-deals the order. Unshuffled it is one step
 // down the order on screen: reading history there kept walking the old random path.
-export function previous() {
+// `restartFirst: false` is a wipe over the title, which always means the song before.
+export function previous({ restartFirst = true } = {}) {
   if (!state.order.length) return;
 
   // Inside a book "back" means one chapter, not one file.
@@ -584,7 +585,7 @@ export function previous() {
     return;
   }
 
-  if (audio.currentTime > RESTART_AFTER) {
+  if (restartFirst && audio.currentTime > RESTART_AFTER) {
     resetListening();
     audio.currentTime = 0;
     return;

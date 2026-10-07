@@ -1875,6 +1875,13 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
   .dropdown-item.only-compact { display: flex; }
 }
 
+/* In the bar on a phone the rail only shows (see railReadOnly in app.js), so a
+   scroll may start on it, and the title clips while it is wiped sideways. */
+@media (max-width: 900px) {
+  .player:not(.expanded) .seek-rail { touch-action: auto; }
+  .player:not(.expanded) .now-text { overflow: hidden; touch-action: pan-y; }
+}
+
 /* --- The transport as a screen of its own (phones only) -------------------- */
 /* Deliberately the same element as the bar: every control is shared, so state,
    wiring and rendering stay one and only the layout changes. */
