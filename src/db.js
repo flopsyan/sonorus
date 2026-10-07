@@ -416,6 +416,9 @@ addColumn('audiobooks', 'date_locked', 'INTEGER NOT NULL DEFAULT 0');
 // every query while staying apart for the listener.
 addColumn('audiobooks', 'kind', "TEXT NOT NULL DEFAULT 'book'");
 
+// Size and mtime of the folder image the cover was taken from, so a scan sees it change.
+addColumn('audiobooks', 'cover_src', "TEXT NOT NULL DEFAULT ''");
+
 // After the column exists, never before: on an existing database the CREATE
 // TABLE block above is a no-op and podcast_id only arrives here.
 db.exec('CREATE INDEX IF NOT EXISTS idx_tracks_podcast ON tracks(podcast_id)');

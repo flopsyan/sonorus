@@ -433,6 +433,52 @@ async function storePodcastCover(id, meta, filePath, date) {
   if (name) setPodcastCover.run(name, date || '', show.id);
 }
 
+// The folder a part's book lives in, or null for a book of one file lying in the author folder.
+function bookFolder(filePath, root) {
+  const parts = path.relative(root, filePath).split(path.sep);
+  return parts.length > 2 ? path.join(root, parts[0], parts[1]) : null;
+}
+
+async function folderImage(dir) {
+  let names;
+  try {
+    names = new Set(await fsp.readdir(dir));
+  } catch {
+    return null;
+  }
+  for (const base of COVER_NAMES) {
+    for (const ext of COVER_EXT) {
+      if (!names.has(base + ext)) continue;
+      const file = path.join(dir, base + ext);
+      const stat = await fsp.stat(file);
+      return { file, ext: ext === '.jpeg' ? '.jpg' : ext, sig: `${stat.size}:${Math.floor(stat.mtimeMs)}` };
+    }
+  }
+  return null;
+}
+
+// Book folders looked at in this scan, so a book of forty parts is looked at once.
+const bookFoldersSeen = new Set();
+const selectBookCoverSrc = db.prepare('SELECT cover, cover_src FROM audiobooks WHERE id = ?');
+const setBookFolderCover = db.prepare('UPDATE audiobooks SET cover = ?, cover_src = ? WHERE id = ?');
+
+// An image in the book folder wins over the one in the files: a part's own art is often small
+// or a series placeholder, and the folder is where a book is given its real cover. Looked at on
+// every scan, so one dropped in later is taken without the audio changing. The timestamp in the
+// name keeps clients from showing the old picture out of their cache.
+async function syncBookFolderCover(bookId, folder) {
+  if (!folder || bookFoldersSeen.has(folder)) return;
+  bookFoldersSeen.add(folder);
+  const found = await folderImage(folder);
+  if (!found) return;
+  const book = selectBookCoverSrc.get(bookId);
+  if (!book || book.cover_src === found.sig) return;
+  const name = `book-${bookId}-${Date.now()}${found.ext}`;
+  await fsp.copyFile(found.file, path.join(coversDir, name));
+  setBookFolderCover.run(name, found.sig, bookId);
+  if (book.cover) await fsp.unlink(path.join(coversDir, book.cover)).catch(() => {});
+}
+
 // A cover.jpg in the book folder counts: that is how an audiobook usually carries its picture.
 async function storeBookCover(id, meta, filePath) {
   const book = db.prepare('SELECT id, cover FROM audiobooks WHERE id = ?').get(id);
@@ -502,7 +548,7 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
 
 const selectTrackByPath = db.prepare(
   `SELECT id, size, mtime, year, release_date, cover, missing_at, genres_locked, year_locked,
-          cover_locked
+          cover_locked, audiobook_id
      FROM tracks WHERE path = ?`
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
@@ -730,6 +776,7 @@ async function indexAudiobookPart(filePath, stat, force, root, kind) {
   const existing = selectTrackByPath.get(filePath);
   if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
     if (existing.missing_at) markFound.run(existing.id);
+    if (existing.audiobook_id) await syncBookFolderCover(existing.audiobook_id, bookFolder(filePath, root));
     state.skipped += 1;
     return;
   }
@@ -785,6 +832,7 @@ async function indexAudiobookPart(filePath, stat, force, root, kind) {
   else state.added += 1;
 
   if (bId) {
+    await syncBookFolderCover(bId, bookFolder(filePath, root));
     await storeBookCover(bId, meta, filePath);
     storeBookMeta(bId, common, kind);
   }
@@ -948,6 +996,7 @@ const prune = db.transaction(() => {
 // double click on "Bibliothek scannen" cannot start two walks.
 export async function runScan() {
   if (state.running) return scanState();
+  bookFoldersSeen.clear();
 
   Object.assign(state, {
     running: true,
