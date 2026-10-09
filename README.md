@@ -94,6 +94,7 @@ music/
   Various/
     Sampler/
       01 - Interpret - Titel.flac
+    Interpret - Titel.flac      Single
 podcasts/
   Sendung/
     #001 Folge.mp3

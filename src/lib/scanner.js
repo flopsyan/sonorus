@@ -51,7 +51,7 @@ const COVER_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 // Bumped whenever the scanner reads a file differently than it used to. A
 // changed version makes the next scan re-read every file instead of skipping
 // the unchanged ones, so an existing library picks up the new interpretation.
-const SCANNER_VERSION = 'reserved-1';
+const SCANNER_VERSION = 'various-single-1';
 
 const COVER_MIME_EXT = {
   'image/jpeg': '.jpg',
@@ -295,14 +295,17 @@ function splitTrackArtist(title) {
 }
 
 // music/<Artist>/<Album>/01 - Title.flac is an album track, music/<Artist>/Title.flac a single;
-// under "Various" the file name is "01 - Artist - Title".
+// under "Various" the file name is "01 - Artist - Title", a single there "Artist - Title".
 function describeFile(filePath) {
   const parts = path.relative(musicDir, filePath).split(path.sep);
   const base = nameOf(path.basename(filePath, path.extname(filePath)).trim());
 
   const artist = parts.length > 1 ? nameOf(parts[0].trim()) : UNKNOWN_ARTIST;
   const album = parts.length > 2 ? nameOf(parts[1].trim()) : '';
-  if (!album) return { artist, trackArtist: '', album: '', title: base, trackNo: null, discNo: null };
+  if (!album) {
+    const single = isVarious(artist) ? splitTrackArtist(base) : { trackArtist: '', title: base };
+    return { artist, ...single, album: '', trackNo: null, discNo: null };
+  }
 
   const parsed = splitTrackNumber(base);
   // Only under "Various" does the rest of the name start with an interpret.
@@ -643,7 +646,7 @@ async function indexFile(filePath, stat, force) {
     path: filePath,
     title: place.title,
     artist_id: aId,
-    // Only a compilation fills this: the album still belongs to "Various", the
+    // Only a song under "Various" fills this: it still belongs to "Various", the
     // song says who made it. Empty means "the artist folder is the answer".
     track_artist: place.trackArtist,
     album_id: alId,
