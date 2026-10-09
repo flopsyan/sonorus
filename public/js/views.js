@@ -151,7 +151,7 @@ export async function home() {
     tracks
       .map((t) =>
         card({
-          href: t.albumId ? `/albums/${t.albumId}` : `/artists/${t.artistId}`,
+          href: t.albumId ? `/albums/${t.albumId}` : t.artistId ? `/artists/${t.artistId}` : '',
           cover: t.cover,
           title: t.title,
           sub: t.artist,

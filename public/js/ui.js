@@ -243,7 +243,10 @@ export function episodeList(episodes, { offset = 0, showName = false } = {}) {
 export function card({
   href, cover, covers, title, sub, round = false, portrait = false, playAction, rating = '',
 }) {
-  return `<a class="card${round ? ' round' : ''}${portrait ? ' portrait' : ''}" href="${esc(href)}" data-link>
+  const cls = `card${round ? ' round' : ''}${portrait ? ' portrait' : ''}`;
+  // A single under "Various" has no page to open, so its whole card plays instead.
+  const tag = href ? 'a' : 'div';
+  return `<${tag} class="${cls}" ${href ? `href="${esc(href)}" data-link` : playAction}>
       <span class="card-art">
         ${covers?.length ? coverMosaic(covers, title) : art(cover, title)}
         ${playAction ? `<button type="button" class="card-play" ${playAction} aria-label="${esc(title)} abspielen">${icon('play', 17)}</button>` : ''}
@@ -251,7 +254,7 @@ export function card({
       <span class="card-title">${esc(title)}</span>
       ${sub ? `<span class="card-sub">${esc(sub)}</span>` : ''}
       ${rating ? `<span class="card-stars">${rating}</span>` : ''}
-    </a>`;
+    </${tag}>`;
 }
 
 // `card` as a row, built to a track row's height so a list of albums reads like a list of
