@@ -377,6 +377,9 @@ addColumn('tracks', 'lyrics_sync', "TEXT NOT NULL DEFAULT ''");
 // Seconds the timed lyrics are shifted, positive = later. On the track, not per account: a
 // mis-stamped file is off for everybody. No scan writes it, so it needs no lock.
 addColumn('tracks', 'lyrics_offset', 'REAL NOT NULL DEFAULT 0');
+// Size and mtime of the .lrc next to the song, so one dropped in later is read although the
+// audio file did not change.
+addColumn('tracks', 'lyrics_src', "TEXT NOT NULL DEFAULT ''");
 // The full release date next to the year. Filled by the next scan, which
 // re-reads every file after the scanner version bump.
 addColumn('albums', 'release_date', "TEXT NOT NULL DEFAULT ''");

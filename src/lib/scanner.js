@@ -496,6 +496,10 @@ async function storeBookCover(id, meta, filePath) {
 // a mount with the wrong owner would otherwise cost every rating-less track its row.
 let unreadable = [];
 
+// Every .lrc the walk passed, keyed by its path without the extension, so a song finds its
+// sidecar without one more look at the disk per file.
+let lyricFiles = new Map();
+
 // Collects the files with the given extensions under one root. Symlinked directories are
 // followed but remembered, so a loop cannot make the walk run forever.
 async function collectFiles(root, extensions = AUDIO_EXT) {
@@ -531,6 +535,8 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
         await walk(full);
       } else if (entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase())) {
         files.push(full);
+      } else if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.lrc') {
+        lyricFiles.set(full.slice(0, -'.lrc'.length), full);
       } else if (entry.isSymbolicLink()) {
         try {
           const st = await fsp.stat(full);
@@ -551,10 +557,11 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
 
 const selectTrackByPath = db.prepare(
   `SELECT id, size, mtime, year, release_date, cover, missing_at, genres_locked, year_locked,
-          cover_locked, audiobook_id
+          cover_locked, audiobook_id, lyrics_src
      FROM tracks WHERE path = ?`
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
+const setLyricsSrc = db.prepare('UPDATE tracks SET lyrics_src = ? WHERE id = ?');
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, track_artist, album_id, track_no, disc_no, year,
                       release_date, duration, bitrate, codec, lossless, cover, lyrics,
@@ -610,7 +617,13 @@ const writeTrack = db.transaction((row, genres, existingId, keepGenres) => {
 
 async function indexFile(filePath, stat, force) {
   const existing = selectTrackByPath.get(filePath);
-  if (!force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs)) {
+  const lrcPath = lyricFiles.get(filePath.slice(0, -path.extname(filePath).length));
+  const lrcStat = lrcPath ? await fsp.stat(lrcPath).catch(() => null) : null;
+  const lrcSig = lrcStat ? `${lrcStat.size}:${Math.floor(lrcStat.mtimeMs)}` : '';
+  if (
+    !force && existing && existing.size === stat.size && existing.mtime === Math.floor(stat.mtimeMs) &&
+    existing.lyrics_src === lrcSig
+  ) {
     // A file that was marked missing and is back unchanged never reaches the
     // write below, so it is cleared here.
     if (existing.missing_at) markFound.run(existing.id);
@@ -626,7 +639,8 @@ async function indexFile(filePath, stat, force) {
   // fills in what a folder name cannot say.
   const place = describeFile(filePath);
   const date = releaseDate(common);
-  const lyrics = extractLyrics(common);
+  const sidecar = lrcStat ? await fsp.readFile(lrcPath, 'utf8').catch(() => '') : '';
+  const lyrics = extractLyrics(common, sidecar);
   const aId = artistId(place.artist);
   const album = place.album ? albumRow(place.album, aId, date) : null;
   const alId = album ? album.id : null;
@@ -661,8 +675,7 @@ async function indexFile(filePath, stat, force) {
     // Only singles carry their own artwork; an album track shows its album's,
     // which is also why a track moving into an album loses the lock with it.
     cover: alId ? '' : (existing && existing.cover) || '',
-    // What the file itself sings. There is nowhere else to get it from, so an
-    // untagged song simply has none.
+    // What the file sings, or the .lrc next to it. Nothing is fetched from elsewhere.
     lyrics: lyrics.text,
     lyrics_sync: lyrics.lines.length ? JSON.stringify(lyrics.lines) : '',
     missing_at: '',
@@ -691,6 +704,7 @@ async function indexFile(filePath, stat, force) {
     // Only a single keeps a list of its own untouched.
     !albumGenres && !!(existing && existing.genres_locked)
   );
+  setLyricsSrc.run(lrcSig, trackId);
 
   if (existing) state.updated += 1;
   else state.added += 1;
@@ -1018,6 +1032,7 @@ export async function runScan() {
     error: '',
   });
   unreadable = [];
+  lyricFiles = new Map();
 
   try {
     if (!fs.existsSync(musicDir)) {

@@ -15,8 +15,8 @@ Serien als [Android-TV-App](https://github.com/flopsyan/sonorus-androidtv).
 - **Bewertungen** von 1 bis 5 Sternen für Songs und Alben, mit automatischen
   Playlists je Bewertung.
 - **Playlists** mit Ordnern, dazu Import aus CSV-Exporten von Streamingdiensten.
-- **Songtexte** aus den Dateien, zeilengenau mitlaufend, wenn sie Zeitmarken
-  tragen.
+- **Songtexte** aus den Dateien oder einer `.lrc` daneben, zeilengenau
+  mitlaufend, wenn sie Zeitmarken tragen.
 - **Podcasts, Hörbücher und Hörspiele** in eigenen Bibliotheken, mit gemerkter
   Position und Kapiteln.
 - **E-Books** (EPUB) mit einer Leseansicht im Browser und in der App.
@@ -83,13 +83,15 @@ Für `VIDEO_HWACCEL` muss die Grafikkarte in den Container: `devices` und
 ## Ordneraufbau
 
 Interpret, Album und Titelnummer kommen aus den Ordner- und Dateinamen, nicht
-aus den Tags. Cover, Genre, Datum und Songtext werden aus den Dateien gelesen.
+aus den Tags. Cover, Genre, Datum und Songtext werden aus den Dateien gelesen,
+ein Songtext auch aus einer `.lrc` mit gleichem Namen.
 
 ```
 music/
   Interpret/
     Album/
       01 - Titel.flac
+      01 - Titel.lrc            Songtext, optional
     Titel.flac                  lose im Interpretenordner: Single
   Various/
     Sampler/

@@ -1,6 +1,6 @@
-// Lyrics from an audio file: plain text, or timed lines that can follow the song.
-// LRC is a text format, so a timed lyric can arrive as one plain string in any tag;
-// this module reads the timestamps back out. Nothing is fetched from elsewhere.
+// Lyrics from an audio file or the .lrc next to it: plain text, or timed lines that can
+// follow the song. LRC is a text format, so a timed lyric can arrive as one plain string in
+// any tag; this module reads the timestamps back out. Nothing is fetched from elsewhere.
 
 // ID3v2's SYLT frame can count in MPEG frames instead of milliseconds, and a
 // frame number cannot be turned into a position without the file. Only this
@@ -38,10 +38,14 @@ export function looksTimed(text) {
   return LRC_TIME.test(String(text || ''));
 }
 
-// `{ text, lines }`, `lines` empty unless the file is timed. A file may carry several
-// lyrics (languages, USLT next to SYLT): the first timed one wins, else the first with words.
-export function extractLyrics(common) {
-  const tags = Array.isArray(common && common.lyrics) ? common.lyrics : [];
+// `{ text, lines }`, `lines` empty unless the lyric is timed. A file may carry several
+// lyrics (languages, USLT next to SYLT), and a .lrc next to it is asked before them all:
+// the first timed one wins, else the first with words.
+export function extractLyrics(common, sidecar = '') {
+  const tags = [
+    ...(sidecar ? [{ text: sidecar }] : []),
+    ...(Array.isArray(common && common.lyrics) ? common.lyrics : []),
+  ];
   let text = '';
 
   for (const tag of tags) {
