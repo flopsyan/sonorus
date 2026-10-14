@@ -3,6 +3,7 @@
 
 import db from '../db.js';
 import { PLAY_COUNTED } from './stats.js';
+import { favoriteFlag } from './favorites.js';
 import { normalize, loosen, primaryArtist, isVarious } from '../lib/normalize.js';
 // Out of `public/` on purpose: the browser player deals the same way and can
 // only import what is served, so this is the one module both sides run.
@@ -373,22 +374,25 @@ function mosaicCovers({ id, name, ownCover }) {
   return covers.length === 4 ? covers.map((c) => `/covers/${c.cover}`) : [];
 }
 
-export function listArtists({ q = '' } = {}) {
+export function listArtists({ userId, q = '' } = {}) {
   const search = allWordsIn(['ar.name'], searchWords(q));
   return db
     .prepare(
-      `SELECT ${ARTIST_ROW} ${ARTIST_FROM}
+      `SELECT ${ARTIST_ROW}, ${favoriteFlag('artist', 'ar')} AS favorite ${ARTIST_FROM}
         ${search ? `WHERE ${search.where}` : ''}
         GROUP BY ar.id
        HAVING trackCount > 0
         ORDER BY ar.name COLLATE NOCASE ASC`
     )
-    .all(search ? search.params : {})
-    .map((a) => ({ ...shapeArtistRow(a), covers: mosaicCovers(a) }));
+    .all({ userId, ...(search ? search.params : {}) })
+    .map((a) => ({ ...shapeArtistRow(a), favorite: !!a.favorite, covers: mosaicCovers(a) }));
 }
 
 export function getArtist(id, userId) {
-  const artist = db.prepare('SELECT id, name, cover FROM artists WHERE id = ?').get(id);
+  const artist = db
+    .prepare(`SELECT ar.id, ar.name, ar.cover, ${favoriteFlag('artist', 'ar')} AS favorite
+                FROM artists ar WHERE ar.id = @id`)
+    .get({ id, userId });
   if (!artist) return null;
 
   const albums = db
@@ -432,6 +436,7 @@ export function getArtist(id, userId) {
 
   return {
     ...artist,
+    favorite: !!artist.favorite,
     cover,
     covers: mosaicCovers({ ...artist, ownCover: artist.cover }),
     hasOwnCover: !!artist.cover,
@@ -490,14 +495,14 @@ export function listAlbums({ userId, q = '', sort = 'title', dir = 'asc' } = {})
 
   return db
     .prepare(
-      `SELECT ${ALBUM_ROW} ${ALBUM_FROM}
+      `SELECT ${ALBUM_ROW}, ${favoriteFlag('album', 'al')} AS favorite ${ALBUM_FROM}
         ${search ? `WHERE ${search.where}` : ''}
         GROUP BY al.id
        HAVING trackCount > 0
         ORDER BY (${order}) IS NULL, ${order} ${direction}, al.title COLLATE NOCASE ASC`
     )
     .all({ userId, ...(search ? search.params : {}) })
-    .map(shapeAlbum);
+    .map((row) => ({ ...shapeAlbum(row), favorite: !!row.favorite }));
 }
 
 export function getAlbum(id, userId) {
@@ -505,6 +510,7 @@ export function getAlbum(id, userId) {
     .prepare(
       `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
               al.artist_id AS artistId, ar.name AS artist, al.genres_locked AS genresLocked,
+              ${favoriteFlag('album', 'al')} AS favorite,
               COUNT(t.id) AS trackCount, SUM(t.duration) AS duration
          FROM albums al
          LEFT JOIN artists ar ON ar.id = al.artist_id
@@ -536,7 +542,7 @@ export function getAlbum(id, userId) {
         .map((row) => row.name)
     : [...new Set(tracks.flatMap((t) => t.genres))];
 
-  return { ...shapeAlbum(album), genres, tracks };
+  return { ...shapeAlbum(album), favorite: !!album.favorite, genres, tracks };
 }
 
 // --- Genres -----------------------------------------------------------------
@@ -566,7 +572,7 @@ const GENRE_COVERS = `
    ORDER BY genreId, pos
 `;
 
-export function listGenres() {
+export function listGenres(userId) {
   const covers = new Map();
   for (const row of db.prepare(GENRE_COVERS).all()) {
     if (!covers.has(row.genreId)) covers.set(row.genreId, []);
@@ -575,7 +581,7 @@ export function listGenres() {
 
   return db
     .prepare(
-      `SELECT g.id, g.name, COUNT(t.id) AS trackCount
+      `SELECT g.id, g.name, COUNT(t.id) AS trackCount, ${favoriteFlag('genre', 'g')} AS favorite
          FROM genres g
          LEFT JOIN track_genres tg ON tg.genre_id = g.id
          LEFT JOIN tracks t ON t.id = tg.track_id AND ${PRESENT_MUSIC}
@@ -583,12 +589,12 @@ export function listGenres() {
        HAVING trackCount > 0
         ORDER BY g.name COLLATE NOCASE ASC`
     )
-    .all()
+    .all({ userId })
     .map((g) => {
       const list = covers.get(g.id) || [];
       // `cover` is the first of them, kept because the server and the phone app
       // are deployed apart: an APK that has not been rebuilt yet still reads it.
-      return { ...g, covers: list, cover: list[0] || null };
+      return { ...g, favorite: !!g.favorite, covers: list, cover: list[0] || null };
     });
 }
 
@@ -602,8 +608,11 @@ export function getGenres(ids, userId) {
   if (!wanted.length) return null;
 
   const genres = db
-    .prepare(`SELECT id, name FROM genres WHERE id IN (${wanted.join(',')}) ORDER BY name COLLATE NOCASE`)
-    .all();
+    .prepare(
+      `SELECT g.id, g.name, ${favoriteFlag('genre', 'g')} AS favorite
+         FROM genres g WHERE g.id IN (${wanted.join(',')}) ORDER BY g.name COLLATE NOCASE`
+    )
+    .all({ userId });
   if (genres.length !== wanted.length) return null;
 
   const tracks = db
@@ -624,6 +633,8 @@ export function getGenres(ids, userId) {
     id: genres[0].id,
     name: genres.map((g) => g.name).join(', '),
     names: genres.map((g) => g.name),
+    // Only a single genre can be one; a combined selection is no item of its own.
+    favorite: genres.length === 1 && !!genres[0].favorite,
     tracks,
   };
 }

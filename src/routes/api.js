@@ -100,6 +100,7 @@ import {
   clearHistory,
 } from '../models/ratings.js';
 import { listeningStats } from '../models/stats.js';
+import { setFavorite } from '../models/favorites.js';
 import {
   updateAlbum,
   updateSingle,
@@ -236,7 +237,7 @@ router.patch('/tracks/:id', async (req, res) => {
 });
 
 router.get('/artists', (req, res) => {
-  res.json({ ok: true, artists: listArtists({ q: req.query.q }) });
+  res.json({ ok: true, artists: listArtists({ userId: req.user.id, q: req.query.q }) });
 });
 
 router.get('/artists/:id', (req, res) => {
@@ -287,7 +288,7 @@ router.patch('/albums/:id', async (req, res) => {
 });
 
 router.get('/genres', (req, res) => {
-  res.json({ ok: true, genres: listGenres() });
+  res.json({ ok: true, genres: listGenres(req.user.id) });
 });
 
 // Several genres can be asked for at once ("1,4"), which gives one combined
@@ -297,6 +298,16 @@ router.get('/genres/:ids', (req, res) => {
   if (!genre) return fail(res, 'not_found', 'genre');
   res.json({ ok: true, genre });
 });
+
+// --- Favourites -------------------------------------------------------------
+
+for (const [path, kind] of [['artists', 'artist'], ['albums', 'album'], ['genres', 'genre']]) {
+  router.put(`/${path}/:id/favorite`, (req, res) => {
+    const result = setFavorite(req.user.id, kind, id(req.params.id), !!req.body.favorite);
+    if (result.error) return fail(res, result.error, kind);
+    res.json({ ok: true, favorite: result.favorite });
+  });
+}
 
 // --- Podcasts ---------------------------------------------------------------
 

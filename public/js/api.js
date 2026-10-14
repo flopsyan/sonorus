@@ -147,6 +147,8 @@ export const api = {
   // Release date, genres and cover of a single - an album track takes them from its album.
   updateTrack: (id, patch) => request('PATCH', `/api/tracks/${id}`, patch),
   genres: () => request('GET', '/api/genres'),
+  // `kind` is the collection's path: artists, albums or genres.
+  setFavorite: (kind, id, favorite) => request('PUT', `/api/${kind}/${id}/favorite`, { favorite }),
   // Podcasts: the shows, and one show with its episodes.
   podcasts: () => request('GET', '/api/podcasts'),
   podcast: (id, sort) => request('GET', `/api/podcasts/${id}${query({ sort })}`),

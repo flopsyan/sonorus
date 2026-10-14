@@ -339,6 +339,26 @@ db.exec(`
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_issues_user ON import_issues(user_id, created_at DESC);
+
+  -- One table per kind, so each can cascade with the row it marks.
+  CREATE TABLE IF NOT EXISTS favorite_artists (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id    INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, item_id)
+  );
+  CREATE TABLE IF NOT EXISTS favorite_albums (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, item_id)
+  );
+  CREATE TABLE IF NOT EXISTS favorite_genres (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id    INTEGER NOT NULL REFERENCES genres(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, item_id)
+  );
 `);
 
 // --- Columns added after the first release ----------------------------------

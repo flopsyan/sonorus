@@ -93,6 +93,33 @@ function collection(view, items) {
     : `<div class="grid">${items.map(card).join('')}</div>`;
 }
 
+// Favourites stand in a section of their own above the full list, and stay in it too.
+function withFavorites(view, items, allLabel) {
+  const favorites = items.filter((item) => item.favorite);
+  if (!favorites.length) return collection(view, items);
+  return `<section class="section">
+      <div class="section-head"><h2>Favoriten</h2></div>
+      ${collection(view, favorites)}
+    </section>
+    <section class="section">
+      <div class="section-head"><h2>${esc(allLabel)}</h2></div>
+      ${collection(view, items)}
+    </section>`;
+}
+
+// `kind` is the collection's path, the same word the API uses.
+function favoriteButton(kind, id, on) {
+  return `<button type="button" class="btn btn-ghost${on ? ' is-pinned' : ''}"
+      data-favorite="${kind}" data-favorite-id="${id}" aria-pressed="${on}">
+      ${icon(on ? 'heart' : 'heart-outline', 16)} ${on ? 'Favorit' : 'Zu Favoriten'}
+    </button>`;
+}
+
+// What the list's context menu needs to know: which collection, and what is already a favourite.
+function favoriteState(kind, list) {
+  return { kind, ids: new Set(list.filter((item) => item.favorite).map((item) => item.id)) };
+}
+
 // --- Home -------------------------------------------------------------------
 
 function shelf(title, items, more) {
@@ -214,6 +241,7 @@ export async function artists(_params, ctx) {
   const view = collectionView(ctx, 'artists');
   return {
     title: 'Interpreten',
+    favorites: favoriteState('artists', list),
     html: `${pageHead(
       'Bibliothek',
       'Interpreten',
@@ -222,7 +250,7 @@ export async function artists(_params, ctx) {
     )}
       ${
         list.length
-          ? collection(
+          ? withFavorites(
               view,
               // No play button on an artist: a round tile clips its corner,
               // and an artist is a place you go to, not a queue you start.
@@ -237,7 +265,9 @@ export async function artists(_params, ctx) {
                 // what makes a row here exactly as tall as a song there.
                 sub: fmt.plural(a.trackCount, 'Song', 'Songs'),
                 round: true,
-              }))
+                favorite: a.favorite,
+              })),
+              'Alle Interpreten'
             )
           : empty('Keine Interpreten', 'Jeder Ordner direkt im Musikordner ist ein Interpret. Starte einen Scan, sobald dort etwas liegt.')
       }`,
@@ -287,6 +317,7 @@ export async function artist(params) {
         fmt.durationLong(total),
       ]),
       actions: `${playActions('view')}
+        ${favoriteButton('artists', data.id, data.favorite)}
         <button type="button" class="btn btn-ghost" data-edit-artist="${data.id}">
           ${icon('edit', 16)} Bearbeiten
         </button>`,
@@ -389,6 +420,7 @@ export async function albums(params, ctx) {
 
   return {
     title: 'Alben',
+    favorites: favoriteState('albums', list),
     html: `${pageHead(
       'Bibliothek',
       'Alben',
@@ -399,7 +431,7 @@ export async function albums(params, ctx) {
     )}
       ${
         list.length
-          ? collection(
+          ? withFavorites(
               view,
               list.map((a) => ({
                 href: `/albums/${a.id}`,
@@ -408,7 +440,9 @@ export async function albums(params, ctx) {
                 sub: a.year ? `${a.artist} · ${a.year}` : a.artist,
                 meta: fmt.plural(a.trackCount, 'Song', 'Songs'),
                 playAction: `data-play-album="${a.id}"`,
-              }))
+                favorite: a.favorite,
+              })),
+              'Alle Alben'
             )
           : empty('Keine Alben', 'Ein Album ist ein Unterordner im Ordner eines Interpreten. Dateien, die direkt beim Interpreten liegen, sind Singles.')
       }`,
@@ -449,6 +483,7 @@ export async function album(params) {
         fmt.durationLong(data.duration),
       ]),
       actions: `${playActions('view')}
+        ${favoriteButton('albums', data.id, data.favorite)}
         <button type="button" class="btn btn-ghost" data-edit-album="${data.id}">
           ${icon('edit', 16)} Bearbeiten
         </button>`,
@@ -983,6 +1018,7 @@ export async function genres(_params, ctx) {
   const view = collectionView(ctx, 'genres');
   return {
     title: 'Genres',
+    favorites: favoriteState('genres', list),
     html: `${pageHead(
       'Bibliothek',
       'Genres',
@@ -991,7 +1027,7 @@ export async function genres(_params, ctx) {
     )}
       ${
         list.length
-          ? collection(
+          ? withFavorites(
               view,
               // The same artwork the genre's own page carries, so the list and
               // the page it leads to introduce it the same way.
@@ -1001,7 +1037,9 @@ export async function genres(_params, ctx) {
                 title: g.name,
                 sub: fmt.plural(g.trackCount, 'Song', 'Songs'),
                 playAction: `data-play-genre="${g.id}"`,
-              }))
+                favorite: g.favorite,
+              })),
+              'Alle Genres'
             )
           : empty('Keine Genres', 'Deine Dateien tragen noch keine Genre-Tags.')
       }`,
@@ -1024,7 +1062,8 @@ export async function genre(params) {
       title: label,
       artHtml: mosaic(data.tracks, label),
       meta: facts([fmt.plural(data.tracks.length, 'Song', 'Songs'), fmt.durationLong(total)]),
-      actions: data.tracks.length ? playActions('view') : '',
+      actions: `${data.tracks.length ? playActions('view') : ''}
+        ${data.ids.length === 1 ? favoriteButton('genres', data.id, data.favorite) : ''}`,
     })}
       ${data.tracks.length ? trackList(data.tracks) : empty('Nichts in dieser Auswahl', 'In diesem Genre ist gerade kein Song.')}`,
   };

@@ -33,7 +33,7 @@ const shell = {
 };
 
 // What the current view is showing, so the transport buttons know what to play.
-let view = { tracks: [], playlistId: null, cleanup: null };
+let view = { tracks: [], playlistId: null, favorites: null, cleanup: null };
 
 // The page's own name: everything before the last " · ", because a dynamic
 // playlist writes " · " into its name as well.
@@ -260,6 +260,7 @@ async function render({ keep = false } = {}) {
     if (seq !== renderSeq) return; // a newer render is already on screen
     view.tracks = result.tracks || [];
     view.playlistId = result.playlistId || null;
+    view.favorites = result.favorites || null;
     // The reading view is the one page that wants the window rather than the
     // column everything else is read in.
     content.classList.toggle('is-full', !!result.full);
@@ -1721,6 +1722,12 @@ content.addEventListener('click', async (e) => {
     return;
   }
 
+  const favorite = e.target.closest('[data-favorite]');
+  if (favorite) {
+    setFavorite(favorite.dataset.favorite, Number(favorite.dataset.favoriteId), favorite.getAttribute('aria-pressed') !== 'true');
+    return;
+  }
+
   const pin = e.target.closest('[data-pin-playlist]');
   if (pin) {
     setPinned(Number(pin.dataset.pinPlaylist), pin.getAttribute('aria-pressed') !== 'true');
@@ -1790,6 +1797,33 @@ content.addEventListener('click', async (e) => {
     await refreshShell();
     navigate('/');
   }
+});
+
+async function setFavorite(kind, id, favorite) {
+  try {
+    await api.setFavorite(kind, id, favorite);
+    render({ keep: true });
+  } catch (err) {
+    toast(errorText(err), 'err');
+  }
+}
+
+// Right-click an entry of Interpreten, Alben or Genres to mark it a favourite.
+content.addEventListener('contextmenu', (e) => {
+  if (!view.favorites) return;
+  const entry = e.target.closest('.card[href], .list-row[href]');
+  const m = entry && entry.getAttribute('href').match(/^\/(artists|albums|genres)\/(\d+)$/);
+  if (!m || m[1] !== view.favorites.kind) return;
+  e.preventDefault();
+  const id = Number(m[2]);
+  const on = view.favorites.ids.has(id);
+  contextMenu(e.clientX, e.clientY, [
+    {
+      label: on ? 'Aus Favoriten entfernen' : 'Zu Favoriten',
+      icon: on ? 'heart-outline' : 'heart',
+      onSelect: () => setFavorite(m[1], id, !on),
+    },
+  ]);
 });
 
 // Right-click anywhere on a track row opens the same menu.
