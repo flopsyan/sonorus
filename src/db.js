@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { restoreReserved } from './lib/reserved.js';
+import { repairUntimed, splitGlued } from './lib/lyrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -714,6 +715,22 @@ once('restore_reserved_characters', () => {
     for (const row of db.prepare(`SELECT id, ${column} AS name FROM ${table}`).all()) {
       const name = restoreReserved(row.name);
       if (name !== row.name) rename.run(name, row.id);
+    }
+  }
+});
+
+// Tags that wrote each newline as a bare `n` left whole lyrics on one line, and a scan skips
+// an unchanged file, so the rows already read are split here. The scanner does it from now on.
+once('split_glued_lyrics', () => {
+  const update = db.prepare('UPDATE tracks SET lyrics = ?, lyrics_sync = ? WHERE id = ?');
+  for (const row of db.prepare("SELECT id, lyrics, lyrics_sync FROM tracks WHERE lyrics <> ''").all()) {
+    if (row.lyrics_sync) {
+      const lines = JSON.parse(row.lyrics_sync);
+      const split = splitGlued(lines);
+      if (split !== lines) update.run(split.map((line) => line.text).join('\n').trim(), JSON.stringify(split), row.id);
+    } else {
+      const text = repairUntimed(row.lyrics);
+      if (text !== row.lyrics) update.run(text, '', row.id);
     }
   }
 });

@@ -32,6 +32,44 @@ export function parseLrc(text) {
   return lines.sort((a, b) => a.time - b.time);
 }
 
+// Some taggers write a newline as a bare `n` (the backslash of `\n` lost on the way), so a
+// timed lyric arrives as one line with the other stamps inside it: "to men[00:20.59] As I".
+// An `n` glued to a stamp is never words, so it is the line break.
+const GLUED_STAMP = /n(?=\[\d{1,3}:[0-5]?\d(?:[.:]\d{1,3})?\])/;
+
+function stamp(time) {
+  const ms = Math.round(time * 1000);
+  return `[${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3)}]`;
+}
+
+// Timed lines with such run-together lines inside them, split back apart.
+export function splitGlued(lines) {
+  if (!lines.some((line) => GLUED_STAMP.test(line.text))) return lines;
+  const lrc = lines.map((line) => stamp(line.time) + line.text).join('\n');
+  return parseLrc(lrc.replace(new RegExp(GLUED_STAMP.source, 'g'), '\n'));
+}
+
+// The same fault in untimed text: "to menAs I was". Without stamps an `n` before a capital
+// could be a word, so only text with no line break at all and several such joins is touched.
+const GLUED_LINE = /(?<=[\p{Ll}?!.,)'"])n(?=[\p{Lu}(¿¡])/gu;
+const GLUED_RUN = /([\p{L}']*?)(n+)(?=[\p{Lu}(¿¡])/gu;
+
+export function repairUntimed(text) {
+  const raw = String(text || '');
+  if (/[\r\n]/.test(raw) || (raw.match(GLUED_LINE) || []).length < 3) return raw;
+  // "downn" is down and a break, "younn" you and a blank line. The lyric's own words decide;
+  // failing that, an n after a vowel, w or m is taken for the word's own ("again", "down").
+  const known = new Set(raw.toLowerCase().split(/[^\p{L}']+/u));
+  const ownN = (word) =>
+    known.has(word + 'n') || (!known.has(word) && /[aeiouwm\u00e0-\u00f6\u00f8-\u00fc]$/.test(word));
+  return raw.replace(GLUED_RUN, (match, word, run, offset) => {
+    const before = word ? word.at(-1) : raw[offset - 1];
+    if (!before || !/[\p{Ll}?!.,)'"]/u.test(before)) return match;
+    const keep = run.length > 1 && word && ownN(word.toLowerCase()) ? 1 : 0;
+    return word + 'n'.repeat(keep) + '\n'.repeat(Math.min(run.length - keep, 2));
+  });
+}
+
 // True when a block of text is LRC rather than prose.
 export function looksTimed(text) {
   LRC_TIME.lastIndex = 0;
@@ -54,10 +92,12 @@ export function extractLyrics(common, sidecar = '') {
     // A SYLT frame arrives already split into timed pieces. So does a plain
     // string tag that held LRC - music-metadata parses those on the way in.
     if (Array.isArray(tag.syncText) && tag.syncText.length && tag.timeStampFormat === MILLISECONDS) {
-      const lines = tag.syncText
-        .filter((line) => line && typeof line.timestamp === 'number')
-        .map((line) => ({ time: line.timestamp / 1000, text: String(line.text || '').trim() }))
-        .sort((a, b) => a.time - b.time);
+      const lines = splitGlued(
+        tag.syncText
+          .filter((line) => line && typeof line.timestamp === 'number')
+          .map((line) => ({ time: line.timestamp / 1000, text: String(line.text || '').trim() }))
+          .sort((a, b) => a.time - b.time)
+      );
       if (lines.some((line) => line.text)) {
         return { text: lines.map((line) => line.text).join('\n').trim(), lines };
       }
@@ -69,13 +109,13 @@ export function extractLyrics(common, sidecar = '') {
     // A USLT frame is handed over as an object, so nothing parsed it on the way
     // in - and USLT is exactly where an LRC lyric usually hides.
     if (looksTimed(raw)) {
-      const lines = parseLrc(raw);
+      const lines = splitGlued(parseLrc(raw));
       if (lines.some((line) => line.text)) {
         return { text: lines.map((line) => line.text).join('\n').trim(), lines };
       }
     }
 
-    if (!text) text = raw;
+    if (!text) text = repairUntimed(raw);
   }
 
   return { text, lines: [] };
