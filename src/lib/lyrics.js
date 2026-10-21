@@ -76,15 +76,17 @@ export function looksTimed(text) {
   return LRC_TIME.test(String(text || ''));
 }
 
-// `{ text, lines }`, `lines` empty unless the lyric is timed. A file may carry several
+// `{ text, lines, fromLrc }`, `lines` empty unless the lyric is timed. A file may carry several
 // lyrics (languages, USLT next to SYLT), and a .lrc next to it is asked before them all:
-// the first timed one wins, else the first with words.
+// the first timed one wins, else the first with words. `fromLrc` says the .lrc won.
 export function extractLyrics(common, sidecar = '') {
+  const lrc = sidecar ? { text: sidecar } : null;
   const tags = [
-    ...(sidecar ? [{ text: sidecar }] : []),
+    ...(lrc ? [lrc] : []),
     ...(Array.isArray(common && common.lyrics) ? common.lyrics : []),
   ];
   let text = '';
+  let textFromLrc = false;
 
   for (const tag of tags) {
     if (!tag) continue;
@@ -99,7 +101,7 @@ export function extractLyrics(common, sidecar = '') {
           .sort((a, b) => a.time - b.time)
       );
       if (lines.some((line) => line.text)) {
-        return { text: lines.map((line) => line.text).join('\n').trim(), lines };
+        return { text: lines.map((line) => line.text).join('\n').trim(), lines, fromLrc: false };
       }
     }
 
@@ -111,12 +113,15 @@ export function extractLyrics(common, sidecar = '') {
     if (looksTimed(raw)) {
       const lines = splitGlued(parseLrc(raw));
       if (lines.some((line) => line.text)) {
-        return { text: lines.map((line) => line.text).join('\n').trim(), lines };
+        return { text: lines.map((line) => line.text).join('\n').trim(), lines, fromLrc: tag === lrc };
       }
     }
 
-    if (!text) text = repairUntimed(raw);
+    if (!text) {
+      text = repairUntimed(raw);
+      textFromLrc = tag === lrc;
+    }
   }
 
-  return { text, lines: [] };
+  return { text, lines: [], fromLrc: textFromLrc };
 }

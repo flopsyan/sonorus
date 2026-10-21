@@ -178,6 +178,7 @@ export const api = {
   // The words of one song, asked for separately: they are far too big to ride
   // along in every track of every list.
   lyrics: (id) => request('GET', `/api/tracks/${id}/lyrics`),
+  reviewLyrics: (id, fits) => request('POST', `/api/tracks/${id}/lyrics-review`, { fits }),
   home: () => request('GET', '/api/home'),
   // `unrated` narrows the random run to what has no star yet.
   shuffle: (limit, unrated = false) =>

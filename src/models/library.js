@@ -1,7 +1,10 @@
 // Read access to the shared library (artists, albums, genres, tracks). Every track projection
 // carries the asking account's rating, so a list renders its stars without a second round trip.
 
+import { parseFile } from 'music-metadata';
+
 import db from '../db.js';
+import { extractLyrics } from '../lib/lyrics.js';
 import { PLAY_COUNTED } from './stats.js';
 import { favoriteFlag } from './favorites.js';
 import { normalize, loosen, primaryArtist, isVarious } from '../lib/normalize.js';
@@ -254,11 +257,20 @@ export function getTrack(id, userId) {
 // resolution at a tenth of a second per step.
 export const LYRICS_OFFSET_MAX = 5;
 
+// Lyrics from a .lrc nobody has judged yet. A .lrc replaced since its verdict counts as new.
+const REVIEWABLE = `(t.lyrics_from_lrc = 1 AND NOT EXISTS (
+  SELECT 1 FROM lyrics_reviews r WHERE r.track_id = t.id AND r.lrc = t.lyrics_src))`;
+
 // The words of one song, and when each line is sung if the file said so.
 // Returns null for a track that does not exist; a track without lyrics answers
 // with empty ones, which is a different thing and the client draws it as such.
 export function getLyrics(id) {
-  const row = db.prepare('SELECT lyrics, lyrics_sync, lyrics_offset FROM tracks WHERE id = ?').get(id);
+  const row = db
+    .prepare(
+      `SELECT lyrics, lyrics_sync, lyrics_offset, ${REVIEWABLE} AS reviewable
+         FROM tracks t WHERE id = ?`
+    )
+    .get(id);
   if (!row) return null;
   // A line list that cannot be read back is treated as "not timed" rather than
   // as an error - the plain text below it is still worth showing.
@@ -276,7 +288,36 @@ export function getLyrics(id) {
     lines,
     synced: lines.length > 0,
     offset: row.lyrics_offset || 0,
+    reviewable: !!row.reviewable,
   };
+}
+
+// Fitting lyrics stay as they are. The others go at once, and whatever the file itself
+// carries takes their place; the .lrc is deleted later from the workstation.
+export async function reviewLyrics(id, fits, userId) {
+  const row = db
+    .prepare(`SELECT path, lyrics_src, ${REVIEWABLE} AS reviewable FROM tracks t WHERE id = ?`)
+    .get(id);
+  if (!row) return null;
+  if (!row.reviewable) return getLyrics(id);
+
+  db.prepare(
+    'INSERT OR REPLACE INTO lyrics_reviews (track_id, lrc, fits, user_id) VALUES (?, ?, ?, ?)'
+  ).run(id, row.lyrics_src, fits ? 1 : 0, userId);
+  if (!fits) {
+    let own = { text: '', lines: [] };
+    try {
+      own = extractLyrics((await parseFile(row.path, { skipCovers: true })).common);
+    } catch {
+      // An unreadable file has no lyrics of its own to offer.
+    }
+    // The offset was set for the .lrc's timing, not for the file's.
+    db.prepare(
+      `UPDATE tracks SET lyrics = ?, lyrics_sync = ?, lyrics_from_lrc = 0, lyrics_offset = 0
+        WHERE id = ?`
+    ).run(own.text, own.lines.length ? JSON.stringify(own.lines) : '', id);
+  }
+  return getLyrics(id);
 }
 
 // Seconds, positive for later. Clamped rather than rejected, since the slider cannot go further;

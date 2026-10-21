@@ -557,7 +557,8 @@ async function collectFiles(root, extensions = AUDIO_EXT) {
 
 const selectTrackByPath = db.prepare(
   `SELECT id, size, mtime, year, release_date, cover, missing_at, genres_locked, year_locked,
-          cover_locked, audiobook_id, lyrics_src
+          cover_locked, audiobook_id, lyrics_src,
+          (SELECT lrc FROM lyrics_reviews r WHERE r.track_id = tracks.id AND r.fits = 0) AS dropped_lrc
      FROM tracks WHERE path = ?`
 );
 const markFound = db.prepare("UPDATE tracks SET missing_at = '' WHERE id = ?");
@@ -565,13 +566,13 @@ const setLyricsSrc = db.prepare('UPDATE tracks SET lyrics_src = ? WHERE id = ?')
 const insertTrack = db.prepare(`
   INSERT INTO tracks (path, title, artist_id, track_artist, album_id, track_no, disc_no, year,
                       release_date, duration, bitrate, codec, lossless, cover, lyrics,
-                      lyrics_sync, missing_at,
+                      lyrics_sync, lyrics_from_lrc, missing_at,
                       genres_locked, year_locked, cover_locked, size, mtime, norm_title,
                       loose_title, norm_artist, podcast_id, episode_no,
                       audiobook_id, part_no)
   VALUES (@path, @title, @artist_id, @track_artist, @album_id, @track_no, @disc_no, @year,
           @release_date, @duration, @bitrate, @codec, @lossless, @cover, @lyrics,
-          @lyrics_sync, @missing_at,
+          @lyrics_sync, @lyrics_from_lrc, @missing_at,
           @genres_locked, @year_locked, @cover_locked, @size, @mtime, @norm_title,
           @loose_title, @norm_artist, @podcast_id, @episode_no,
           @audiobook_id, @part_no)
@@ -582,7 +583,7 @@ const updateTrack = db.prepare(`
                     track_no = @track_no, disc_no = @disc_no, year = @year,
                     release_date = @release_date, duration = @duration,
                     bitrate = @bitrate, codec = @codec, lossless = @lossless, cover = @cover,
-                    lyrics = @lyrics, lyrics_sync = @lyrics_sync,
+                    lyrics = @lyrics, lyrics_sync = @lyrics_sync, lyrics_from_lrc = @lyrics_from_lrc,
                     missing_at = @missing_at, genres_locked = @genres_locked,
                     year_locked = @year_locked, cover_locked = @cover_locked,
                     size = @size, mtime = @mtime,
@@ -639,7 +640,9 @@ async function indexFile(filePath, stat, force) {
   // fills in what a folder name cannot say.
   const place = describeFile(filePath);
   const date = releaseDate(common);
-  const sidecar = lrcStat ? await fsp.readFile(lrcPath, 'utf8').catch(() => '') : '';
+  // A .lrc judged not to fit stays on disk until the workstation deletes it; until then it is not there.
+  const dropped = existing && existing.dropped_lrc === lrcSig;
+  const sidecar = lrcStat && !dropped ? await fsp.readFile(lrcPath, 'utf8').catch(() => '') : '';
   const lyrics = extractLyrics(common, sidecar);
   const aId = artistId(place.artist);
   const album = place.album ? albumRow(place.album, aId, date) : null;
@@ -678,6 +681,7 @@ async function indexFile(filePath, stat, force) {
     // What the file sings, or the .lrc next to it. Nothing is fetched from elsewhere.
     lyrics: lyrics.text,
     lyrics_sync: lyrics.lines.length ? JSON.stringify(lyrics.lines) : '',
+    lyrics_from_lrc: lyrics.fromLrc ? 1 : 0,
     missing_at: '',
     genres_locked: albumGenres ? 1 : (existing && existing.genres_locked) || 0,
     year_locked: yearLocked ? 1 : 0,
@@ -759,6 +763,7 @@ async function indexEpisode(filePath, stat, force) {
     cover: '',
     lyrics: '',
     lyrics_sync: '',
+    lyrics_from_lrc: 0,
     missing_at: '',
     genres_locked: 0,
     year_locked: 0,
@@ -826,6 +831,7 @@ async function indexAudiobookPart(filePath, stat, force, root, kind) {
     cover: '',
     lyrics: '',
     lyrics_sync: '',
+    lyrics_from_lrc: 0,
     missing_at: '',
     genres_locked: 0,
     year_locked: 0,

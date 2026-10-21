@@ -28,6 +28,7 @@ const ERRORS = {
   no_tmdb: 'Kein TMDB_API_KEY gesetzt.',
   scanning: 'Ein Scan läuft gerade, bitte danach nochmal.',
   bad_id: 'Bitte eine TMDB-ID angeben.',
+  invalid_verdict: 'Bitte angeben, ob der Songtext passt.',
 };
 
 // A 404 names what is gone - "Nicht gefunden" after a click on an album says

@@ -3137,7 +3137,9 @@ const LYRICS_LEAD = 1;
 // `lines` empty with `text` set means "there, but not timed". `offset` is the
 // song's own correction (positive = later), applied against LYRICS_LEAD, so zero
 // means the lead alone - which is why the control shows 0,0 rather than 1,0.
-const lyricState = { trackId: null, text: '', lines: [], loading: false, error: '', at: -1, offset: 0 };
+const lyricState = {
+  trackId: null, text: '', lines: [], loading: false, error: '', at: -1, offset: 0, reviewable: false,
+};
 
 // Counts the fetches, so a slow answer for the previous track cannot land on
 // top of the current one - the same guard the router uses.
@@ -3164,7 +3166,9 @@ function loadLyrics(track) {
   const id = track ? track.id : null;
   if (lyricState.trackId === id) return;
 
-  Object.assign(lyricState, { trackId: id, text: '', lines: [], loading: false, error: '', at: -1, offset: 0 });
+  Object.assign(lyricState, {
+    trackId: id, text: '', lines: [], loading: false, error: '', at: -1, offset: 0, reviewable: false,
+  });
   renderLyrics();
   if (!track || !track.hasLyrics) return;
 
@@ -3175,14 +3179,7 @@ function loadLyrics(track) {
     .lyrics(track.id)
     .then(({ lyrics }) => {
       if (seq !== lyricSeq) return;
-      Object.assign(lyricState, {
-        text: lyrics.text,
-        lines: lyrics.lines || [],
-        offset: Number(lyrics.offset) || 0,
-        loading: false,
-      });
-      renderLyrics();
-      paintLyricPosition(player.state.currentTime, true);
+      showLyrics(lyrics);
     })
     .catch((err) => {
       if (seq !== lyricSeq) return;
@@ -3191,6 +3188,18 @@ function loadLyrics(track) {
       lyricState.error = errorText(err);
       renderLyrics();
     });
+}
+
+function showLyrics(lyrics) {
+  Object.assign(lyricState, {
+    text: lyrics.text,
+    lines: lyrics.lines || [],
+    offset: Number(lyrics.offset) || 0,
+    reviewable: !!lyrics.reviewable,
+    loading: false,
+  });
+  renderLyrics();
+  paintLyricPosition(player.state.currentTime, true);
 }
 
 // The text is shown in two places - the side panel and the big view's Songtext
@@ -3387,6 +3396,12 @@ const offsetEl = {
   ],
 };
 
+// Up here with the offset's buttons: renderOffsetToggles draws both.
+const reviewButtons = [
+  document.getElementById('lyrics-review'),
+  document.getElementById('bigview-review'),
+];
+
 function offsetOpen() {
   return !offsetEl.panel.hidden;
 }
@@ -3435,7 +3450,47 @@ function renderOffsetToggles() {
     btn.classList.toggle('is-on', offsetOpen());
   });
   if (!usable && offsetOpen()) closeOffset();
+  // Shown at the same moments as the offset, so it is drawn with it.
+  const reviewable = lyricState.reviewable && (lyricsOpen() || bigViewTab() === 'lyrics');
+  reviewButtons.forEach((btn) => { btn.hidden = !reviewable; });
 }
+
+// --- Judging lyrics from a .lrc ---------------------------------------------
+// The .lrc files were fetched from a community database, and many do not fit. A verdict
+// keeps them for good or takes them off at once; the files themselves are dealt with
+// later from the workstation, since the music folder is read-only here.
+
+function reviewLyricsDialog() {
+  const trackId = lyricState.trackId;
+  if (!trackId || !lyricState.reviewable) return;
+  modal({
+    title: 'Passt der Songtext?',
+    body: `<button type="button" class="picker-item" data-fits="yes">
+        ${icon('check', 17)}<span>Passt<span class="picker-sub">Wird vorgemerkt, um ihn fest in die Datei zu übernehmen.</span></span>
+      </button>
+      <button type="button" class="picker-item" data-fits="no">
+        ${icon('x', 17)}<span>Passt nicht<span class="picker-sub">Der Songtext wird entfernt.</span></span>
+      </button>`,
+    onOpen(root) {
+      root.querySelectorAll('[data-fits]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          closeModal();
+          const fits = btn.dataset.fits === 'yes';
+          try {
+            const { lyrics } = await api.reviewLyrics(trackId, fits);
+            // The song may have moved on while the answer was under way.
+            if (lyricState.trackId === trackId) showLyrics(lyrics);
+            toast(fits ? 'Songtext vorgemerkt.' : 'Songtext entfernt.');
+          } catch (err) {
+            toast(`Nicht gespeichert: ${errorText(err)}`, 'err');
+          }
+        });
+      });
+    },
+  });
+}
+
+reviewButtons.forEach((btn) => btn.addEventListener('click', reviewLyricsDialog));
 
 function openOffset() {
   if (offsetOpen() || !offsetAvailable()) return;

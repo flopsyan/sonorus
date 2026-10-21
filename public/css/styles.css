@@ -1295,6 +1295,8 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
    into the window and darkened the whole right edge, scrollbar included. */
 .queue.open { transform: translateX(0); box-shadow: var(--shadow-lg); }
 .queue-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 16px 12px; border-bottom: 1px solid var(--line); }
+/* Up to three buttons beside the lyrics' title: together on the right, not spread out. */
+.lyrics-panel .queue-head > div { margin-right: auto; }
 .queue-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 8px; }
 .queue-section { padding: 14px 8px 6px; }
 .queue-item {
@@ -1489,9 +1491,8 @@ button.lyric-line:focus-visible { outline: 2px solid var(--accent); outline-offs
 @media (hover: hover) {
   .bigview-tab:hover { color: var(--text); }
 }
-.bigview-head .icon-btn { margin-left: auto; }
-/* Two buttons on the right of the head: only the first one needs pushing over. */
-.bigview-head .offset-toggle + .icon-btn { margin-left: 0; }
+/* The buttons gather on the right, however many of them are showing. */
+.bigview-tabs { margin-right: auto; }
 
 .bigview-body { flex: 1; min-height: 0; display: flex; }
 .bigview-pane { flex: 1; min-height: 0; min-width: 0; }

@@ -20,6 +20,7 @@ import {
   countTracks,
   getTrack,
   getLyrics,
+  reviewLyrics,
   setLyricsOffset,
   streamTrack,
   tracksByIds,
@@ -210,6 +211,14 @@ router.get('/tracks/:id', (req, res) => {
 router.get('/tracks/:id/lyrics', (req, res) => {
   const lyrics = getLyrics(id(req.params.id));
   if (!lyrics) return fail(res, 'not_found', 'lyrics');
+  res.json({ ok: true, lyrics });
+});
+
+// `fits` must be said outright: a body that lost it on the way must not cost a song its lyrics.
+router.post('/tracks/:id/lyrics-review', async (req, res) => {
+  if (typeof req.body.fits !== 'boolean') return fail(res, 'invalid_verdict');
+  const lyrics = await reviewLyrics(id(req.params.id), req.body.fits, req.user.id);
+  if (!lyrics) return fail(res, 'not_found', 'track');
   res.json({ ok: true, lyrics });
 });
 

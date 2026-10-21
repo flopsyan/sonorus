@@ -56,6 +56,10 @@
           <button type="button" class="bigview-tab" role="tab" data-bigtab="lyrics">Songtext</button>
           <button type="button" class="bigview-tab" role="tab" data-bigtab="visual">Visualisierung</button>
         </div>
+        <!-- Only for words from a .lrc that nobody has judged yet. -->
+        <button type="button" class="icon-btn" id="bigview-review" hidden
+                aria-label="Passt der Songtext?" title="Passt der Songtext?"
+                data-icon="check-circle" data-icon-size="18"></button>
         <!-- Only on the Songtext tab, and only for a text that is timed at
              all: there is nothing to shift in a lyric that carries no seconds. -->
         <button type="button" class="icon-btn offset-toggle" id="bigview-offset" hidden
@@ -180,6 +184,8 @@
         <span class="rack-label">Songtext</span>
         <h2 id="lyrics-title">Nichts ausgewählt</h2>
       </div>
+      <button type="button" class="icon-btn" id="lyrics-review" hidden
+              aria-label="Passt der Songtext?" title="Passt der Songtext?" data-icon="check-circle"></button>
       <button type="button" class="icon-btn offset-toggle" id="lyrics-offset-toggle" hidden
               aria-label="Songtext versetzen" title="Songtext versetzen"
               aria-pressed="false" data-icon="timing"></button>

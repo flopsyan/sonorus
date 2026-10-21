@@ -401,6 +401,8 @@ addColumn('tracks', 'lyrics_offset', 'REAL NOT NULL DEFAULT 0');
 // Size and mtime of the .lrc next to the song, so one dropped in later is read although the
 // audio file did not change.
 addColumn('tracks', 'lyrics_src', "TEXT NOT NULL DEFAULT ''");
+// 1 when the lyrics shown are that .lrc's, not the file's own: only those can be judged.
+addColumn('tracks', 'lyrics_from_lrc', 'INTEGER NOT NULL DEFAULT 0');
 // The full release date next to the year. Filled by the next scan, which
 // re-reads every file after the scanner version bump.
 addColumn('albums', 'release_date', "TEXT NOT NULL DEFAULT ''");
@@ -459,6 +461,20 @@ db.exec(`
     title    TEXT NOT NULL DEFAULT '',
     start    REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (track_id, idx)
+  );
+`);
+
+// --- Lyrics verdicts ---------------------------------------------------------
+// Whether the words of a .lrc fit the song. The music folder is read-only, so the verdict
+// waits here until tools/lyrics-reviews.js deletes or lists the file from the workstation.
+// `lrc` is the size:mtime it was given for: a .lrc replaced since is judged afresh.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lyrics_reviews (
+    track_id   INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    lrc        TEXT NOT NULL,
+    fits       INTEGER NOT NULL,
+    user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
 
@@ -733,6 +749,13 @@ once('split_glued_lyrics', () => {
       if (text !== row.lyrics) update.run(text, '', row.id);
     }
   }
+});
+
+// A scan skips an unchanged file, so the rows already read never learn where their lyrics came
+// from. Every .lrc in the library so far was written by tools/fetch-lyrics.js for a song with
+// no timed lyrics of its own, so wherever a .lrc lies, it is what is shown.
+once('lyrics_from_lrc', () => {
+  db.exec("UPDATE tracks SET lyrics_from_lrc = 1 WHERE lyrics_src <> '' AND lyrics <> ''");
 });
 
 // Rebuilds audiobooks for the key (title, author_id, kind): moving a title between roots has
