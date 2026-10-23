@@ -360,6 +360,14 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, item_id)
   );
+
+  -- The home page's song of the day. Stored rather than derived, so it holds all
+  -- day on every device instead of changing the moment it is played or rated.
+  CREATE TABLE IF NOT EXISTS daily_tracks (
+    user_id  INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    day      TEXT NOT NULL,
+    track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE
+  );
 `);
 
 // --- Columns added after the first release ----------------------------------
@@ -375,6 +383,10 @@ addColumn('tracks', 'cover', "TEXT NOT NULL DEFAULT ''");
 addColumn('tracks', 'missing_at', "TEXT NOT NULL DEFAULT ''");
 // Listening time per play, for the statistics.
 addColumn('plays', 'seconds', 'INTEGER NOT NULL DEFAULT 0');
+// The list a play was started from ("albums/12", "shuffle"), for "Weiterhören" on the home
+// page. Empty for older plays and for places that are no list of their own.
+addColumn('plays', 'source', "TEXT NOT NULL DEFAULT ''");
+db.exec('CREATE INDEX IF NOT EXISTS idx_plays_source ON plays(user_id, source, played_at)');
 
 // What the user edited by hand. The music folder is read-only, so an edit is
 // stored here instead of in the file - and the scanner has to be told to keep

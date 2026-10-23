@@ -186,7 +186,8 @@ export const api = {
   search: (q) => request('GET', `/api/search${query({ q })}`),
 
   rate: (trackId, stars) => request('PUT', `/api/tracks/${trackId}/rating`, { stars }),
-  play: (trackId, seconds) => request('POST', '/api/plays', { trackId, seconds }),
+  // `source` is the list the queue came from ("/albums/12"), for "Weiterhören" on the home page.
+  play: (trackId, seconds, source) => request('POST', '/api/plays', { trackId, seconds, source }),
   // keepalive lets the last report survive the page being closed.
   playTime: (playId, seconds, keepalive = false) =>
     request('PUT', `/api/plays/${playId}`, { seconds }, keepalive ? { keepalive: true } : undefined),

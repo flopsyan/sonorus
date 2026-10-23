@@ -32,14 +32,15 @@ import {
   getGenres,
   tracksByStarSelection,
   starCounts,
-  recentlyAdded,
   recentlyPlayed,
-  mostPlayed,
-  newestAlbums,
+  favoriteArtists,
+  favoriteAlbums,
+  favoriteGenres,
   randomTracks,
   searchLibrary,
   libraryStats,
 } from '../models/library.js';
+import { dailyTrack, resumeSources } from '../models/home.js';
 import {
   listPodcasts,
   getPodcast,
@@ -508,19 +509,27 @@ router.get('/stars/:stars', (req, res) => {
   res.json({ ok: true, stars, tracks: tracksByStarSelection(stars, req.user.id) });
 });
 
-// The home page: what is new, what was played, what gets played most.
+// The home page: a song for today, where listening left off, the favourites and how far
+// rating has come.
 router.get('/home', (req, res) => {
+  const stars = starCounts(req.user.id);
   res.json({
     ok: true,
     stats: libraryStats(),
     // How much is still waiting for a star. Per account, so it is not part of
     // libraryStats - and it is what decides whether the page offers a random
     // run through the unrated songs at all.
-    unrated: starCounts(req.user.id)[0],
-    newestAlbums: newestAlbums(12),
-    recentlyAdded: recentlyAdded(req.user.id, 12),
+    unrated: stars[0],
+    daily: dailyTrack(req.user.id),
+    resume: resumeSources(req.user.id),
+    favorites: {
+      artists: favoriteArtists(req.user.id),
+      albums: favoriteAlbums(req.user.id),
+      genres: favoriteGenres(req.user.id),
+    },
+    stars,
+    // No longer drawn on the home page; Android Auto's "Zuletzt gehört" reads it.
     recentlyPlayed: recentlyPlayed(req.user.id, 12),
-    mostPlayed: mostPlayed(req.user.id, 12),
   });
 });
 
@@ -558,7 +567,7 @@ router.put('/tracks/:id/rating', (req, res) => {
 // `playedAt` only comes with a play queued offline (see recordPlay); otherwise the
 // play is stamped on arrival.
 router.post('/plays', (req, res) => {
-  const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds, req.body.playedAt);
+  const result = recordPlay(req.user.id, id(req.body.trackId), req.body.seconds, req.body.playedAt, req.body.source);
   if (result.error) return fail(res, result.error, 'track');
   res.json({ ok: true, playId: result.id });
 });

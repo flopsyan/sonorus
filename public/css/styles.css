@@ -534,6 +534,105 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; }
 
+/* --- Home: the song of the day, Weiterhören, favourites, rating ------------ */
+
+/* The buttons are a grid area of their own so the phone can run them under the cover. */
+.daily {
+  display: grid; grid-template-columns: 176px minmax(0, 1fr); grid-template-areas: "art text" "art actions";
+  gap: 14px 22px; padding: 16px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.daily-art {
+  grid-area: art; align-self: center;
+  width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--surface-2); box-shadow: var(--shadow-sm);
+}
+.daily-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.daily-art .art-fallback { font-size: 3.2rem; }
+.daily-text { grid-area: text; align-self: end; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.daily-title { margin: 0; font-size: 1.6rem; font-weight: 750; letter-spacing: -0.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.daily-by { font-size: 0.95rem; color: var(--text-dim); }
+.daily-facts { font-size: 0.82rem; color: var(--text-faint); }
+@media (hover: hover) {
+  .daily-by a:hover, .daily-facts a:hover { color: var(--text); }
+}
+.daily .stars { margin-top: 6px; }
+.daily-heard { margin: 2px 0 0; font-size: 0.82rem; color: var(--text-dim); }
+.daily-actions { grid-area: actions; align-self: start; display: flex; gap: 10px; flex-wrap: wrap; }
+
+.resume-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.resume-tile {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: 8px 10px 8px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.resume-art { width: 48px; height: 48px; flex: none; border-radius: var(--radius-xs); overflow: hidden; background: var(--surface-2); }
+.resume-art.round { border-radius: 50%; }
+.resume-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.resume-art .mosaic { width: 100%; height: 100%; }
+.resume-art .art-fallback { font-size: 1rem; }
+.resume-sym { display: grid; place-items: center; width: 100%; height: 100%; background: var(--accent-soft); color: var(--accent); }
+.resume-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.resume-title { font-size: 0.91rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-sub { font-size: 0.8rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-play {
+  width: 30px; height: 30px; flex: none; display: grid; place-items: center; padding: 0;
+  border-radius: 50%; border: none; background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  opacity: 0;
+}
+.resume-tile:focus-within .resume-play { opacity: 1; }
+@media (hover: hover) {
+  .resume-tile:hover { border-color: var(--accent-line); }
+  .resume-tile:hover .resume-play { opacity: 1; }
+}
+/* A finger has no hover to reveal it with. */
+@media (hover: none) {
+  .resume-play { opacity: 1; }
+}
+
+.fav-row { display: flex; flex-direction: column; gap: 10px; }
+.fav-row + .fav-row { margin-top: 18px; }
+.fav-row .chip-row { margin-bottom: 0; }
+a.chip .num { font-size: 0.75rem; font-weight: 500; color: var(--text-faint); }
+
+.rating-panel {
+  display: grid; gap: 12px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+}
+.rating-top { margin: 0; font-size: 0.88rem; color: var(--text-dim); }
+.rating-top b { font-size: 1.15rem; color: var(--accent); margin-right: 8px; }
+/* The shares arrive as flex-grow from views.js: the CSP forbids inline styles. */
+.rating-bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
+.rating-bar a { flex: 0 1 0; min-width: 4px; }
+.rating-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.8rem; }
+.rating-legend a { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.rating-legend i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.rating-legend .num { color: var(--text-faint); }
+@media (hover: hover) {
+  .rating-legend a:hover { color: var(--text); }
+  .rating-bar a:hover { filter: brightness(1.15); }
+}
+.rs-5 { background: var(--accent); }
+.rs-4 { background: color-mix(in srgb, var(--accent) 78%, var(--surface-2)); }
+.rs-3 { background: color-mix(in srgb, var(--accent) 55%, var(--surface-2)); }
+.rs-2 { background: color-mix(in srgb, var(--accent) 36%, var(--surface-2)); }
+.rs-1 { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); }
+.rs-0 { background: var(--surface-3); }
+
+@media (max-width: 900px) {
+  .daily { grid-template-columns: 112px minmax(0, 1fr); grid-template-areas: "art text" "actions actions"; gap: 12px 14px; padding: 12px; }
+  .daily-art, .daily-text { align-self: start; }
+  .daily-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+  .daily-title { font-size: 1.2rem; }
+  .daily-art .art-fallback { font-size: 2.2rem; }
+  .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .resume-art { width: 42px; height: 42px; }
+}
+/* Two tiles side by side leave a phone too little room for a name. */
+@media (max-width: 560px) {
+  .resume-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* --- Statistics ------------------------------------------------------------ */
 /* Same front-panel language as the home readout: a column chart drawn from
    plain divs (no chart library, and the CSP would block one anyway) and top

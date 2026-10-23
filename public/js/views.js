@@ -122,14 +122,120 @@ function favoriteState(kind, list) {
 
 // --- Home -------------------------------------------------------------------
 
-function shelf(title, items, more) {
-  if (!items) return '';
+// The song of the day is at least two months unheard, so it is counted in months and years.
+function lastHeard(days) {
+  if (days === null || days === undefined) return '';
+  if (days <= 1) return 'Zuletzt gestern gehört';
+  if (days < 60) return `Zuletzt vor ${days} Tagen gehört`;
+  const months = Math.round(days / 30.44);
+  if (months < 24) return `Zuletzt vor ${months} Monaten gehört`;
+  return `Zuletzt vor ${Math.round(days / 365.25)} Jahren gehört`;
+}
+
+function dailySection(daily) {
+  const t = daily.track;
+  const albumHref = t.albumId ? `/albums/${t.albumId}` : '';
+  const heard = lastHeard(daily.daysSince);
   return `<section class="section">
-      <div class="section-head">
-        <h2>${esc(title)}</h2>
-        ${more ? `<a class="rack-label" href="${more.href}" data-link>${esc(more.label)}</a>` : ''}
+      <div class="section-head"><h2>Heute aufgelegt</h2></div>
+      <div class="daily">
+        <span class="daily-art">${art(t.cover, t.album || t.title)}</span>
+        <div class="daily-text">
+          <h3 class="daily-title">${esc(t.title)}</h3>
+          <div class="daily-by">${t.artistId ? `<a href="/artists/${t.artistId}" data-link>${esc(t.artist)}</a>` : esc(t.artist)}</div>
+          <div class="daily-facts">${facts([
+            albumHref ? `<a href="${albumHref}" data-link>${esc(t.album)}</a>` : 'Single',
+            esc(t.releaseDate.slice(0, 4)),
+            fmt.duration(t.duration),
+          ])}</div>
+          ${stars(t.stars, t.id)}
+          ${heard ? `<p class="daily-heard">${heard}</p>` : ''}
+        </div>
+        <div class="daily-actions">
+          <button type="button" class="btn btn-primary" data-play-track="${t.id}">${icon('play', 16)} Abspielen</button>
+          ${albumHref ? `<a class="btn btn-ghost" href="${albumHref}" data-link>Zum Album</a>` : ''}
+        </div>
       </div>
-      <div class="grid row">${items}</div>
+    </section>`;
+}
+
+// A random run has no page to go back to, so its tile is the button that starts a new one.
+function resumeTile(tile) {
+  const artHtml = tile.covers.length
+    ? coverMosaic(tile.covers, tile.title)
+    : `<span class="resume-sym">${icon(tile.icon || 'music', 18)}</span>`;
+  const inner = `<span class="resume-art${tile.round ? ' round' : ''}">${artHtml}</span>
+      <span class="resume-text">
+        <span class="resume-title">${esc(tile.title)}</span>
+        <span class="resume-sub">${esc(tile.sub)}</span>
+      </span>`;
+  if (tile.kind === 'shuffle') {
+    return `<button type="button" class="resume-tile" data-play-source="${esc(tile.key)}">${inner}
+        <span class="resume-play" aria-hidden="true">${icon('shuffle', 15)}</span>
+      </button>`;
+  }
+  return `<a class="resume-tile" href="/${esc(tile.key)}" data-link>${inner}
+      <button type="button" class="resume-play" data-play-source="${esc(tile.key)}"
+        aria-label="${esc(tile.title)} abspielen">${icon('play', 15)}</button>
+    </a>`;
+}
+
+function favoritesSection(fav) {
+  const rows = [];
+  if (fav.artists.length) {
+    rows.push(`<div class="fav-row">
+        <span class="rack-label">Interpreten</span>
+        <div class="grid row">${fav.artists
+          .map((a) => card({ href: `/artists/${a.id}`, cover: a.cover, covers: a.covers, title: a.name, round: true }))
+          .join('')}</div>
+      </div>`);
+  }
+  if (fav.albums.length) {
+    rows.push(`<div class="fav-row">
+        <span class="rack-label">Alben</span>
+        <div class="grid row">${fav.albums
+          .map((a) =>
+            card({ href: `/albums/${a.id}`, cover: a.cover, title: a.title, sub: a.artist, playAction: `data-play-album="${a.id}"` })
+          )
+          .join('')}</div>
+      </div>`);
+  }
+  if (fav.genres.length) {
+    rows.push(`<div class="fav-row">
+        <span class="rack-label">Genres</span>
+        <div class="chip-row">${fav.genres
+          .map((g) => `<a class="chip" href="/genres/${g.id}" data-link>${esc(g.name)} <span class="num">${fmt.number(g.trackCount)}</span></a>`)
+          .join('')}</div>
+      </div>`);
+  }
+  if (!rows.length) return '';
+  return `<section class="section">
+      <div class="section-head"><h2>Favoriten</h2></div>
+      ${rows.join('')}
+    </section>`;
+}
+
+// Best first, then what is still waiting; each part opens its star list.
+const RATING_PARTS = [5, 4, 3, 2, 1, 0];
+const ratingName = (n) => (n === 0 ? 'Nicht bewertet' : n === 1 ? '1 Stern' : `${n} Sterne`);
+
+function ratingSection(counts) {
+  const rated = [1, 2, 3, 4, 5].reduce((sum, n) => sum + (counts[n] || 0), 0);
+  const total = rated + (counts[0] || 0);
+  if (!total) return '';
+  const parts = RATING_PARTS.filter((n) => counts[n]);
+  return `<section class="section">
+      <div class="section-head"><h2>Bewertet</h2></div>
+      <div class="rating-panel">
+        <p class="rating-top"><b class="num">${Math.round((rated / total) * 100)} %</b>
+          ${fmt.number(rated)} von ${fmt.plural(total, 'Song', 'Songs')}</p>
+        <div class="rating-bar" aria-hidden="true">${parts
+          .map((n) => `<a class="rs-${n}" href="/stars/${n}" data-link tabindex="-1" data-share="${counts[n]}"></a>`)
+          .join('')}</div>
+        <div class="rating-legend">${parts
+          .map((n) => `<a href="/stars/${n}" data-link><i class="rs-${n}"></i>${ratingName(n)} <span class="num">${fmt.number(counts[n])}</span></a>`)
+          .join('')}</div>
+      </div>
     </section>`;
 }
 
@@ -161,34 +267,10 @@ export async function home() {
     };
   }
 
-  const albumCards = (albums) =>
-    albums
-      .map((a) =>
-        card({
-          href: `/albums/${a.id}`,
-          cover: a.cover,
-          title: a.title,
-          sub: a.artist,
-          playAction: `data-play-album="${a.id}"`,
-        })
-      )
-      .join('');
-
-  const trackCards = (tracks) =>
-    tracks
-      .map((t) =>
-        card({
-          href: t.albumId ? `/albums/${t.albumId}` : t.artistId ? `/artists/${t.artistId}` : '',
-          cover: t.cover,
-          title: t.title,
-          sub: t.artist,
-          playAction: `data-play-track="${t.id}"`,
-        })
-      )
-      .join('');
-
   return {
     title: 'Start',
+    // The song of the day is what "Abspielen" and the stars look up.
+    tracks: data.daily ? [data.daily.track] : [],
     html: `${pageHead('Bibliothek', 'Deine Sammlung', '')}
       ${readout}
       <div class="hero-actions">
@@ -204,9 +286,23 @@ export async function home() {
         }
         <a class="btn btn-ghost" href="/tracks" data-link>${icon('music', 16)} Alle Songs</a>
       </div>
-      ${shelf('Zuletzt hinzugefügt', albumCards(data.newestAlbums), { href: '/albums', label: 'Alle Alben' })}
-      ${data.recentlyPlayed.length ? shelf('Zuletzt gehört', trackCards(data.recentlyPlayed)) : ''}
-      ${data.mostPlayed.length ? shelf('Am häufigsten gehört', trackCards(data.mostPlayed)) : ''}`,
+      ${data.daily ? dailySection(data.daily) : ''}
+      ${
+        data.resume.length
+          ? `<section class="section">
+              <div class="section-head"><h2>Weiterhören</h2></div>
+              <div class="resume-grid">${data.resume.map(resumeTile).join('')}</div>
+            </section>`
+          : ''
+      }
+      ${favoritesSection(data.favorites)}
+      ${ratingSection(data.stars)}`,
+    // The bar's shares are data, not markup: the CSP forbids inline style attributes.
+    after(root) {
+      root.querySelectorAll('.rating-bar [data-share]').forEach((part) => {
+        part.style.flexGrow = part.dataset.share;
+      });
+    },
   };
 }
 

@@ -365,7 +365,7 @@ export function tracksByIds(ids, userId) {
 
 // The picture the user picked wins; without one the artist borrows the artwork
 // of their newest album, and failing that of one of their singles.
-const ARTIST_COVER = `COALESCE(
+export const ARTIST_COVER = `COALESCE(
     NULLIF(ar.cover, ''),
     (SELECT al.cover FROM albums al
       WHERE al.artist_id = ar.id AND al.cover <> ''
@@ -743,16 +743,6 @@ export function starCounts(userId) {
 
 // --- Home page lists --------------------------------------------------------
 
-export function recentlyAdded(userId, limit = 18) {
-  return db
-    .prepare(
-      `SELECT ${TRACK_FIELDS} ${TRACK_FROM} WHERE ${PRESENT_MUSIC}
-        ORDER BY t.added_at DESC, t.id DESC LIMIT @limit`
-    )
-    .all({ userId, limit })
-    .map(shapeTrack);
-}
-
 export function recentlyPlayed(userId, limit = 18) {
   return db
     .prepare(
@@ -767,39 +757,57 @@ export function recentlyPlayed(userId, limit = 18) {
     .map(shapeTrack);
 }
 
-// Ranked by time listened, like the statistics; the play count comes along but does not decide.
-export function mostPlayed(userId, limit = 18) {
+// Favourites in the order they were marked, so a new one joins the end of its row.
+const FAVORITES_MAX = 24;
+
+export function favoriteArtists(userId) {
   return db
     .prepare(
-      `SELECT ${TRACK_FIELDS}, COUNT(CASE WHEN ${PLAY_COUNTED} THEN p.id END) AS playCount,
-              ROUND(SUM(${LISTENED})) AS listened ${TRACK_FROM}
-         JOIN plays p ON p.track_id = t.id AND p.user_id = @userId
-        WHERE ${PRESENT_MUSIC}
-        GROUP BY t.id
-        ORDER BY listened DESC, playCount DESC, MAX(p.played_at) DESC
-        LIMIT @limit`
+      `SELECT ${ARTIST_ROW} FROM favorite_artists f
+         JOIN artists ar ON ar.id = f.item_id
+         LEFT JOIN tracks t ON t.artist_id = ar.id AND ${PRESENT_MUSIC}
+        WHERE f.user_id = @userId
+        GROUP BY ar.id
+       HAVING trackCount > 0
+        ORDER BY f.created_at, ar.name COLLATE NOCASE
+        LIMIT ${FAVORITES_MAX}`
     )
-    .all({ userId, limit })
-    .map((r) => ({ ...shapeTrack(r), playCount: r.playCount, listened: r.listened }));
+    .all({ userId })
+    .map((a) => ({ ...shapeArtistRow(a), favorite: true, covers: mosaicCovers(a) }));
 }
 
-export function newestAlbums(limit = 12) {
+export function favoriteAlbums(userId) {
   return db
     .prepare(
-      `SELECT al.id, al.title, al.year, al.release_date AS releaseDate, al.cover,
-              al.artist_id AS artistId, ar.name AS artist,
-              COUNT(t.id) AS trackCount, SUM(t.duration) AS duration,
-              MAX(t.added_at) AS addedAt
-         FROM albums al
+      `SELECT ${ALBUM_ROW} FROM favorite_albums f
+         JOIN albums al ON al.id = f.item_id
          LEFT JOIN artists ar ON ar.id = al.artist_id
          LEFT JOIN tracks  t  ON t.album_id = al.id AND ${PRESENT_MUSIC}
+        WHERE f.user_id = @userId
         GROUP BY al.id
        HAVING trackCount > 0
-        ORDER BY addedAt DESC
-        LIMIT @limit`
+        ORDER BY f.created_at, al.title COLLATE NOCASE
+        LIMIT ${FAVORITES_MAX}`
     )
-    .all({ limit })
-    .map(shapeAlbum);
+    .all({ userId })
+    .map((row) => ({ ...shapeAlbum(row), favorite: true }));
+}
+
+export function favoriteGenres(userId) {
+  return db
+    .prepare(
+      `SELECT g.id, g.name, COUNT(t.id) AS trackCount FROM favorite_genres f
+         JOIN genres g ON g.id = f.item_id
+         LEFT JOIN track_genres tg ON tg.genre_id = g.id
+         LEFT JOIN tracks t ON t.id = tg.track_id AND ${PRESENT_MUSIC}
+        WHERE f.user_id = ?
+        GROUP BY g.id
+       HAVING trackCount > 0
+        ORDER BY f.created_at, g.name COLLATE NOCASE
+        LIMIT ${FAVORITES_MAX}`
+    )
+    .all(userId)
+    .map((g) => ({ ...g, favorite: true }));
 }
 
 // `unrated` narrows the draw to songs without a star, for rating by ear. Every song is equally

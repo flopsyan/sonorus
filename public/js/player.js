@@ -1045,7 +1045,7 @@ audio.addEventListener('timeupdate', () => {
       const seq = playSeq;
       if (track) {
         api
-          .play(track.id, reported)
+          .play(track.id, reported, state.sourceKey)
           .then((res) => {
             if (seq === playSeq) playId = res.playId;
           })

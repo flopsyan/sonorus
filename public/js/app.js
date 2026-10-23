@@ -1469,6 +1469,43 @@ function currentSourceKey() {
   return window.location.pathname;
 }
 
+// A random run is filed under its own key, so "Weiterhören" can offer it again.
+async function startRandomRun(unrated) {
+  try {
+    const { tracks } = await api.shuffle(300, unrated);
+    if (!tracks.length) {
+      return toast(unrated ? 'Alles ist bewertet.' : 'Hier gibt es nichts zum Abspielen.');
+    }
+    if (!player.state.shuffle) player.setShuffle(true);
+    player.playTracks(tracks, 0, unrated ? 'Unbewertete' : 'Zufallsmix', unrated ? 'shuffle-unrated' : 'shuffle');
+  } catch (err) {
+    toast(errorText(err), 'err');
+  }
+}
+
+// The list behind a "Weiterhören" key; the keys are the paths of these pages.
+async function tracksForSource(key) {
+  const [kind, id, sub, stars] = key.split('/');
+  if (kind === 'albums') return (await api.album(id)).album.tracks;
+  if (kind === 'playlists') return (await api.playlist(id)).tracks;
+  if (kind === 'genres') return (await api.genre(id)).genre.tracks;
+  if (kind === 'stars') return (await api.starred(id)).tracks;
+  if (kind === 'tracks') {
+    const saved = shell.prefs.trackSort || {};
+    return (await api.tracks({ sort: saved.key || 'title', dir: saved.dir || 'asc' })).tracks;
+  }
+  if (kind === 'artists') {
+    const { artist } = await api.artist(id);
+    if (sub === 'singles') return artist.singles;
+    if (sub === 'stars') {
+      const wanted = stars.split(',').map(Number);
+      return artist.tracks.filter((t) => wanted.includes(t.stars || 0));
+    }
+    return artist.tracks;
+  }
+  return [];
+}
+
 // Loads the track list behind a "play this collection" button.
 async function tracksFor(el) {
   // The search page holds songs and podcast episodes in one list; the button
@@ -1532,6 +1569,26 @@ content.addEventListener('click', async (e) => {
       player.toggle();
     } else {
       player.playTracks(view.tracks, index, pageName(), currentSourceKey());
+    }
+    return;
+  }
+
+  // "Weiterhören" on the home page: the list again, under its own key so it stays the same tile.
+  const resume = e.target.closest('[data-play-source]');
+  if (resume) {
+    e.preventDefault();
+    e.stopPropagation();
+    const key = resume.dataset.playSource;
+    if (key === 'shuffle' || key === 'shuffle-unrated') return startRandomRun(key === 'shuffle-unrated');
+    try {
+      const list = (await tracksForSource(key)).filter((t) => !t.missing);
+      if (!list.length) return toast('Hier gibt es nichts zum Abspielen.', 'err');
+      const label = resume.closest('.resume-tile')?.querySelector('.resume-title')?.textContent || '';
+      // Mixed again if the player is set to mix, from the top otherwise.
+      if (player.state.shuffle) player.shuffleTracks(list, label, `/${key}`);
+      else player.playTracks(list, 0, label, `/${key}`);
+    } catch (err) {
+      toast(errorText(err), 'err');
     }
     return;
   }
@@ -1601,17 +1658,7 @@ content.addEventListener('click', async (e) => {
   // The two random runs off the home page; the second draws only unrated songs.
   const shuffleLibrary = e.target.closest('[data-shuffle-library], [data-shuffle-unrated]');
   if (shuffleLibrary) {
-    const unrated = 'shuffleUnrated' in shuffleLibrary.dataset;
-    try {
-      const { tracks } = await api.shuffle(300, unrated);
-      if (!tracks.length) {
-        return toast(unrated ? 'Alles ist bewertet.' : 'Hier gibt es nichts zum Abspielen.');
-      }
-      if (!player.state.shuffle) player.setShuffle(true);
-      player.playTracks(tracks, 0, unrated ? 'Unbewertete' : 'Zufallsmix');
-    } catch (err) {
-      toast(errorText(err), 'err');
-    }
+    startRandomRun('shuffleUnrated' in shuffleLibrary.dataset);
     return;
   }
 
@@ -1973,6 +2020,10 @@ async function markEpisode(track, completed) {
   }
 }
 
+// Pages drawn from the ratings, redrawn in place when one changes: the star playlists (also
+// narrowed to one artist) and the home page with its "Bewertet" bar.
+const RATING_PAGES = /^\/(?:(?:stars|artists\/\d+\/stars)\/|$)/;
+
 // A rating is queued before it is sent, so a dropped connection cannot lose it:
 // the queue outlives the page, the stars show pale until the server has it, and
 // flushRatings sends what is left on the next connection.
@@ -1993,9 +2044,7 @@ async function rate(trackId, value) {
     shell.starCounts = res.counts;
     paintRating(trackId, res.stars);
     renderSidebar();
-    // The star playlists (also narrowed to one artist) are generated, so the list
-    // on screen changes under the user and is redrawn in place.
-    if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
+    if (RATING_PAGES.test(window.location.pathname)) render({ keep: true });
   } catch (err) {
     if (err && PERMANENT_RATING_ERRORS.has(err.code)) {
       pendingRatings.clear(trackId);
@@ -2049,7 +2098,7 @@ async function flushRatings() {
   }
   if (sent) {
     renderSidebar();
-    if (/^\/(stars|artists\/\d+\/stars)\//.test(window.location.pathname)) render({ keep: true });
+    if (RATING_PAGES.test(window.location.pathname)) render({ keep: true });
   }
 }
 

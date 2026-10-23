@@ -31,18 +31,35 @@ export function setRating(userId, trackId, stars) {
 // Called after the first second; whether a row counts as a play is decided on reading
 // (`PLAY_COUNTED` in stats.js). `playedAt` only comes with plays queued offline, so they
 // do not all land on the day the phone reconnects.
-export function recordPlay(userId, trackId, seconds = 0, playedAt = '') {
+export function recordPlay(userId, trackId, seconds = 0, playedAt = '', source = '') {
   const track = db.prepare('SELECT id FROM tracks WHERE id = ?').get(trackId);
   if (!track) return { error: 'not_found' };
   const when = plausibleTime(playedAt);
   const info = when
     ? db
-        .prepare('INSERT INTO plays (user_id, track_id, seconds, played_at) VALUES (?, ?, ?, ?)')
-        .run(userId, trackId, clampSeconds(seconds), when)
+        .prepare('INSERT INTO plays (user_id, track_id, seconds, source, played_at) VALUES (?, ?, ?, ?, ?)')
+        .run(userId, trackId, clampSeconds(seconds), cleanSource(source), when)
     : db
-        .prepare('INSERT INTO plays (user_id, track_id, seconds) VALUES (?, ?, ?)')
-        .run(userId, trackId, clampSeconds(seconds));
+        .prepare('INSERT INTO plays (user_id, track_id, seconds, source) VALUES (?, ?, ?, ?)')
+        .run(userId, trackId, clampSeconds(seconds), cleanSource(source));
   return { ok: true, id: Number(info.lastInsertRowid) };
+}
+
+// The lists "Weiterhören" can go back to, as the clients name them: the web sends the page's
+// path ("/albums/12"), the app its route ("albums/12"). A search or the home page is no list.
+const SOURCE =
+  /^(?:albums\/\d+|artists\/\d+(?:\/singles|\/stars\/[0-5](?:,[0-5])*)?|playlists\/\d+|genres\/\d+(?:,\d+)*|stars\/[0-5](?:,[0-5])*|tracks|shuffle|shuffle-unrated)$/;
+
+export function cleanSource(value) {
+  const key = String(value ?? '').trim().replace(/^\/+/, '');
+  if (key.length > 200 || !SOURCE.test(key)) return '';
+  // "stars/4,5" and "stars/5,4" are one list and must be one tile. Stars run best first,
+  // the way the web's star picker writes them.
+  const ids = /^(.*(?:stars|genres)\/)([\d,]+)$/.exec(key);
+  if (!ids) return key;
+  const stars = ids[1].endsWith('stars/');
+  const sorted = [...new Set(ids[2].split(',').map(Number))].sort((a, b) => (stars ? b - a : a - b));
+  return ids[1] + sorted.join(',');
 }
 
 // A backdated play counts, but its timestamp is not trusted blind: a wrong phone clock would
