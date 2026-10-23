@@ -228,6 +228,8 @@ textarea { resize: vertical; min-height: 70px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 6px 11px; font-size: 0.82rem; }
 .btn.is-pinned { color: var(--accent); border-color: var(--accent-line); }
+/* A lone icon is shorter than a line of text; stretch keeps it level with the buttons beside it. */
+.btn-icon { padding-inline: 11px; align-self: stretch; }
 
 .icon-btn {
   display: inline-grid; place-items: center;

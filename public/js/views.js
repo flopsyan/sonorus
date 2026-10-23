@@ -109,9 +109,10 @@ function withFavorites(view, items, allLabel) {
 
 // `kind` is the collection's path, the same word the API uses.
 function favoriteButton(kind, id, on) {
-  return `<button type="button" class="btn btn-ghost${on ? ' is-pinned' : ''}"
-      data-favorite="${kind}" data-favorite-id="${id}" aria-pressed="${on}">
-      ${icon(on ? 'heart' : 'heart-outline', 16)} ${on ? 'Favorit' : 'Zu Favoriten'}
+  return `<button type="button" class="btn btn-ghost btn-icon${on ? ' is-pinned' : ''}"
+      data-favorite="${kind}" data-favorite-id="${id}" aria-pressed="${on}"
+      aria-label="Favorit" title="${on ? 'Favorit' : 'Zu Favoriten'}">
+      ${icon(on ? 'heart' : 'heart-outline', 16)}
     </button>`;
 }
 
@@ -413,10 +414,10 @@ export async function artist(params) {
         fmt.durationLong(total),
       ]),
       actions: `${playActions('view')}
-        ${favoriteButton('artists', data.id, data.favorite)}
         <button type="button" class="btn btn-ghost" data-edit-artist="${data.id}">
           ${icon('edit', 16)} Bearbeiten
-        </button>`,
+        </button>
+        ${favoriteButton('artists', data.id, data.favorite)}`,
     })}
       ${
         ratings.length
@@ -579,10 +580,10 @@ export async function album(params) {
         fmt.durationLong(data.duration),
       ]),
       actions: `${playActions('view')}
-        ${favoriteButton('albums', data.id, data.favorite)}
         <button type="button" class="btn btn-ghost" data-edit-album="${data.id}">
           ${icon('edit', 16)} Bearbeiten
-        </button>`,
+        </button>
+        ${favoriteButton('albums', data.id, data.favorite)}`,
     })}
       ${trackList(data.tracks, { numbering: 'track' })}`,
   };
