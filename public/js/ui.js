@@ -4,6 +4,7 @@
 import { icon, paintIcons } from './icons.js';
 import { duration, releaseDate } from './format.js';
 import { draft } from './pending.js';
+import { register } from './vlist.js';
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -119,60 +120,64 @@ export function trackList(tracks, options = {}) {
       <span></span>
     </div>`;
 
-  const rows = tracks
-    .map((track, i) => {
-      const shown = numbering === 'track' ? track.trackNo || i + 1 : i + 1;
-      // Written onto the row because the number is not always the position in
-      // the list: an album numbers by tag, a podcast by episode. markPlayingRow
-      // rebuilds this cell when playback moves on and reads it back from here.
-      const num = ` data-num="${shown}"`;
-      // A track whose file is gone keeps its rating, so it keeps its row. It is
-      // greyed out, cannot be played, and says on hover where the file was.
-      const gone = !!track.missing;
-      return `<div class="track-row item${gone ? ' missing' : ''}" data-track-id="${track.id}" data-index="${i}"${num}
-             ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(track.path)}"` : ''}
-             ${track.itemId ? `data-item-id="${track.itemId}"` : ''}
-             ${draggable ? 'draggable="true"' : ''}>
-        <span class="track-index">
-          ${
-            gone
-              ? `<span class="num-label">${shown}</span>`
-              : `<button type="button" data-play-index="${i}" aria-label="${esc(track.title)} abspielen">
-                  <span class="num-label">${shown}</span>
-                  <span class="play-hint">${icon('play', 13)}</span>
-                </button>`
-          }
-        </span>
-        <span class="track-main">
-          <span class="track-art">${art(track.cover, track.album || track.title)}</span>
-          <span class="track-text">
-            <span class="track-title" data-clip>${esc(track.title)}${
-              gone ? ' <span class="badge gone">fehlt</span>' : ''
-            }</span>
-            <span class="track-artist">${
-              track.artistId
-                ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>`
-                : esc(track.artist)
-            }</span>
-          </span>
-        </span>
-        ${
-          year
-            ? `<span class="track-cell col-year num">${track.year || ''}</span>`
-            : `<span class="track-cell col-album">${
-                track.albumId ? `<a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a>` : ''
-              }</span>`
-        }
-        <span class="track-cell col-genre">${esc(track.genres.join(', '))}</span>
-        <span class="col-stars">${stars(track.stars, track.id)}</span>
-        <span class="track-time col-time">${duration(track.duration)}</span>
-        <span><button type="button" class="icon-btn icon-btn-sm row-menu" data-menu-track="${track.id}"
-              aria-label="Weitere Aktionen">${icon('more', 16)}</button></span>
-      </div>`;
-    })
-    .join('');
+  const id = register('track', tracks, {
+    row: (track, i) => trackRow(track, i, { numbering, draggable, year }),
+    // What Ctrl+F reads, the same texts the row shows: a gone file's title carries
+    // its "fehlt" badge, and a single shows its year where the album would be.
+    fields: (t) => [`${t.title}${t.missing ? ' fehlt' : ''}`, t.artist || '', year || !t.albumId ? '' : t.album || ''],
+  });
+  return `<div class="tracks" data-vlist="${id}">${head}<div class="vl-pad"></div><div class="vl-pad"></div></div>`;
+}
 
-  return `<div class="tracks">${head}${rows}</div>`;
+function trackRow(track, i, { numbering, draggable, year }) {
+  const shown = numbering === 'track' ? track.trackNo || i + 1 : i + 1;
+  // Written onto the row because the number is not always the position in
+  // the list: an album numbers by tag, a podcast by episode. markPlayingRow
+  // rebuilds this cell when playback moves on and reads it back from here.
+  const num = ` data-num="${shown}"`;
+  // A track whose file is gone keeps its rating, so it keeps its row. It is
+  // greyed out, cannot be played, and says on hover where the file was.
+  const gone = !!track.missing;
+  return `<div class="track-row item${gone ? ' missing' : ''}" data-track-id="${track.id}" data-index="${i}"${num}
+         ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(track.path)}"` : ''}
+         ${track.itemId ? `data-item-id="${track.itemId}"` : ''}
+         ${draggable ? 'draggable="true"' : ''}>
+    <span class="track-index">
+      ${
+        gone
+          ? `<span class="num-label">${shown}</span>`
+          : `<button type="button" data-play-index="${i}" aria-label="${esc(track.title)} abspielen">
+              <span class="num-label">${shown}</span>
+              <span class="play-hint">${icon('play', 13)}</span>
+            </button>`
+      }
+    </span>
+    <span class="track-main">
+      <span class="track-art">${art(track.cover, track.album || track.title)}</span>
+      <span class="track-text">
+        <span class="track-title" data-clip>${esc(track.title)}${
+          gone ? ' <span class="badge gone">fehlt</span>' : ''
+        }</span>
+        <span class="track-artist">${
+          track.artistId
+            ? `<a href="/artists/${track.artistId}" data-link>${esc(track.artist)}</a>`
+            : esc(track.artist)
+        }</span>
+      </span>
+    </span>
+    ${
+      year
+        ? `<span class="track-cell col-year num">${track.year || ''}</span>`
+        : `<span class="track-cell col-album">${
+            track.albumId ? `<a href="/albums/${track.albumId}" data-link>${esc(track.album)}</a>` : ''
+          }</span>`
+    }
+    <span class="track-cell col-genre">${esc(track.genres.join(', '))}</span>
+    <span class="col-stars">${stars(track.stars, track.id)}</span>
+    <span class="track-time col-time">${duration(track.duration)}</span>
+    <span><button type="button" class="icon-btn icon-btn-sm row-menu" data-menu-track="${track.id}"
+          aria-label="Weitere Aktionen">${icon('more', 16)}</button></span>
+  </div>`;
 }
 
 // --- Episode list -----------------------------------------------------------
@@ -183,56 +188,70 @@ export function trackList(tracks, options = {}) {
 export function episodeList(episodes, { offset = 0, showName = false } = {}) {
   if (!episodes.length) return '';
 
-  const rows = episodes
-    .map((ep, i) => {
-      const gone = !!ep.missing;
-      const at = offset + i;
-      const shown = ep.episodeNo != null ? ep.episodeNo : at + 1;
-      const left = Math.max(0, (ep.duration || 0) - (ep.position || 0));
-      const state = ep.completed
-        ? `<span class="ep-done">${icon('check-circle', 14)}<span class="ep-word">Gehört</span></span>`
-        : ep.position > 0 && ep.duration
-          ? // The width is applied by the view's `after` hook: the CSP is style-src 'self',
-            // so an inline style attribute would be dropped and the bar stay at zero.
-            `<span class="ep-progress" title="Noch ${duration(left)}">
-               <span class="ep-bar"><span data-progress="${Math.min(100, Math.round((ep.position / ep.duration) * 100))}"></span></span>
-               <span class="ep-left">noch ${duration(left)}</span>
-             </span>`
-          : '';
+  const id = register('episode', episodes, {
+    row: (ep, i) => episodeRow(ep, offset + i, showName),
+    fields: (ep) => [
+      `${ep.title}${ep.missing ? ' fehlt' : ''}`,
+      `${showName && ep.podcast ? `${ep.podcast} · ` : ''}${releaseDate(ep.releaseDate)}`,
+      '',
+    ],
+    paint: paintProgress,
+  });
+  return `<div class="tracks episodes" data-vlist="${id}"><div class="vl-pad"></div><div class="vl-pad"></div></div>`;
+}
 
-      return `<div class="track-row item episode-row${gone ? ' missing' : ''}${ep.completed ? ' heard' : ''}"
-             data-track-id="${ep.id}" data-index="${at}" data-num="${shown}"
-             ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(ep.path)}"` : ''}>
-        <span class="track-index">
-          ${
-            gone
-              ? `<span class="num-label">${shown}</span>`
-              : `<button type="button" data-play-index="${at}" aria-label="${esc(ep.title)} abspielen">
-                  <span class="num-label">${shown}</span>
-                  <span class="play-hint">${icon('play', 13)}</span>
-                </button>`
-          }
-        </span>
-        <span class="track-main">
-          <span class="track-art">${art(ep.cover, ep.podcast || ep.title)}</span>
-          <span class="track-text">
-            <span class="track-title" data-clip>${esc(ep.title)}${
-              gone ? ' <span class="badge gone">fehlt</span>' : ''
-            }</span>
-            <span class="track-artist">${
-              showName && ep.podcast ? `${esc(ep.podcast)} <span class="dot">·</span> ` : ''
-            }${esc(releaseDate(ep.releaseDate))}</span>
-          </span>
-        </span>
-        <span class="episode-state">${state}</span>
-        <span class="track-time col-time">${duration(ep.duration)}</span>
-        <span><button type="button" class="icon-btn icon-btn-sm row-menu" data-menu-track="${ep.id}"
-              aria-label="Weitere Aktionen">${icon('more', 16)}</button></span>
-      </div>`;
-    })
-    .join('');
+function episodeRow(ep, at, showName) {
+  const gone = !!ep.missing;
+  const shown = ep.episodeNo != null ? ep.episodeNo : at + 1;
+  const left = Math.max(0, (ep.duration || 0) - (ep.position || 0));
+  const state = ep.completed
+    ? `<span class="ep-done">${icon('check-circle', 14)}<span class="ep-word">Gehört</span></span>`
+    : ep.position > 0 && ep.duration
+      ? // The width is applied by paintProgress when the row is drawn: the CSP is
+        // style-src 'self', so an inline style attribute would be dropped.
+        `<span class="ep-progress" title="Noch ${duration(left)}">
+           <span class="ep-bar"><span data-progress="${Math.min(100, Math.round((ep.position / ep.duration) * 100))}"></span></span>
+           <span class="ep-left">noch ${duration(left)}</span>
+         </span>`
+      : '';
 
-  return `<div class="tracks episodes">${rows}</div>`;
+  return `<div class="track-row item episode-row${gone ? ' missing' : ''}${ep.completed ? ' heard' : ''}"
+         data-track-id="${ep.id}" data-index="${at}" data-num="${shown}"
+         ${gone ? `data-missing="1" title="Datei nicht gefunden. Zuletzt hier: ${esc(ep.path)}"` : ''}>
+    <span class="track-index">
+      ${
+        gone
+          ? `<span class="num-label">${shown}</span>`
+          : `<button type="button" data-play-index="${at}" aria-label="${esc(ep.title)} abspielen">
+              <span class="num-label">${shown}</span>
+              <span class="play-hint">${icon('play', 13)}</span>
+            </button>`
+      }
+    </span>
+    <span class="track-main">
+      <span class="track-art">${art(ep.cover, ep.podcast || ep.title)}</span>
+      <span class="track-text">
+        <span class="track-title" data-clip>${esc(ep.title)}${
+          gone ? ' <span class="badge gone">fehlt</span>' : ''
+        }</span>
+        <span class="track-artist">${
+          showName && ep.podcast ? `${esc(ep.podcast)} <span class="dot">·</span> ` : ''
+        }${esc(releaseDate(ep.releaseDate))}</span>
+      </span>
+    </span>
+    <span class="episode-state">${state}</span>
+    <span class="track-time col-time">${duration(ep.duration)}</span>
+    <span><button type="button" class="icon-btn icon-btn-sm row-menu" data-menu-track="${ep.id}"
+          aria-label="Weitere Aktionen">${icon('more', 16)}</button></span>
+  </div>`;
+}
+
+// The progress bar's width is data, not markup: the CSP forbids inline style
+// attributes, so it is applied through the CSSOM after the HTML is in place.
+export function paintProgress(root) {
+  root.querySelectorAll('[data-progress]').forEach((bar) => {
+    bar.style.width = `${bar.dataset.progress}%`;
+  });
 }
 
 // --- Cards ------------------------------------------------------------------

@@ -5,7 +5,7 @@
 import { api, errorText } from './api.js';
 import { icon } from './icons.js';
 import * as fmt from './format.js';
-import { esc, art, coverMosaic, mosaic, trackList, episodeList, card, listRow, empty, stars, toast, modal, closeModal, confirmDialog } from './ui.js';
+import { esc, art, coverMosaic, mosaic, trackList, episodeList, paintProgress, card, listRow, empty, stars, toast, modal, closeModal, confirmDialog } from './ui.js';
 import * as qualityPref from './quality.js';
 import { mountReader, readerHtml } from './reading.js';
 
@@ -670,7 +670,7 @@ export async function podcasts(_params, ctx) {
       </section>`,
     // The progress bars get their width here, not from an inline style: the CSP
     // is style-src 'self' and would drop it.
-    after: applyProgress,
+    after: paintProgress,
   };
 }
 
@@ -723,7 +723,7 @@ export async function podcast(params, ctx) {
     // other way round - so the router replaces instead of pushing, exactly like
     // the album sort.
     after(root, ctx2) {
-      applyProgress(root);
+      paintProgress(root);
       root.querySelectorAll('[data-episode-sort]').forEach((button) => {
         button.addEventListener('click', () => {
           const value = button.dataset.episodeSort;
@@ -931,7 +931,7 @@ async function spokenBook(params, kind) {
              </div>`
           : ''
       }`,
-    after: applyProgress,
+    after: paintProgress,
   };
 }
 
@@ -1090,7 +1090,7 @@ export async function ebook(params) {
             </section>`
           : ''
       }`,
-    after: applyProgress,
+    after: paintProgress,
   };
 }
 
@@ -1853,7 +1853,7 @@ export async function search(params) {
         ${movies.length ? `<section class="section"><div class="section-head"><h2>Filme</h2></div>${videoGrid(movies, 'movies')}</section>` : ''}
         ${shows.length ? `<section class="section"><div class="section-head"><h2>Serien</h2></div>${videoGrid(shows, 'shows')}</section>` : ''}`
       }`,
-    after: applyProgress,
+    after: paintProgress,
   };
 }
 
@@ -2826,14 +2826,6 @@ function userRows(users, me, isAdmin) {
     .join('');
 }
 
-// The progress bar's width is data, not markup: the CSP forbids inline style
-// attributes, so it is applied through the CSSOM after the HTML is in place.
-function applyProgress(root) {
-  root.querySelectorAll('[data-progress]').forEach((bar) => {
-    bar.style.width = `${bar.dataset.progress}%`;
-  });
-}
-
 // Settings has enough interaction to warrant its own wiring, like the accounts page.
 function wireSettings(root, ctx) {
   let scanTimer = null;
@@ -2851,7 +2843,7 @@ function wireSettings(root, ctx) {
   // to go when the view does - otherwise a second visit to the settings page
   // leaves two handlers behind and every click fires twice.
   const wiring = new AbortController();
-  applyProgress(root);
+  paintProgress(root);
 
   const stopPolling = () => {
     clearInterval(scanTimer);
@@ -2862,7 +2854,7 @@ function wireSettings(root, ctx) {
     const block = root.querySelector('#scan-block');
     if (!block) return false;
     block.outerHTML = scanBlock(scan, lastScan);
-    applyProgress(root);
+    paintProgress(root);
     return true;
   };
 

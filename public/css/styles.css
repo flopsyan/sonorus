@@ -899,10 +899,9 @@ a.chip .num { font-size: 0.75rem; font-weight: 500; color: var(--text-faint); }
    it never competes with the list that really is running. */
 .track-row.item.playing-elsewhere { background: var(--accent-ghost); }
 .track-row.item.playing-elsewhere .track-title { color: var(--accent-dim); }
-/* A list of a few thousand songs is a list the browser may skip most of: only
-   what is near the viewport is laid out and painted, and the placeholder height
-   is a row, so the scrollbar does not jump while it scrolls. */
-.track-row.item { content-visibility: auto; contain-intrinsic-size: auto 46px; }
+/* The two spacers of a long list (vlist.js) stand in for the rows that are not
+   drawn. Never a scroll anchor: their height changes under the reader. */
+.vl-pad { flex: none; overflow-anchor: none; }
 
 .track-index { font-family: var(--font-mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; color: var(--text-faint); text-align: right; }
 .track-index .play-hint { display: none; color: var(--text); }

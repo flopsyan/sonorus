@@ -15,6 +15,7 @@ import * as player from './player.js';
 import * as qualityPref from './quality.js';
 import * as pendingRatings from './pending.js';
 import * as find from './find.js';
+import * as vlist from './vlist.js';
 
 const content = document.getElementById('content');
 const sidebarNav = document.getElementById('sidebar-nav');
@@ -130,6 +131,7 @@ const ctx = {
     find.reset();
     view.tracks = tracks;
     paintIcons(content);
+    vlist.mount(content);
     markPlayingRow();
   },
   setPlaylists(tree) {
@@ -267,7 +269,11 @@ async function render({ keep = false } = {}) {
     content.innerHTML = `<div class="content-inner">${result.html}</div>`;
     document.title = result.title ? `${result.title} · ${shell.siteName}` : shell.siteName;
     paintIcons(content);
+    // The lists size their spacers first, so the old position exists again
+    // before it is restored, and then draw the rows that are there.
+    vlist.mount(content);
     content.scrollTop = scroll;
+    vlist.update();
     if (result.after) view.cleanup = result.after(content, ctx) || null;
     markPlayingRow();
   } catch (err) {
@@ -2208,8 +2214,20 @@ content.addEventListener('dragover', (e) => {
 content.addEventListener('dragend', () => {
   content.querySelectorAll('.dragging, .drop-above, .drop-below')
     .forEach((r) => r.classList.remove('dragging', 'drop-above', 'drop-below'));
+  // A dragged row scrolled out of the list waits hidden behind it (vlist.js).
+  content.querySelectorAll('.track-row.item[hidden]').forEach((r) => r.remove());
   dragIndex = null;
 });
+
+// A row the list draws while scrolling knows nothing of the page around it.
+function decorateRows() {
+  markPlayingRow();
+  if (dragIndex !== null) {
+    content.querySelector(`.track-row.item[data-index="${dragIndex}"]:not([hidden])`)?.classList.add('dragging');
+  }
+}
+
+vlist.setup(content, decorateRows);
 
 content.addEventListener('drop', async (e) => {
   const row = e.target.closest('.track-row.item[draggable="true"]');
@@ -2342,6 +2360,17 @@ function closeQueue() {
   if (!el.queue.classList.contains('open')) return;
   el.queue.classList.remove('open');
   forgetOverlay('queue');
+  // Rows scrolled into view are dropped again once the panel is out of sight,
+  // or every play/pause would keep redrawing them (see renderQueue).
+  if (queueShown > QUEUE_PAGE) {
+    setTimeout(() => {
+      if (el.queue.classList.contains('open')) return;
+      queueShown = QUEUE_PAGE;
+      drawnQueue = null;
+      renderQueue(player.state);
+      el.queueList.scrollTop = 0;
+    }, 300);
+  }
 }
 
 function toggleQueue() {
@@ -2994,8 +3023,26 @@ function markPlayingRow() {
 
 // --- Queue panel ------------------------------------------------------------
 
+// A shuffled "Nicht bewertet" is a queue of 7500, and all of it was redrawn on every
+// play/pause, volume step and rating. So the panel holds one page and gets the next
+// when its end comes into view.
+const QUEUE_PAGE = 100;
+let queueShown = QUEUE_PAGE;
+
+// What the drawn rows were made from. Play/pause, volume and a rating change none of
+// it, so they only flip the running entry's equaliser instead of redrawing every row.
+let drawnQueue = null;
+let drawnQueueKey = '';
+
 function renderQueue(s) {
   el.queueSource.textContent = s.source || 'Warteschlange';
+  const key = [s.order.join(','), s.pos, s.shuffle].join('|');
+  if (s.queue === drawnQueue && key === drawnQueueKey) {
+    el.queueList.querySelector('.queue-item.playing .eq')?.classList.toggle('paused', !s.playing);
+    return;
+  }
+  drawnQueue = s.queue;
+  drawnQueueKey = key;
   const list = player.orderedQueue();
 
   if (!list.length) {
@@ -3006,15 +3053,20 @@ function renderQueue(s) {
   // The panel starts at the running track: what was played before can be neither
   // moved nor usefully removed.
   const start = Math.max(0, s.pos);
+  el.queueList.innerHTML = queueRows(list, start, start + queueShown, s);
+}
+
+// Rows `from` to `to` of the play order.
+function queueRows(list, from, to, s) {
   const nextIndex = s.pos + 1;
   const header = (text) => `<div class="queue-section rack-label">${text}</div>`;
 
-  el.queueList.innerHTML = list
-    .slice(start)
+  return list
+    .slice(from, to)
     .map((track, offset) => {
       // The index of the row *in the play order*, which is what every queue
       // call takes. Slicing the list off the front must not renumber it.
-      const i = start + offset;
+      const i = from + offset;
       const isCurrent = i === s.pos;
       const position = isCurrent
         ? `<span class="eq${s.playing ? '' : ' paused'}"><span></span><span></span><span></span></span>`
@@ -3042,6 +3094,22 @@ function renderQueue(s) {
     })
     .join('');
 }
+
+// Appended rather than redrawn, so a row being dragged to the edge keeps its handle.
+el.queueList.addEventListener(
+  'scroll',
+  () => {
+    const q = el.queueList;
+    if (q.scrollTop + q.clientHeight < q.scrollHeight - 400) return;
+    const s = player.state;
+    const list = player.orderedQueue();
+    const from = Math.max(0, s.pos) + queueShown;
+    if (from >= list.length) return;
+    q.insertAdjacentHTML('beforeend', queueRows(list, from, from + QUEUE_PAGE, s));
+    queueShown += QUEUE_PAGE;
+  },
+  { passive: true }
+);
 
 el.queueList.addEventListener('click', (e) => {
   // The handle is a button of its own and its press is a drag or an arrow key,
@@ -3168,6 +3236,8 @@ el.queueList.addEventListener('keydown', (e) => {
   const from = Number(handle.dataset.queueDrag);
   const to = Math.max(firstMovable(), Math.min(player.state.order.length - 1, from + (e.key === 'ArrowUp' ? -1 : 1)));
   if (to === from) return;
+  // Stepping past the last drawn row has to draw it, or the focus has nowhere to go.
+  queueShown = Math.max(queueShown, to - Math.max(0, player.state.pos) + 1);
   player.moveInQueue(from, to);
   el.queueList.querySelector(`[data-queue-drag="${to}"]`)?.focus();
 });

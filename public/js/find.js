@@ -3,6 +3,7 @@
 // `data-play-index`, so playing from a narrowed list still starts the full list at that song.
 
 import { icon } from './icons.js';
+import * as vlist from './vlist.js';
 
 let bar = null;
 let input = null;
@@ -18,35 +19,23 @@ function fold(text) {
     .replace(/\p{Diacritic}/gu, '');
 }
 
-function cell(row, selector) {
-  const el = row.querySelector(selector);
-  return el ? fold(el.textContent.trim()) : '';
-}
-
-// One pass over the page, kept for as long as the field is open. Reading the
-// three fields off the DOM rather than writing them into every row is what keeps
-// the whole library from costing three more attributes per line.
+// One pass over the page's lists, kept for as long as the field is open. It reads
+// the data, not the rows: a long list only has the rows near the viewport drawn.
 function collect() {
-  return [...document.querySelectorAll('#content .tracks')]
-    .map((container) => {
-      const items = [...container.querySelectorAll('.track-row.item')];
-      return {
-        container,
-        order: items,
-        rows: items.map((el) => ({
-          el,
-          title: cell(el, '.track-title'),
-          artist: cell(el, '.track-artist'),
-          album: cell(el, '.col-album'),
-        })),
-      };
-    })
-    .filter((list) => list.rows.length);
+  const content = document.getElementById('content');
+  return (content ? vlist.listsIn(content) : [])
+    .map((list) => ({
+      list,
+      rows: list.items.map((item, i) => {
+        const [title, artist, album] = list.fields(item).map((text) => fold(text.trim()));
+        return { i, title, artist, album };
+      }),
+    }))
+    .filter((entry) => entry.rows.length);
 }
 
-function restore(list) {
-  list.rows.forEach((r) => r.el.removeAttribute('hidden'));
-  list.container.append(...list.order);
+function restore(entry) {
+  if (entry.list.order) entry.list.setOrder(null);
 }
 
 function apply(query) {
@@ -54,39 +43,33 @@ function apply(query) {
   let shown = 0;
   let total = 0;
 
-  for (const list of lists) {
-    total += list.rows.length;
+  for (const entry of lists) {
+    total += entry.rows.length;
     if (!words.length) {
-      restore(list);
-      shown += list.rows.length;
+      restore(entry);
+      shown += entry.rows.length;
       continue;
     }
 
     // Four buckets and not three: a query that spans two fields ("queen
     // bohemian") belongs behind the clean hits rather than nowhere.
     const groups = [[], [], [], []];
-    for (const row of list.rows) {
+    for (const row of entry.rows) {
       const all = `${row.title} ${row.artist} ${row.album}`;
       const hits = (hay) => words.every((w) => hay.includes(w));
       const rank = hits(row.title) ? 0 : hits(row.artist) ? 1 : hits(row.album) ? 2 : hits(all) ? 3 : -1;
-      if (rank < 0) {
-        row.el.setAttribute('hidden', '');
-      } else {
-        row.el.removeAttribute('hidden');
-        groups[rank].push(row.el);
-      }
+      if (rank >= 0) groups[rank].push(row.i);
     }
     const matched = groups.flat();
     shown += matched.length;
-    // Appended after the hidden ones, which take no room, so what the reader
-    // sees under the header is the ranked list.
-    list.container.append(...matched);
+    entry.list.setOrder(matched);
   }
 
   counter.textContent = words.length ? `${shown} von ${total}` : '';
   if (words.length) {
     const content = document.getElementById('content');
     if (content) content.scrollTop = 0;
+    vlist.update();
   }
 }
 
