@@ -23,16 +23,21 @@ const DIRECT_MIME = {
 };
 
 // Audio the viewer asked for, else the language they picked last, else German,
-// else English, else whatever the file marks as default.
-export function pickAudio(audio, { index, langs = [] } = {}) {
+// else English, else whatever the file marks as default. A device that names a
+// decoder for a twin of that track (same language and channels) gets the twin: a TV
+// passes E-AC-3 on to the receiver as 5.1, AAC only as stereo PCM.
+export function pickAudio(audio, { index, langs = [], caps = {} } = {}) {
   if (!audio.length) return null;
   const byIndex = audio.find((a) => a.index === index);
   if (byIndex) return byIndex;
+  const native = (a) => (caps.audio || []).includes(a.codec);
+  const twin = (a) =>
+    (!native(a) && audio.find((b) => b.lang === a.lang && b.channels === a.channels && native(b))) || a;
   for (const want of [...langs, 'ger', 'deu', 'de', 'eng', 'en']) {
     const hit = audio.find((a) => a.lang === want);
-    if (hit) return hit;
+    if (hit) return twin(hit);
   }
-  return audio.find((a) => a.default) || audio[0];
+  return twin(audio.find((a) => a.default) || audio[0]);
 }
 
 // Beyond hevc/av1/vp9, `caps` comes from the phone: extra `video`/`audio` codecs, `hevcMkv`
@@ -72,7 +77,7 @@ export function playsAsIs(video, absPath, audio, caps) {
  */
 export async function planPlayback(video, absPath, { audioIndex, langs, start = 0, caps = {}, force = null }) {
   const streams = JSON.parse(video.streams || '{}');
-  const audio = pickAudio(streams.audio || [], { index: audioIndex, langs });
+  const audio = pickAudio(streams.audio || [], { index: audioIndex, langs, caps });
   const videoOk = videoPlayable(streams.video, caps);
   const audioOk = audioPlayable(audio, caps);
   const base = { audio: audio ? audio.index : null };
