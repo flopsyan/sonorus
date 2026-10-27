@@ -429,7 +429,9 @@ export function playerInfo(id, userId) {
       ...json(v.subtitles, []).map((s, i) => ({
         key: `x${i}`, lang: s.lang, title: '', forced: s.forced, sdh: s.sdh, supported: true, external: true,
       })),
-      ...(streams.subs || []).map((s) => ({
+      // Bitmap tracks (PGS, DVD) are left out until a client can show them: Florian
+      // found the greyed-out rows noisy (2026-10-27). The clients still handle them.
+      ...(streams.subs || []).filter((s) => s.text).map((s) => ({
         key: `s${s.index}`, lang: s.lang, title: s.title, forced: s.forced, sdh: !!s.sdh, supported: s.text, external: false,
       })),
     ],
