@@ -174,7 +174,7 @@
 /* --- Browsing ----------------------------------------------------------------- */
 
 .v-browse { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
-.v-browse select { width: auto; min-width: 150px; padding: 7px 10px; font-size: 0.86rem; }
+.v-browse select, .v-browse .select { width: auto; min-width: 150px; padding: 7px 10px; font-size: 0.86rem; }
 .v-unwatched { font-size: 0.86rem; color: var(--text-dim); }
 .v-browse-count { margin-left: auto; }
 
@@ -428,7 +428,9 @@ body.watching { overflow: hidden; }
 .vp-option-text { display: flex; flex-direction: column; min-width: 0; }
 .vp-option-text small { color: rgba(255, 255, 255, 0.52); font-size: 0.74rem; }
 .vp-check { flex: none; width: 16px; display: grid; place-items: center; }
-.vp-switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--lamp); flex: none; }
+.vp-switch input { width: 16px; height: 16px; margin: 0; flex: none; background: transparent; border-color: rgba(255, 255, 255, 0.55); }
+.vp-switch input:checked { background: var(--lamp); border-color: var(--lamp); }
+.vp-switch input:checked::before { border-color: var(--lamp-ink); width: 9px; height: 4px; }
 .vp-empty { margin: 4px 10px; color: rgba(255, 255, 255, 0.6); font-size: 0.88rem; }
 
 .vp-episodes-panel { width: min(420px, calc(100vw - 44px)); padding: 12px; }

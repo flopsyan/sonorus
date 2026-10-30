@@ -210,7 +210,76 @@ input:focus, select:focus, textarea:focus {
 }
 textarea { resize: vertical; min-height: 70px; }
 .checkbox { display: flex; align-items: center; gap: 9px; font-size: 0.9rem; cursor: pointer; }
-.checkbox input { width: auto; accent-color: var(--accent); }
+.checkbox input { width: auto; }
+/* Own controls (public/js/controls.js). Selects and validation messages are built there;
+   these are the parts CSS alone can draw. */
+select { appearance: none; }
+select[data-enhanced] { display: none !important; }
+.select {
+  display: flex; align-items: center; width: 100%; padding: 9px 12px; cursor: pointer; text-align: left;
+  font: inherit; font-size: 0.94rem; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.select::after {
+  content: ''; flex: none; width: 7px; height: 7px; margin: -3px 2px 0 12px;
+  border-right: 1.5px solid var(--text-dim); border-bottom: 1.5px solid var(--text-dim);
+  transform: rotate(45deg);
+}
+.select:hover { border-color: var(--text-faint); }
+.select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.select:disabled { opacity: 0.6; cursor: default; }
+/* Every label is stacked in one cell, so the button is as wide as its longest option. */
+.select-value { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.select-value > span { grid-area: 1 / 1; visibility: hidden; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.select-value > .is-on { visibility: visible; }
+
+.popup {
+  inset: auto; margin: 0; padding: 4px 0; overflow: auto; font-size: 0.94rem;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.popup-list { max-height: 320px; max-width: calc(100vw - 16px); }
+.popup-list [role="option"] { padding: 7px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; outline: none; }
+.popup-list [role="option"]:focus, .popup-list .is-active { background: var(--surface-3); }
+.popup-list [aria-selected="true"] { font-weight: 600; color: var(--accent); }
+.popup-list [aria-disabled="true"] { color: var(--text-faint); cursor: default; }
+.popup-list.has-search { padding-top: 0; }
+.popup-search { position: sticky; top: 0; z-index: 1; padding: 8px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.popup-empty { margin: 0; padding: 10px 12px; color: var(--text-faint); }
+.popup-group { padding: 9px 12px 3px; font-size: 0.8rem; font-weight: 600; color: var(--text-dim); }
+
+.field-error { margin: 4px 0 0; font-size: 0.85rem; color: var(--danger); }
+[aria-invalid="true"] { border-color: var(--danger); }
+.select:has(+ select[aria-invalid="true"]) { border-color: var(--danger); }
+
+input[type="checkbox"] {
+  appearance: none; flex: none; display: inline-grid; place-content: center;
+  width: 18px; height: 18px; margin: 0; vertical-align: -3px; cursor: pointer;
+  background: var(--surface-2); border: 1.5px solid var(--text-faint); border-radius: 5px;
+}
+input[type="checkbox"]:hover { border-color: var(--text-dim); }
+input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+input[type="checkbox"]:checked::before {
+  content: ''; width: 10px; height: 5px; margin-top: -2px;
+  border-left: 2px solid var(--accent-ink); border-bottom: 2px solid var(--accent-ink);
+  transform: rotate(-45deg);
+}
+input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
+
+/* No spin buttons: they are the browser's own control. */
+input[type="number"] { appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+
+/* Sliders without a layout of their own. The player, reader bar and video sliders are styled where they live. */
+.lyric-offset-range, .reader-panel input[type="range"] {
+  appearance: none; display: block; height: 18px; padding: 0; background: none; border: 0; cursor: pointer;
+}
+:is(.lyric-offset-range, .reader-panel input[type="range"])::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--line); }
+:is(.lyric-offset-range, .reader-panel input[type="range"])::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+:is(.lyric-offset-range, .reader-panel input[type="range"])::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+:is(.lyric-offset-range, .reader-panel input[type="range"])::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 0; border-radius: 50%; background: var(--accent); }
+:is(.lyric-offset-range, .reader-panel input[type="range"])::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--accent); }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 
@@ -501,7 +570,7 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior:
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* The generic form rule stretches a select across whatever it is in, which on
    the album page pushed the view switch onto a line of its own. */
-.page-actions select { width: auto; }
+.page-actions select, .page-actions .select { width: auto; }
 
 .section { margin-bottom: 34px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
@@ -1107,7 +1176,7 @@ a.chip .num { font-size: 0.75rem; font-weight: 500; color: var(--text-faint); }
 .dyn-opts { display: flex; flex-direction: column; max-height: 236px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -6px; }
 .dyn-opts.short { max-height: none; }
 .dyn-opt { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: var(--radius-xs); cursor: pointer; font-size: 0.87rem; }
-.dyn-opt input { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--accent); }
+.dyn-opt input { width: 15px; height: 15px; margin: 0; flex: none; }
 .dyn-opt-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .dyn-opt-name, .dyn-opt-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dyn-opt-sub { font-size: 0.75rem; color: var(--text-faint); }
@@ -1476,7 +1545,7 @@ button.detail-art { display: block; padding: 0; border: none; cursor: zoom-in; }
   font-variant-numeric: tabular-nums;
   color: var(--accent);
 }
-.lyric-offset-range { width: 100%; margin: 0; accent-color: var(--accent); }
+.lyric-offset-range { width: 100%; margin: 0; }
 .lyric-offset-foot {
   display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
   font-size: 0.76rem; color: var(--text-faint);

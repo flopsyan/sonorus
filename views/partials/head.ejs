@@ -15,6 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="<%= siteName %>" />
   <%# Applies the saved theme before paint; external file, so the CSP can forbid inline scripts %>
   <script src="/static/js/theme-init.js?v=<%= assetVersion %>"></script>
+  <script type="module" src="/static/js/controls.js?v=<%= assetVersion %>"></script>
   <link rel="stylesheet" href="/static/css/styles.css?v=<%= assetVersion %>" />
   <link rel="stylesheet" href="/static/css/video.css?v=<%= assetVersion %>" />
 </head>

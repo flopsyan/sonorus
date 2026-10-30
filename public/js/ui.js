@@ -387,7 +387,7 @@ export function modal({ title, body, footer = '', wide = false, autofocus, onOpe
 
   paintIcons(root);
   const field = (autofocus === undefined ? !isTouch() : autofocus)
-    ? root.querySelector('input, textarea, select')
+    ? root.querySelector('input:not([type=hidden]):not([type=file]):not([data-enhanced]), .select, textarea')
     : null;
   if (field) field.focus();
   if (onOpen) onOpen(root);
